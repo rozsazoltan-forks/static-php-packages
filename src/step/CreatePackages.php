@@ -101,18 +101,15 @@ class CreatePackages
         }
 
         $package = $pkg ?? new $packageClass();
-        // Keep compatibility with packages that do not accept parameters
-        $config = $package->getFpmConfig();
-        $baseName = $package->getName() ?: self::getPrefix() . "-{$name}";
 
-        $computed = (string)self::getNextIteration($baseName, $pkgVersion, $architecture);
+        $computed = (string)self::getNextIteration($package->getName(), $pkgVersion, $architecture);
         $iteration = self::$iterationOverride ?? $computed;
 
-        self::createPackageWithFpm($baseName, $config, $pkgVersion, $architecture, $iteration, $package->getFpmExtraArgs());
+        self::createPackageWithFpm($package, $pkgVersion, $architecture, $iteration);
 
         $dbgConfig = $package->getDebuginfoFpmConfig();
         if (is_array($dbgConfig) && !empty($dbgConfig['files'])) {
-            self::createPackageWithFpm($baseName . '-debuginfo', $dbgConfig, $pkgVersion, $architecture, $iteration);
+            self::createPackageWithFpm($package, $pkgVersion, $architecture, $iteration, true);
         }
     }
 
@@ -156,17 +153,16 @@ class CreatePackages
 
         [$phpVersion, $architecture] = self::getPhpVersionAndArchitecture();
 
-        $computed = (string)self::getNextIteration(self::getPrefix() . "-{$sapi}", $phpVersion, $architecture);
+        $package = new $packageClass();
+
+        $computed = (string)self::getNextIteration($package->getName(), $phpVersion, $architecture);
         $iteration = self::$iterationOverride ?? $computed;
 
-        $package = new $packageClass();
-        $config = $package->getFpmConfig($phpVersion, $iteration);
-
-        self::createPackageWithFpm(self::getPrefix() . "-{$sapi}", $config, $phpVersion, $architecture, $iteration, $package->getFpmExtraArgs());
+        self::createPackageWithFpm($package, $phpVersion, $architecture, $iteration);
 
         $dbgConfig = $package->getDebuginfoFpmConfig();
         if (is_array($dbgConfig) && !empty($dbgConfig['files'])) {
-            self::createPackageWithFpm(self::getPrefix() . "-{$sapi}-debuginfo", $dbgConfig, $phpVersion, $architecture, $iteration);
+            self::createPackageWithFpm($package, $phpVersion, $architecture, $iteration, true);
         }
     }
 
@@ -195,18 +191,17 @@ class CreatePackages
         if (class_exists($packageClass)) {
             $package = new $packageClass($extension);
         }
-        $config = $package->getFpmConfig();
 
         if (!file_exists(INI_PATH . '/extension/' . $extension . '.ini')) {
             echo "Warning: INI file for extension {$extension} not found, skipping package creation.\n";
             return;
         }
 
-        self::createPackageWithFpm(self::getPrefix() . "-{$extension}", $config, $extensionVersion, $architecture, $iteration, $package->getFpmExtraArgs());
+        self::createPackageWithFpm($package, $extensionVersion, $architecture, $iteration);
 
         $dbgConfig = $package->getDebuginfoFpmConfig();
         if (is_array($dbgConfig) && !empty($dbgConfig['files'])) {
-            self::createPackageWithFpm(self::getPrefix() . "-{$extension}-debuginfo", $dbgConfig, $extensionVersion, $architecture, $iteration);
+            self::createPackageWithFpm($package, $extensionVersion, $architecture, $iteration, true);
         }
     }
 
@@ -287,19 +282,23 @@ class CreatePackages
         return $extensionVersion;
     }
 
-    private static function createPackageWithFpm(string $name, array $config, string $phpVersion, string $architecture, string $iteration, array $extraArgs = []): void
+    private static function createPackageWithFpm(\staticphp\package $package, string $phpVersion, string $architecture, string $iteration, bool $isDebuginfo = false): void
     {
         if (in_array('rpm', self::$packageTypes, true)) {
-            self::createRpmPackage($name, $config, $phpVersion, $architecture, $iteration, $extraArgs);
+            self::createRpmPackage($package, $phpVersion, $architecture, $iteration, $isDebuginfo);
         }
 
         if (in_array('deb', self::$packageTypes, true)) {
-            self::createDebPackage($name, $config, $phpVersion, $architecture, $iteration, $extraArgs);
+            self::createDebPackage($package, $phpVersion, $architecture, $iteration, $isDebuginfo);
         }
     }
 
-    private static function createRpmPackage(string $name, array $config, string $phpVersion, string $architecture, string $iteration, array $extraArgs = []): void
+    private static function createRpmPackage(\staticphp\package $package, string $phpVersion, string $architecture, string $iteration, bool $isDebuginfo = false): void
     {
+        $name = $isDebuginfo ? $package->getName() . '-debuginfo' : $package->getName();
+        $config = $isDebuginfo ? $package->getDebuginfoFpmConfig() : $package->getFpmConfig();
+        $extraArgs = $isDebuginfo ? [] : $package->getFpmExtraArgs();
+
         echo "Creating RPM package for {$name}...\n";
 
         $fpmArgs = [...[
@@ -313,7 +312,7 @@ class CreatePackages
             '--iteration', $iteration,
             '--architecture', $architecture,
             '--description', "Static PHP Package for {$name}",
-            '--license', 'MIT',
+            '--license', $package->getLicense(),
             '--maintainer', 'Marc Henderkes <rpms@henderkes.com>',
             '--vendor', 'Marc Henderkes <rpms@henderkes.com>',
             '--url', 'rpms.henderkes.com',
@@ -427,14 +426,17 @@ class CreatePackages
     }
 
     private static function createDebPackage(
-        string $name,
-        array  $config,
+        \staticphp\package $package,
         string $phpVersion,
         string $architecture,
         string $iteration,
-        array  $extraArgs = [],
+        bool $isDebuginfo = false,
     ): void
     {
+        $name = $isDebuginfo ? $package->getName() . '-debuginfo' : $package->getName();
+        $config = $isDebuginfo ? $package->getDebuginfoFpmConfig() : $package->getFpmConfig();
+        $extraArgs = $isDebuginfo ? [] : $package->getFpmExtraArgs();
+
         echo "Creating DEB package for {$name}...\n";
 
         $phpVersion = preg_replace('/_\d+$/', '', $phpVersion);
@@ -456,7 +458,7 @@ class CreatePackages
             '--architecture', $architecture,
             '--iteration', $debIteration,       // Debian revision (includes distro)
             '--description', "Static PHP Package for {$name}",
-            '--license', 'MIT',
+            '--license', $package->getLicense(),
             '--maintainer', 'Marc Henderkes <debs@henderkes.com>',
             '--vendor', 'Marc Henderkes <debs@henderkes.com>',
             '--url', 'debs.henderkes.com',
@@ -722,6 +724,7 @@ class CreatePackages
     {
         echo "Creating RPM package for FrankenPHP...\n";
 
+        $package = new \staticphp\package\frankenphp();
         $packageFolder = DIST_PATH . '/frankenphp/package';
         $phpVersion = str_replace('.', '', SPP_PHP_VERSION);
         $phpEmbedName = 'lib' . self::getPrefix() . '-' . $phpVersion . '.so';
@@ -746,6 +749,7 @@ class CreatePackages
             '-p', DIST_RPM_PATH,
             '-n', $name,
             '-v', $version,
+            '--license', $package->getLicense(),
             '--config-files', '/etc/frankenphp/Caddyfile',
         ];
 
@@ -798,6 +802,7 @@ class CreatePackages
                 '-v', $version,
                 '--iteration', $iteration,
                 '--architecture', $architecture,
+                '--license', $package->getLicense(),
                 '--depends', sprintf('%s = %s-%s', $name, $version, $iteration),
                 $frankenDbg . '=/usr/lib/debug/usr/bin/frankenphp.debug',
             ];
@@ -816,6 +821,7 @@ class CreatePackages
     {
         echo "Creating DEB package for FrankenPHP...\n";
 
+        $package = new \staticphp\package\frankenphp();
         $packageFolder = DIST_PATH . '/frankenphp/package';
         $phpVersion = str_replace('.', '', SPP_PHP_VERSION);
         $phpEmbedName = 'lib' . self::getPrefix() . '-' . $phpVersion . '.so';
@@ -843,6 +849,7 @@ class CreatePackages
             '-p', DIST_DEB_PATH,
             '-n', $name,
             '-v', $version,
+            '--license', $package->getLicense(),
             '--config-files', '/etc/frankenphp/Caddyfile',
         ];
 
@@ -914,6 +921,7 @@ class CreatePackages
                 '-v', $version,
                 '--iteration', $debIteration,
                 '--architecture', $architecture,
+                '--license', $package->getLicense(),
                 '--depends', sprintf('%s (= %s-%s)', $name, $version, $debIteration),
                 $frankenDbg . '=/usr/lib/debug/usr/bin/frankenphp.debug',
             ];

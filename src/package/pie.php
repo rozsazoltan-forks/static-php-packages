@@ -72,6 +72,11 @@ class pie implements package
         return [];
     }
 
+    public function getLicense(): string
+    {
+        return 'BSD-3-Clause';
+    }
+
     private function prepareArtifacts(): array
     {
         $pharPath = DOWNLOAD_PATH . '/pie.phar';

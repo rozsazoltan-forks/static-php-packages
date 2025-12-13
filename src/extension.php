@@ -223,4 +223,12 @@ class extension implements package
     {
         return CreatePackages::getPrefix() . '-' . $this->name;
     }
+
+    public function getLicense(): string
+    {
+        if ($this->name === 'xdebug') {
+            return 'Xdebug-1.03';
+        }
+        return 'PHP-3.01';
+    }
 }

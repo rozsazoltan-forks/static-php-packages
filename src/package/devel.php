@@ -9,7 +9,7 @@ class devel implements package
 {
     public function getName(): string
     {
-        return CreatePackages::getPrefix() . '-' . $this->name;
+        return CreatePackages::getPrefix() . '-devel';
     }
     public function getFpmConfig(): array
     {
@@ -99,5 +99,10 @@ class devel implements package
     public function getDebuginfoFpmConfig(): array
     {
         return [];
+    }
+
+    public function getLicense(): string
+    {
+        return 'PHP-3.01';
     }
 }
