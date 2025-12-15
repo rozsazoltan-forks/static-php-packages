@@ -15,15 +15,21 @@ class embed implements package
     public function getFpmConfig(): array
     {
         $phpVersion = str_replace('.', '', SPP_PHP_VERSION);
-        $name = 'lib' . CreatePackages::getPrefix() . "-$phpVersion.so";
+        $name = 'libphp-zts-' . $phpVersion . '.so';
+        $versionedConflicts = CreatePackages::getVersionedConflicts('-embed');
         return [
             'depends' => [
                 CreatePackages::getPrefix() . '-cli',
             ],
             'provides' => [
                 $name,
+                'php-zts-embed',
+                CreatePackages::getPrefix() . '-embed',
+                'php-zts-embedded',
                 CreatePackages::getPrefix() . '-embedded'
             ],
+            'replaces' => $versionedConflicts,
+            'conflicts' => $versionedConflicts,
             'files' => [
                 BUILD_LIB_PATH . '/' . $name => getLibdir() . '/' . $name,
             ]
@@ -38,7 +44,7 @@ class embed implements package
     public function getDebuginfoFpmConfig(): array
     {
         $phpVersionDigits = str_replace('.', '', SPP_PHP_VERSION);
-        $libName = 'lib' . CreatePackages::getPrefix() . "-{$phpVersionDigits}.so";
+        $libName = 'libphp-zts-' . $phpVersionDigits . '.so';
         $src = BUILD_ROOT_PATH . '/debug/' . $libName . '.debug';
         if (!file_exists($src)) {
             return [];

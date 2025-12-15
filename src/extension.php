@@ -146,18 +146,24 @@ class extension implements package
 
         $depends = array_merge($depends, $ordered);
 
+        $versionedConflicts = CreatePackages::getVersionedConflicts('-' . $this->name);
         return [
             'config-files' => [
                 getConfdir() . '/conf.d/' . $this->prefix . $this->name . '.ini',
             ],
             'depends' => $depends,
+            'provides' => [
+                'php-zts-' . $this->name,
+            ],
+            'replaces' => $versionedConflicts,
+            'conflicts' => $versionedConflicts,
             'files' => [
                 ...($this->getIniPath() ?
                     [$this->getIniPath() => getConfdir() . '/conf.d/' . $this->prefix . $this->name . '.ini']
                     : []
                 ),
                 ...($this->isSharedExtension() ?
-                    [BUILD_MODULES_PATH . '/' . $this->name . '.so' => getLibdir() . '/' . CreatePackages::getPrefix() . '/modules/' . $this->name . '.so']
+                    [BUILD_MODULES_PATH . '/' . $this->name . '.so' => getLibdir() . '/php-zts/modules/' . $this->name . '.so']
                     : []
                 ),
             ]
@@ -209,7 +215,7 @@ class extension implements package
         if (!file_exists($src)) {
             return [];
         }
-        $targetSo = getLibdir() . '/' . CreatePackages::getPrefix() . '/modules/' . $this->name . '.so';
+        $targetSo = getLibdir() . '/php-zts/modules/' . $this->name . '.so';
         $target = '/usr/lib/debug' . $targetSo . '.debug';
         return [
             'depends' => [CreatePackages::getPrefix() . '-' . $this->name],

@@ -38,7 +38,7 @@ class devel implements package
             $phpConfigContent
         );
         $phpVersion = str_replace('.', '', SPP_PHP_VERSION);
-        $libName = 'lib' . CreatePackages::getPrefix() . "-$phpVersion.so";
+        $libName = 'libphp-zts-' . $phpVersion . '.so';
         $phpConfigContent = str_replace('libphp.so', $libName, $phpConfigContent);
 
         file_put_contents($modifiedPhpConfigPath, $phpConfigContent);
@@ -65,8 +65,8 @@ class devel implements package
                 '"`eval echo ${prefix}/include`/php"'
             ],
             [
-                str_replace('/usr/', '', getLibdir()) . '/' . CreatePackages::getPrefix() . '`',
-                '"`eval echo ${prefix}/include`/' . CreatePackages::getPrefix() . '"'
+                str_replace('/usr/', '', getLibdir()) . '/php-zts`',
+                '"`eval echo ${prefix}/include`/php-zts"'
             ],
             $phpizeContent
         );
@@ -74,20 +74,24 @@ class devel implements package
         file_put_contents($modifiedPhpizePath, $phpizeContent);
         chmod($modifiedPhpizePath, 0755);
 
+        $versionedConflicts = CreatePackages::getVersionedConflicts('-devel');
         return [
             'files' => [
                 $modifiedPhpConfigPath => '/usr/bin/php-config-zts',
                 $modifiedPhpizePath => '/usr/bin/phpize-zts',
                 BUILD_INCLUDE_PATH . '/php/' => '/usr/include/php-zts',
-                BUILD_LIB_PATH . '/php/build' => getLibdir() . '/' . CreatePackages::getPrefix(),
+                BUILD_LIB_PATH . '/php/build' => getLibdir() . '/php-zts',
             ],
             'depends' => [
                 CreatePackages::getPrefix() . '-cli',
             ],
             'provides' => [
+                'php-zts-devel',
                 'php-config-zts',
                 'phpize-zts',
-            ]
+            ],
+            'replaces' => $versionedConflicts,
+            'conflicts' => $versionedConflicts,
         ];
     }
 

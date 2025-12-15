@@ -11,16 +11,22 @@ class fpm implements package
     {
         return CreatePackages::getPrefix() . '-fpm';
     }
-    
+
     public function getFpmConfig(): array
     {
         $contents = file_get_contents(INI_PATH . '/php-fpm.conf');
         $contents = str_replace('$confdir', getConfdir(), $contents);
         file_put_contents(TEMP_DIR . '/php-fpm.conf', $contents);
+        $versionedConflicts = CreatePackages::getVersionedConflicts('-fpm');
         return [
             'depends' => [
                 CreatePackages::getPrefix() . '-cli',
             ],
+            'provides' => [
+                'php-zts-fpm',
+            ],
+            'replaces' => $versionedConflicts,
+            'conflicts' => $versionedConflicts,
             'files' => [
                 TEMP_DIR . '/php-fpm.conf' => getConfdir() . '/php-fpm.conf',
                 INI_PATH . '/www.conf' => getConfdir() . '/fpm.d/www.conf',

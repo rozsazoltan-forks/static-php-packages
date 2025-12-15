@@ -88,16 +88,6 @@ class CreatePackages
         $pkg = new $packageClass();
         if (method_exists($pkg, 'getVersion')) {
             $pkgVersion = $pkg->getVersion();
-            if ($pkgVersion !== $phpVersion) {
-                // Extract major and minor version numbers from PHP version
-                if (preg_match('/^(\d+)\.(\d+)/', $phpVersion, $matches)) {
-                    $majorMinor = $matches[1] . $matches[2]; // Combine major and minor without dot
-                    $pkgVersion .= '_' . $majorMinor;
-                }
-                else {
-                    throw new \RuntimeException("Warning: Could not extract major.minor from PHP version: {$phpVersion}");
-                }
-            }
         }
 
         $package = $pkg ?? new $packageClass();
@@ -270,18 +260,6 @@ class CreatePackages
 
         echo "Detected version for extension {$extension}: {$extensionVersion}\n";
 
-        // If extension version is different from PHP version, add postfix based on PHP major.minor version
-        if ($extensionVersion !== $phpVersion) {
-            // Extract major and minor version numbers from PHP version
-            if (preg_match('/^(\d+)\.(\d+)/', $phpVersion, $matches)) {
-                $majorMinor = $matches[1] . $matches[2]; // Combine major and minor without dot
-                $extensionVersion .= '_' . $majorMinor;
-            }
-            else {
-                throw new \RuntimeException("Warning: Could not extract major.minor from PHP version: {$phpVersion}");
-            }
-        }
-
         return $extensionVersion;
     }
 
@@ -360,6 +338,13 @@ class CreatePackages
             foreach ($config['replaces'] as $replace) {
                 $fpmArgs[] = '--replaces';
                 $fpmArgs[] = "$replace < {$phpVersion}-{$iteration}";
+            }
+        }
+
+        if (isset($config['conflicts']) && is_array($config['conflicts'])) {
+            foreach ($config['conflicts'] as $conflict) {
+                $fpmArgs[] = '--conflicts';
+                $fpmArgs[] = $conflict;
             }
         }
 
@@ -442,8 +427,6 @@ class CreatePackages
 
         echo "Creating DEB package for {$name}...\n";
 
-        $phpVersion = preg_replace('/_\d+$/', '', $phpVersion);
-
         //$osRelease = parse_ini_file('/etc/os-release');
         //$distroCodename = $osRelease['VERSION_CODENAME'] ?? null;
         //$debIteration = $distroCodename !== '' ? "{$iteration}~{$distroCodename}" : $iteration;
@@ -503,6 +486,13 @@ class CreatePackages
             foreach ($config['replaces'] as $replace) {
                 $fpmArgs[] = '--replaces';
                 $fpmArgs[] = "{$replace} (<= {$fullVersion})";
+            }
+        }
+
+        if (isset($config['conflicts']) && is_array($config['conflicts'])) {
+            foreach ($config['conflicts'] as $conflict) {
+                $fpmArgs[] = '--conflicts';
+                $fpmArgs[] = $conflict;
             }
         }
 
@@ -704,6 +694,38 @@ class CreatePackages
 
     public static function getPrefix(): string
     {
+        $phpVersion = SPP_PHP_VERSION;
+        if (preg_match('/^(\d+)\.(\d+)/', $phpVersion, $matches)) {
+            return 'php-zts' . $matches[1] . '.' . $matches[2];
+        }
         return 'php-zts';
+    }
+
+    /**
+     * Get list of versioned package names to conflict/replace with
+     * For example, for php-zts8.5-cli, returns [php-zts8.0-cli, php-zts8.1-cli, ..., php-zts8.9-cli] excluding 8.5
+     */
+    public static function getVersionedConflicts(string $suffix): array
+    {
+        $conflicts = [];
+        $phpVersion = SPP_PHP_VERSION;
+
+        if (!preg_match('/^(\d+)\.(\d+)/', $phpVersion, $matches)) {
+            return [];
+        }
+
+        $currentMajor = (int)$matches[1];
+        $currentMinor = (int)$matches[2];
+
+        // Generate conflicts for versions 8.0 through 8.9
+        for ($minor = 0; $minor <= 9; $minor++) {
+            // Skip the current version
+            if ($currentMajor === 8 && $minor === $currentMinor) {
+                continue;
+            }
+            $conflicts[] = "php-zts{$currentMajor}.{$minor}{$suffix}";
+        }
+
+        return $conflicts;
     }
 }

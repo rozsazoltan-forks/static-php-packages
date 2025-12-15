@@ -10,6 +10,10 @@ class frankenphp implements package
 {
     public function getName(): string
     {
+        $phpVersion = SPP_PHP_VERSION;
+        if (preg_match('/^(\d+)\.(\d+)/', $phpVersion, $matches)) {
+            return 'frankenphp' . $matches[1] . '.' . $matches[2];
+        }
         return 'frankenphp';
     }
 
@@ -31,6 +35,33 @@ class frankenphp implements package
     public function getLicense(): string
     {
         return 'MIT';
+    }
+
+    /**
+     * Get list of versioned frankenphp packages to conflict/replace with
+     */
+    private function getVersionedConflicts(): array
+    {
+        $conflicts = [];
+        $phpVersion = SPP_PHP_VERSION;
+
+        if (!preg_match('/^(\d+)\.(\d+)/', $phpVersion, $matches)) {
+            return [];
+        }
+
+        $currentMajor = (int)$matches[1];
+        $currentMinor = (int)$matches[2];
+
+        // Generate conflicts for frankenphp8.0 through frankenphp8.9
+        for ($minor = 0; $minor <= 9; $minor++) {
+            // Skip the current version
+            if ($currentMajor === 8 && $minor === $currentMinor) {
+                continue;
+            }
+            $conflicts[] = "frankenphp{$currentMajor}.{$minor}";
+        }
+
+        return $conflicts;
     }
 
     /**
@@ -61,19 +92,20 @@ class frankenphp implements package
 
         $packageFolder = DIST_PATH . '/frankenphp/package';
         $phpVersion = str_replace('.', '', SPP_PHP_VERSION);
-        $phpEmbedName = 'lib' . CreatePackages::getPrefix() . '-' . $phpVersion . '.so';
+        $phpEmbedName = 'libphp-zts-' . $phpVersion . '.so';
 
         $ldLibraryPath = 'LD_LIBRARY_PATH=' . BUILD_LIB_PATH;
         [, $output] = shell()->execWithResult($ldLibraryPath . ' ' . BUILD_BIN_PATH . '/frankenphp --version');
         $output = implode("\n", $output);
         preg_match('/FrankenPHP v(\d+\.\d+\.\d+)/', $output, $matches);
-        $latestTag = $matches[1];
-        $version = $latestTag . '_' . $phpVersion;
+        $version = $matches[1];
 
-        $name = "frankenphp";
+        $name = $this->getName();
 
         $computed = (string)$this->getNextIteration($name, $version, $architecture);
         $iteration = $iterationOverride ?? $computed;
+
+        $versionedConflicts = $this->getVersionedConflicts();
 
         $fpmArgs = [
             'fpm',
@@ -85,7 +117,15 @@ class frankenphp implements package
             '-v', $version,
             '--license', $this->getLicense(),
             '--config-files', '/etc/frankenphp/Caddyfile',
+            '--provides', 'frankenphp',
         ];
+
+        foreach ($versionedConflicts as $conflict) {
+            $fpmArgs[] = '--conflicts';
+            $fpmArgs[] = $conflict;
+            $fpmArgs[] = '--replaces';
+            $fpmArgs[] = $conflict;
+        }
 
         foreach ($binaryDependencies as $lib => $dependencyVersion) {
             $fpmArgs[] = '--depends';
@@ -160,7 +200,7 @@ class frankenphp implements package
 
         $packageFolder = DIST_PATH . '/frankenphp/package';
         $phpVersion = str_replace('.', '', SPP_PHP_VERSION);
-        $phpEmbedName = 'lib' . CreatePackages::getPrefix() . '-' . $phpVersion . '.so';
+        $phpEmbedName = 'libphp-zts-' . $phpVersion . '.so';
 
         $ldLibraryPath = 'LD_LIBRARY_PATH=' . BUILD_LIB_PATH;
         [, $output] = shell()->execWithResult($ldLibraryPath . ' ' . BUILD_BIN_PATH . '/frankenphp --version');
@@ -168,11 +208,13 @@ class frankenphp implements package
         preg_match('/FrankenPHP v(\d+\.\d+\.\d+)/', $output, $matches);
         $version = $matches[1];
 
-        $name = "frankenphp";
+        $name = $this->getName();
 
         $computed = (string)$this->getNextIteration($name, $version, $architecture);
         $iteration = $iterationOverride ?? $computed;
         $debIteration = $iteration;
+
+        $versionedConflicts = $this->getVersionedConflicts();
 
         $fpmArgs = [
             'fpm',
@@ -184,7 +226,15 @@ class frankenphp implements package
             '-v', $version,
             '--license', $this->getLicense(),
             '--config-files', '/etc/frankenphp/Caddyfile',
+            '--provides', 'frankenphp',
         ];
+
+        foreach ($versionedConflicts as $conflict) {
+            $fpmArgs[] = '--conflicts';
+            $fpmArgs[] = $conflict;
+            $fpmArgs[] = '--replaces';
+            $fpmArgs[] = $conflict;
+        }
 
         $systemLibraryMap = [
             'ld-linux-x86-64.so.2' => 'libc6',

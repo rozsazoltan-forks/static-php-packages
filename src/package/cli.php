@@ -17,12 +17,15 @@ class cli implements package
     {
         $config = CraftConfig::getInstance();
         $staticExtensions = $config->getStaticExtensions();
+        $prefix = CreatePackages::getPrefix();
 
         $contents = file_get_contents(INI_PATH . '/php.ini');
-        $contents = str_replace('$libdir', getLibdir() . '/' . CreatePackages::getPrefix(), $contents);
+        $contents = str_replace('$libdir', getLibdir() . '/php-zts', $contents);
         file_put_contents(TEMP_DIR . '/php.ini', $contents);
-        $provides = ['php-zts'];
-        $replaces = [];
+        $provides = ['php-zts', $prefix];
+        $versionedConflicts = CreatePackages::getVersionedConflicts('-cli');
+        $replaces = $versionedConflicts;
+        $conflicts = $versionedConflicts;
         $configFiles = [
             getConfdir(),
             getConfdir() . '/php.ini'
@@ -65,6 +68,7 @@ class cli implements package
             ],
             'provides' => $provides,
             'replaces' => $replaces,
+            'conflicts' => $conflicts,
             'files' => $files
         ];
     }

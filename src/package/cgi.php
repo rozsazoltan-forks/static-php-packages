@@ -14,10 +14,16 @@ class cgi implements package
 
     public function getFpmConfig(): array
     {
+        $versionedConflicts = CreatePackages::getVersionedConflicts('-cgi');
         return [
             'depends' => [
                 CreatePackages::getPrefix() . '-cli',
             ],
+            'provides' => [
+                'php-zts-cgi',
+            ],
+            'replaces' => $versionedConflicts,
+            'conflicts' => $versionedConflicts,
             'files' => [
                 BUILD_BIN_PATH . '/php-cgi' => '/usr/bin/php-cgi-zts',
             ]

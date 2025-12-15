@@ -12,7 +12,7 @@ class pie implements package
 {
     public function getName(): string
     {
-        return 'pie-zts';
+        return 'pie-' . CreatePackages::getPrefix();
     }
 
     /**
@@ -49,12 +49,31 @@ class pie implements package
         [$pharSource, $wrapperSource] = $this->prepareArtifacts();
 
         $prefix = CreatePackages::getPrefix();
+        $versionedConflicts = [];
+
+        // Generate conflicts for pie-php-zts8.0, pie-php-zts8.1, etc.
+        $phpVersion = SPP_PHP_VERSION;
+        if (preg_match('/^(\d+)\.(\d+)/', $phpVersion, $matches)) {
+            $currentMajor = (int)$matches[1];
+            $currentMinor = (int)$matches[2];
+            for ($minor = 0; $minor <= 9; $minor++) {
+                if ($currentMajor === 8 && $minor === $currentMinor) {
+                    continue;
+                }
+                $versionedConflicts[] = "pie-php-zts{$currentMajor}.{$minor}";
+            }
+        }
 
         return [
             'depends' => [
                 $prefix . '-cli',
                 $prefix . '-devel',
             ],
+            'provides' => [
+                'pie-zts',
+            ],
+            'replaces' => $versionedConflicts,
+            'conflicts' => $versionedConflicts,
             'files' => [
                 $pharSource => '/usr/share/php-zts/pie.phar',
                 $wrapperSource => '/usr/bin/pie-zts',
