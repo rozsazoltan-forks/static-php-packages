@@ -14,7 +14,7 @@ A tool for building and packaging PHP and shared extensions with static-php-cli.
 
 1. Clone the repository:
    ```
-   git clone https://github.com/static-php/spc-packages.git
+   git clone https://github.com/static-php/packages.git
    cd spc-packages
    ```
 

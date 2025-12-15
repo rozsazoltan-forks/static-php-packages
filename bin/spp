@@ -1,9 +1,6 @@
 #!/usr/bin/env php
 <?php
 
-// Main entrypoint for SPC Packages
-// Uses Symfony Console for command-line parsing
-
 // Define constants
 define('BASE_PATH', dirname(__DIR__));
 const INI_PATH = BASE_PATH . '/src/ini';
