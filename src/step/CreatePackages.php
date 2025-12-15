@@ -101,18 +101,15 @@ class CreatePackages
         }
 
         $package = $pkg ?? new $packageClass();
-        // Keep compatibility with packages that do not accept parameters
-        $config = $package->getFpmConfig();
-        $baseName = $package->getName() ?: self::getPrefix() . "-{$name}";
 
-        $computed = (string)self::getNextIteration($baseName, $pkgVersion, $architecture);
+        $computed = (string)self::getNextIteration($package->getName(), $pkgVersion, $architecture);
         $iteration = self::$iterationOverride ?? $computed;
 
-        self::createPackageWithFpm($baseName, $config, $pkgVersion, $architecture, $iteration, $package->getFpmExtraArgs());
+        self::createPackageWithFpm($package, $pkgVersion, $architecture, $iteration);
 
         $dbgConfig = $package->getDebuginfoFpmConfig();
         if (is_array($dbgConfig) && !empty($dbgConfig['files'])) {
-            self::createPackageWithFpm($baseName . '-debuginfo', $dbgConfig, $pkgVersion, $architecture, $iteration);
+            self::createPackageWithFpm($package, $pkgVersion, $architecture, $iteration, true);
         }
     }
 
@@ -143,10 +140,6 @@ class CreatePackages
 
     private static function createSapiPackage(string $sapi): void
     {
-        if ($sapi === 'frankenphp') {
-            self::createFrankenPhpPackage();
-            return;
-        }
         $packageClass = "\\staticphp\\package\\{$sapi}";
 
         if (!class_exists($packageClass)) {
@@ -154,19 +147,25 @@ class CreatePackages
             return;
         }
 
+        // FrankenPHP has a special package creation flow
+        if ($sapi === 'frankenphp') {
+            $package = new $packageClass();
+            $package->createPackages(self::$packageTypes, self::$binaryDependencies, self::$iterationOverride);
+            return;
+        }
+
         [$phpVersion, $architecture] = self::getPhpVersionAndArchitecture();
 
-        $computed = (string)self::getNextIteration(self::getPrefix() . "-{$sapi}", $phpVersion, $architecture);
+        $package = new $packageClass();
+
+        $computed = (string)self::getNextIteration($package->getName(), $phpVersion, $architecture);
         $iteration = self::$iterationOverride ?? $computed;
 
-        $package = new $packageClass();
-        $config = $package->getFpmConfig($phpVersion, $iteration);
-
-        self::createPackageWithFpm(self::getPrefix() . "-{$sapi}", $config, $phpVersion, $architecture, $iteration, $package->getFpmExtraArgs());
+        self::createPackageWithFpm($package, $phpVersion, $architecture, $iteration);
 
         $dbgConfig = $package->getDebuginfoFpmConfig();
         if (is_array($dbgConfig) && !empty($dbgConfig['files'])) {
-            self::createPackageWithFpm(self::getPrefix() . "-{$sapi}-debuginfo", $dbgConfig, $phpVersion, $architecture, $iteration);
+            self::createPackageWithFpm($package, $phpVersion, $architecture, $iteration, true);
         }
     }
 
@@ -195,18 +194,17 @@ class CreatePackages
         if (class_exists($packageClass)) {
             $package = new $packageClass($extension);
         }
-        $config = $package->getFpmConfig();
 
         if (!file_exists(INI_PATH . '/extension/' . $extension . '.ini')) {
             echo "Warning: INI file for extension {$extension} not found, skipping package creation.\n";
             return;
         }
 
-        self::createPackageWithFpm(self::getPrefix() . "-{$extension}", $config, $extensionVersion, $architecture, $iteration, $package->getFpmExtraArgs());
+        self::createPackageWithFpm($package, $extensionVersion, $architecture, $iteration);
 
         $dbgConfig = $package->getDebuginfoFpmConfig();
         if (is_array($dbgConfig) && !empty($dbgConfig['files'])) {
-            self::createPackageWithFpm(self::getPrefix() . "-{$extension}-debuginfo", $dbgConfig, $extensionVersion, $architecture, $iteration);
+            self::createPackageWithFpm($package, $extensionVersion, $architecture, $iteration, true);
         }
     }
 
@@ -287,19 +285,23 @@ class CreatePackages
         return $extensionVersion;
     }
 
-    private static function createPackageWithFpm(string $name, array $config, string $phpVersion, string $architecture, string $iteration, array $extraArgs = []): void
+    private static function createPackageWithFpm(\staticphp\package $package, string $phpVersion, string $architecture, string $iteration, bool $isDebuginfo = false): void
     {
         if (in_array('rpm', self::$packageTypes, true)) {
-            self::createRpmPackage($name, $config, $phpVersion, $architecture, $iteration, $extraArgs);
+            self::createRpmPackage($package, $phpVersion, $architecture, $iteration, $isDebuginfo);
         }
 
         if (in_array('deb', self::$packageTypes, true)) {
-            self::createDebPackage($name, $config, $phpVersion, $architecture, $iteration, $extraArgs);
+            self::createDebPackage($package, $phpVersion, $architecture, $iteration, $isDebuginfo);
         }
     }
 
-    private static function createRpmPackage(string $name, array $config, string $phpVersion, string $architecture, string $iteration, array $extraArgs = []): void
+    private static function createRpmPackage(\staticphp\package $package, string $phpVersion, string $architecture, string $iteration, bool $isDebuginfo = false): void
     {
+        $name = $isDebuginfo ? $package->getName() . '-debuginfo' : $package->getName();
+        $config = $isDebuginfo ? $package->getDebuginfoFpmConfig() : $package->getFpmConfig();
+        $extraArgs = $isDebuginfo ? [] : $package->getFpmExtraArgs();
+
         echo "Creating RPM package for {$name}...\n";
 
         $fpmArgs = [...[
@@ -313,7 +315,7 @@ class CreatePackages
             '--iteration', $iteration,
             '--architecture', $architecture,
             '--description', "Static PHP Package for {$name}",
-            '--license', 'MIT',
+            '--license', $package->getLicense(),
             '--maintainer', 'Marc Henderkes <rpms@henderkes.com>',
             '--vendor', 'Marc Henderkes <rpms@henderkes.com>',
             '--url', 'rpms.henderkes.com',
@@ -427,14 +429,17 @@ class CreatePackages
     }
 
     private static function createDebPackage(
-        string $name,
-        array  $config,
+        \staticphp\package $package,
         string $phpVersion,
         string $architecture,
         string $iteration,
-        array  $extraArgs = [],
+        bool $isDebuginfo = false,
     ): void
     {
+        $name = $isDebuginfo ? $package->getName() . '-debuginfo' : $package->getName();
+        $config = $isDebuginfo ? $package->getDebuginfoFpmConfig() : $package->getFpmConfig();
+        $extraArgs = $isDebuginfo ? [] : $package->getFpmExtraArgs();
+
         echo "Creating DEB package for {$name}...\n";
 
         $phpVersion = preg_replace('/_\d+$/', '', $phpVersion);
@@ -456,7 +461,7 @@ class CreatePackages
             '--architecture', $architecture,
             '--iteration', $debIteration,       // Debian revision (includes distro)
             '--description', "Static PHP Package for {$name}",
-            '--license', 'MIT',
+            '--license', $package->getLicense(),
             '--maintainer', 'Marc Henderkes <debs@henderkes.com>',
             '--vendor', 'Marc Henderkes <debs@henderkes.com>',
             '--url', 'debs.henderkes.com',
@@ -700,272 +705,5 @@ class CreatePackages
     public static function getPrefix(): string
     {
         return 'php-zts';
-    }
-
-    private static function createFrankenPhpPackage()
-    {
-        echo "Creating FrankenPHP package\n";
-
-        [, $architecture] = self::getPhpVersionAndArchitecture();
-
-        self::prepareFrankenPhpRepository();
-
-        if (in_array('rpm', self::$packageTypes)) {
-            self::createRpmFrankenPhpPackage($architecture);
-        }
-        if (in_array('deb', self::$packageTypes)) {
-            self::createDebFrankenPhpPackage($architecture);
-        }
-    }
-
-    private static function createRpmFrankenPhpPackage(mixed $architecture)
-    {
-        echo "Creating RPM package for FrankenPHP...\n";
-
-        $packageFolder = DIST_PATH . '/frankenphp/package';
-        $phpVersion = str_replace('.', '', SPP_PHP_VERSION);
-        $phpEmbedName = 'lib' . self::getPrefix() . '-' . $phpVersion . '.so';
-
-        $ldLibraryPath = 'LD_LIBRARY_PATH=' . BUILD_LIB_PATH;
-        [, $output] = shell()->execWithResult($ldLibraryPath . ' ' . BUILD_BIN_PATH . '/frankenphp --version');
-        $output = implode("\n", $output);
-        preg_match('/FrankenPHP v(\d+\.\d+\.\d+)/', $output, $matches);
-        $latestTag = $matches[1];
-        $version = $latestTag . '_' . $phpVersion;
-
-        $name = "frankenphp";
-
-        $computed = (string)self::getNextIteration($name, $version, $architecture);
-        $iteration = self::$iterationOverride ?? $computed;
-
-        $fpmArgs = [
-            'fpm',
-            '-s', 'dir',
-            '-t', 'rpm',
-            '--rpm-compression', 'xz',
-            '-p', DIST_RPM_PATH,
-            '-n', $name,
-            '-v', $version,
-            '--config-files', '/etc/frankenphp/Caddyfile',
-        ];
-
-        foreach (self::$binaryDependencies as $lib => $dependencyVersion) {
-            $fpmArgs[] = '--depends';
-            $fpmArgs[] = "$lib({$dependencyVersion})(64bit)";
-        }
-
-        if (!is_dir("{$packageFolder}/empty/") && !mkdir("{$packageFolder}/empty/", 0755, true) && !is_dir("{$packageFolder}/empty/")) {
-            throw new \RuntimeException(sprintf('Directory "%s" was not created', "{$packageFolder}/empty/"));
-        }
-
-        $fpmArgs = [...$fpmArgs, ...[
-            '--depends', "$phpEmbedName",
-            '--before-install', "{$packageFolder}/rhel/preinstall.sh",
-            '--after-install', "{$packageFolder}/rhel/postinstall.sh",
-            '--before-remove', "{$packageFolder}/rhel/preuninstall.sh",
-            '--after-remove', "{$packageFolder}/rhel/postuninstall.sh",
-            '--iteration', $iteration,
-            '--rpm-user', 'frankenphp',
-            '--rpm-group', 'frankenphp',
-            '--config-files', '/etc/frankenphp/Caddyfile',
-            '--config-files', '/etc/frankenphp/Caddyfile.d',
-            BUILD_BIN_PATH . '/frankenphp=/usr/bin/frankenphp',
-            "{$packageFolder}/rhel/frankenphp.service=/usr/lib/systemd/system/frankenphp.service",
-            "{$packageFolder}/Caddyfile=/etc/frankenphp/Caddyfile",
-            "{$packageFolder}/content/=/usr/share/frankenphp",
-            "{$packageFolder}/empty/=/var/lib/frankenphp",
-            "{$packageFolder}/empty/=/etc/frankenphp/Caddyfile.d",
-        ]];
-
-        $rpmProcess = new Process($fpmArgs);
-        $rpmProcess->setTimeout(null);
-        $rpmProcess->run(function ($type, $buffer) {
-            echo $buffer;
-        });
-
-        echo "RPM package created: " . DIST_RPM_PATH . "/{$name}-{$version}-{$iteration}.{$architecture}.rpm\n";
-
-        // Create FrankenPHP debuginfo package if debug file exists
-        $frankenDbg = BUILD_ROOT_PATH . '/debug/frankenphp.debug';
-        if (file_exists($frankenDbg)) {
-            $dbgArgs = [
-                'fpm',
-                '-s', 'dir',
-                '-t', 'rpm',
-                '--rpm-compression', 'xz',
-                '-p', DIST_RPM_PATH,
-                '-n', $name . '-debuginfo',
-                '-v', $version,
-                '--iteration', $iteration,
-                '--architecture', $architecture,
-                '--depends', sprintf('%s = %s-%s', $name, $version, $iteration),
-                $frankenDbg . '=/usr/lib/debug/usr/bin/frankenphp.debug',
-            ];
-            $dbgProcess = new Process($dbgArgs);
-            $dbgProcess->setTimeout(null);
-            $dbgProcess->run(function ($type, $buffer) {
-                echo $buffer;
-            });
-            if (!$dbgProcess->isSuccessful()) {
-                throw new \RuntimeException("RPM debuginfo package creation failed: " . $dbgProcess->getErrorOutput());
-            }
-        }
-    }
-
-    private static function createDebFrankenPhpPackage(mixed $architecture)
-    {
-        echo "Creating DEB package for FrankenPHP...\n";
-
-        $packageFolder = DIST_PATH . '/frankenphp/package';
-        $phpVersion = str_replace('.', '', SPP_PHP_VERSION);
-        $phpEmbedName = 'lib' . self::getPrefix() . '-' . $phpVersion . '.so';
-
-        $ldLibraryPath = 'LD_LIBRARY_PATH=' . BUILD_LIB_PATH;
-        [, $output] = shell()->execWithResult($ldLibraryPath . ' ' . BUILD_BIN_PATH . '/frankenphp --version');
-        $output = implode("\n", $output);
-        preg_match('/FrankenPHP v(\d+\.\d+\.\d+)/', $output, $matches);
-        $version = $matches[1];
-
-        $name = "frankenphp";
-
-        //$osRelease = parse_ini_file('/etc/os-release');
-        //$distroCodename = $osRelease['VERSION_CODENAME'] ?? null;
-        $computed = (string)self::getNextIteration($name, $version, $architecture);
-        $iteration = self::$iterationOverride ?? $computed;
-        //$debIteration = $distroCodename !== '' ? "{$iteration}~{$distroCodename}" : $iteration;
-        $debIteration = $iteration;
-
-        $fpmArgs = [
-            'fpm',
-            '-s', 'dir',
-            '-t', 'deb',
-            '--deb-compression', 'xz',
-            '-p', DIST_DEB_PATH,
-            '-n', $name,
-            '-v', $version,
-            '--config-files', '/etc/frankenphp/Caddyfile',
-        ];
-
-        $systemLibraryMap = [
-            'ld-linux-x86-64.so.2' => 'libc6',
-            'ld-linux-aarch64.so.1' => 'libc6',
-            'libm.so.6' => 'libc6',
-            'libc.so.6' => 'libc6',
-            'libpthread.so.0' => 'libc6',
-            'libutil.so.1' => 'libc6',
-            'libdl.so.2' => 'libc6',
-            'librt.so.1' => 'libc6',
-            'libresolv.so.2' => 'libc6',
-            'libgcc_s.so.1' => 'libgcc-s1',
-            'libstdc++.so.6' => 'libstdc++6',
-        ];
-        foreach (self::$binaryDependencies as $lib => $ver) {
-            if (isset($systemLibraryMap[$lib])) {
-                // Use mapped name for system libraries
-                $packageName = $systemLibraryMap[$lib];
-            }
-            else {
-                // For other libraries, remove .so suffix
-                $packageName = preg_replace('/\.so(\.\d+)?$/', '', $lib);
-            }
-
-            $numericVersion = preg_replace('/[^0-9.]/', '', $ver);
-            $fpmArgs[] = '--depends';
-            $fpmArgs[] = "{$packageName} (>= {$numericVersion})";
-        }
-
-        if (!is_dir("{$packageFolder}/empty/") && !mkdir("{$packageFolder}/empty/", 0755, true) && !is_dir("{$packageFolder}/empty/")) {
-            throw new \RuntimeException(sprintf('Directory "%s" was not created', "{$packageFolder}/empty/"));
-        }
-
-        $fpmArgs = [...$fpmArgs, ...[
-            '--depends', $phpEmbedName,
-            '--after-install', "{$packageFolder}/debian/postinst.sh",
-            '--before-remove', "{$packageFolder}/debian/prerm.sh",
-            '--after-remove', "{$packageFolder}/debian/postrm.sh",
-            '--iteration', $debIteration,
-            '--rpm-user', 'frankenphp',
-            '--rpm-group', 'frankenphp',
-            BUILD_BIN_PATH . '/frankenphp=/usr/bin/frankenphp',
-            "{$packageFolder}/debian/frankenphp.service=/usr/lib/systemd/system/frankenphp.service",
-            "{$packageFolder}/Caddyfile=/etc/frankenphp/Caddyfile",
-            "{$packageFolder}/content/=/usr/share/frankenphp",
-            "{$packageFolder}/empty/=/var/lib/frankenphp"
-        ]];
-
-        $rpmProcess = new Process($fpmArgs);
-        $rpmProcess->setTimeout(null);
-        $rpmProcess->run(function ($type, $buffer) {
-            echo $buffer;
-        });
-
-        echo "DEB package created: " . DIST_DEB_PATH . "/{$name}-{$version}-{$debIteration}.{$architecture}.deb\n";
-
-        // Create FrankenPHP debuginfo package if debug file exists
-        $frankenDbg = BUILD_ROOT_PATH . '/debug/frankenphp.debug';
-        if (file_exists($frankenDbg)) {
-            $dbgArgs = [
-                'fpm',
-                '-s', 'dir',
-                '-t', 'deb',
-                '--deb-compression', 'xz',
-                '-p', DIST_DEB_PATH,
-                '-n', $name . '-debuginfo',
-                '-v', $version,
-                '--iteration', $debIteration,
-                '--architecture', $architecture,
-                '--depends', sprintf('%s (= %s-%s)', $name, $version, $debIteration),
-                $frankenDbg . '=/usr/lib/debug/usr/bin/frankenphp.debug',
-            ];
-            $dbgProcess = new Process($dbgArgs);
-            $dbgProcess->setTimeout(null);
-            $dbgProcess->run(function ($type, $buffer) {
-                echo $buffer;
-            });
-            if (!$dbgProcess->isSuccessful()) {
-                throw new \RuntimeException("DEB debuginfo package creation failed: " . $dbgProcess->getErrorOutput());
-            }
-        }
-    }
-
-    private static function prepareFrankenPhpRepository(): string
-    {
-        $repoUrl = 'https://github.com/php/frankenphp.git';
-        $targetPath = DIST_PATH . '/frankenphp';
-
-        $tagProcess = new Process([
-            'bash', '-c',
-            "git ls-remote --tags $repoUrl | grep -o 'refs/tags/[^{}]*$' | sed 's#refs/tags/##' | sort -V | tail -n1"
-        ]);
-        $tagProcess->run();
-        if (!$tagProcess->isSuccessful()) {
-            throw new \RuntimeException("Failed to fetch tags: " . $tagProcess->getErrorOutput());
-        }
-        $latestTag = trim($tagProcess->getOutput());
-
-        if (!is_dir($targetPath . '/.git')) {
-            echo "Cloning FrankenPHP into DIST_PATH...\n";
-            $clone = new Process(['git', 'clone', $repoUrl, $targetPath]);
-            $clone->run();
-            if (!$clone->isSuccessful()) {
-                throw new \RuntimeException("Git clone failed: " . $clone->getErrorOutput());
-            }
-        }
-        else {
-            echo "FrankenPHP already exists, fetching tags...\n";
-            $fetch = new Process(['git', 'fetch', '--tags'], cwd: $targetPath);
-            $fetch->run();
-            if (!$fetch->isSuccessful()) {
-                throw new \RuntimeException("Git fetch failed: " . $fetch->getErrorOutput());
-            }
-        }
-
-        $checkout = new Process(['git', 'checkout', $latestTag], cwd: $targetPath);
-        $checkout->run();
-        if (!$checkout->isSuccessful()) {
-            throw new \RuntimeException("Git checkout failed: " . $checkout->getErrorOutput());
-        }
-
-        return $latestTag;
     }
 }

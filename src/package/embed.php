@@ -9,7 +9,7 @@ class embed implements package
 {
     public function getName(): string
     {
-        return CreatePackages::getPrefix() . '-' . $this->name;
+        return CreatePackages::getPrefix() . '-embed';
     }
 
     public function getFpmConfig(): array
@@ -50,5 +50,10 @@ class embed implements package
                 $src => $target,
             ],
         ];
+    }
+
+    public function getLicense(): string
+    {
+        return 'PHP-3.01';
     }
 }

@@ -23,4 +23,9 @@ class spx extends extension
             ]
         ];
     }
+
+    public function getLicense(): string
+    {
+        return 'GPL-3.0';
+    }
 }

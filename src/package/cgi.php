@@ -9,7 +9,7 @@ class cgi implements package
 {
     public function getName(): string
     {
-        return CreatePackages::getPrefix() . '-' . $this->name;
+        return CreatePackages::getPrefix() . '-cgi';
     }
 
     public function getFpmConfig(): array
@@ -41,5 +41,10 @@ class cgi implements package
                 $src => '/usr/lib/debug/usr/bin/php-cgi-zts.debug',
             ],
         ];
+    }
+
+    public function getLicense(): string
+    {
+        return 'PHP-3.01';
     }
 }

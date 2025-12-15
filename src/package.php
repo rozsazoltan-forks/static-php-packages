@@ -11,4 +11,6 @@ interface package
     public function getDebuginfoFpmConfig(): array;
 
     public function getFpmExtraArgs(): array;
+
+    public function getLicense(): string;
 }

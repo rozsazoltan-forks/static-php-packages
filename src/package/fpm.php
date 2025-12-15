@@ -9,7 +9,7 @@ class fpm implements package
 {
     public function getName(): string
     {
-        return CreatePackages::getPrefix() . '-' . $this->name;
+        return CreatePackages::getPrefix() . '-fpm';
     }
     
     public function getFpmConfig(): array
@@ -56,5 +56,10 @@ class fpm implements package
                 $src => $target,
             ],
         ];
+    }
+
+    public function getLicense(): string
+    {
+        return 'PHP-3.01';
     }
 }

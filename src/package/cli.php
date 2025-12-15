@@ -10,7 +10,7 @@ class cli implements package
 {
     public function getName(): string
     {
-        return CreatePackages::getPrefix() . '-' . $this->name;
+        return CreatePackages::getPrefix() . '-cli';
     }
 
     public function getFpmConfig(): array
@@ -108,5 +108,10 @@ BASH;
                 $src => $target,
             ],
         ];
+    }
+
+    public function getLicense(): string
+    {
+        return 'PHP-3.01';
     }
 }
