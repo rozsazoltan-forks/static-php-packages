@@ -268,6 +268,14 @@ class frankenphp implements package
             throw new \RuntimeException(sprintf('Directory "%s" was not created', "{$packageFolder}/empty/"));
         }
 
+        // Determine the FrankenPHP suffix (just version, not -zts prefix)
+        // Extract version from package name: frankenphp8.5 or frankenphp85
+        $prefix = CreatePackages::getPrefix();
+        $frankenphpSuffix = '';
+        if (preg_match('/php-zts(\d+\.?\d*)/', $prefix, $matches)) {
+            $frankenphpSuffix = $matches[1];
+        }
+
         $fpmArgs = [...$fpmArgs, ...[
             '--depends', $phpEmbedName,
             '--after-install', "{$packageFolder}/debian/postinst.sh",
@@ -276,8 +284,8 @@ class frankenphp implements package
             '--iteration', $debIteration,
             '--rpm-user', 'frankenphp',
             '--rpm-group', 'frankenphp',
-            BUILD_BIN_PATH . '/frankenphp=/usr/bin/frankenphp',
-            "{$packageFolder}/debian/frankenphp.service=/usr/lib/systemd/system/frankenphp.service",
+            BUILD_BIN_PATH . '/frankenphp=/usr/bin/frankenphp' . $frankenphpSuffix,
+            "{$packageFolder}/debian/frankenphp.service=/usr/lib/systemd/system/frankenphp{$frankenphpSuffix}.service",
             "{$packageFolder}/Caddyfile=/etc/frankenphp/Caddyfile",
             "{$packageFolder}/content/=/usr/share/frankenphp",
             "{$packageFolder}/empty/=/var/lib/frankenphp"
@@ -325,7 +333,7 @@ class frankenphp implements package
     public function createApkPackage(string $architecture, array $binaryDependencies, ?string $iterationOverride = null): void
     {
         CreatePackages::setCurrentPackageType('apk');
-        echo "Creating APK package for FrankenPHP...\n";
+        echo "Creating APK package for FrankenPHP using nfpm...\n";
 
         $packageFolder = DIST_PATH . '/frankenphp/package';
         $phpVersion = str_replace('.', '', SPP_PHP_VERSION);
@@ -344,26 +352,31 @@ class frankenphp implements package
 
         $versionedConflicts = $this->getVersionedConflicts();
 
-        $fpmArgs = [
-            'fpm',
-            '-s', 'dir',
-            '-t', 'apk',
-            '-p', DIST_APK_PATH,
-            '-n', $name,
-            '-v', $version,
-            '--license', $this->getLicense(),
-            '--config-files', '/etc/frankenphp/Caddyfile',
-            '--provides', 'frankenphp',
+        // Build nfpm config
+        $nfpmConfig = [
+            'name' => $name,
+            'arch' => $architecture,
+            'platform' => 'linux',
+            'version' => $version,
+            'release' => $iteration,
+            'section' => 'default',
+            'priority' => 'optional',
+            'maintainer' => 'Marc Henderkes <apks@henderkes.com>',
+            'description' => "FrankenPHP - Modern PHP application server",
+            'vendor' => 'Marc Henderkes',
+            'homepage' => 'https://apks.henderkes.com',
+            'license' => $this->getLicense(),
+            'apk' => [
+                'signature' => [
+                    'key_name' => CreatePackages::getPrefix(),
+                ],
+            ],
         ];
 
-        foreach ($versionedConflicts as $conflict) {
-            $fpmArgs[] = '--conflicts';
-            $fpmArgs[] = $conflict;
-            $fpmArgs[] = '--replaces';
-            $fpmArgs[] = $conflict;
-        }
+        // Build dependencies
+        $depends = [$phpEmbedName];
 
-        // Alpine library dependencies - simpler naming than Debian
+        // Alpine library dependencies
         $alpineLibMap = [
             'ld-linux-x86-64.so.2' => 'musl',
             'ld-linux-aarch64.so.1' => 'musl',
@@ -380,72 +393,153 @@ class frankenphp implements package
 
         foreach ($binaryDependencies as $lib => $ver) {
             if (isset($alpineLibMap[$lib])) {
-                // Use mapped name for system libraries
                 $packageName = $alpineLibMap[$lib];
-            }
-            else {
-                // For other libraries, remove .so suffix
+            } else {
                 $packageName = preg_replace('/\.so(\.\d+)*$/', '', $lib);
             }
-
             $numericVersion = preg_replace('/[^0-9.]/', '', $ver);
-            $fpmArgs[] = '--depends';
-            $fpmArgs[] = "{$packageName}>={$numericVersion}";
+            $depends[] = "{$packageName}>={$numericVersion}";
         }
 
-        if (!is_dir("{$packageFolder}/empty/") && !mkdir("{$packageFolder}/empty/", 0755, true) && !is_dir("{$packageFolder}/empty/")) {
-            throw new \RuntimeException(sprintf('Directory "%s" was not created', "{$packageFolder}/empty/"));
+        $nfpmConfig['depends'] = $depends;
+        $nfpmConfig['provides'] = ['frankenphp'];
+        $nfpmConfig['replaces'] = $versionedConflicts;
+        $nfpmConfig['conflicts'] = $versionedConflicts;
+
+        // Determine the FrankenPHP suffix
+        $prefix = CreatePackages::getPrefix();
+        $frankenphpSuffix = '';
+        if (preg_match('/php-zts(\d+\.?\d*)/', $prefix, $matches)) {
+            $frankenphpSuffix = $matches[1];
         }
 
         $alpineFolder = BASE_PATH . '/src/package/frankenphp';
 
-        $fpmArgs = [...$fpmArgs, ...[
-            '--depends', $phpEmbedName,
-            '--after-install', "{$alpineFolder}/alpine/post-install.sh",
-            '--before-remove', "{$alpineFolder}/alpine/pre-deinstall.sh",
-            '--after-remove', "{$alpineFolder}/alpine/post-deinstall.sh",
-            '--iteration', $iteration,
-            BUILD_BIN_PATH . '/frankenphp=/usr/bin/frankenphp',
-            "{$alpineFolder}/alpine/frankenphp.openrc=/etc/init.d/frankenphp",
-            "{$packageFolder}/Caddyfile=/etc/frankenphp/Caddyfile",
-            "{$packageFolder}/content/=/usr/share/frankenphp",
-            "{$packageFolder}/empty/=/var/lib/frankenphp",
-            "{$packageFolder}/empty/=/etc/frankenphp/Caddyfile.d",
-        ]];
+        // Build contents
+        $contents = [
+            [
+                'src' => BUILD_BIN_PATH . '/frankenphp',
+                'dst' => '/usr/bin/frankenphp' . $frankenphpSuffix,
+            ],
+            [
+                'src' => "{$alpineFolder}/alpine/frankenphp.openrc",
+                'dst' => "/etc/init.d/frankenphp{$frankenphpSuffix}",
+            ],
+            [
+                'src' => "{$packageFolder}/Caddyfile",
+                'dst' => '/etc/frankenphp/Caddyfile',
+                'type' => 'config',
+            ],
+            [
+                'src' => "{$packageFolder}/content/",
+                'dst' => '/usr/share/frankenphp/',
+            ],
+            [
+                'dst' => '/var/lib/frankenphp',
+                'type' => 'dir',
+            ],
+            [
+                'dst' => '/etc/frankenphp/Caddyfile.d',
+                'type' => 'dir',
+            ],
+        ];
 
-        $apkProcess = new Process($fpmArgs);
-        $apkProcess->setTimeout(null);
-        $apkProcess->run(function ($type, $buffer) {
+        $nfpmConfig['contents'] = $contents;
+
+        // Add scripts
+        $nfpmConfig['scripts'] = [
+            'postinstall' => "{$alpineFolder}/alpine/post-install.sh",
+            'preremove' => "{$alpineFolder}/alpine/pre-deinstall.sh",
+            'postremove' => "{$alpineFolder}/alpine/post-deinstall.sh",
+        ];
+
+        // Write nfpm config
+        $nfpmConfigFile = TEMP_DIR . "/nfpm-{$name}.yaml";
+        if (!yaml_emit_file($nfpmConfigFile, $nfpmConfig, YAML_UTF8_ENCODING)) {
+            throw new \RuntimeException("Failed to write YAML file: {$nfpmConfigFile}");
+        }
+
+        echo "nfpm config written to: {$nfpmConfigFile}\n";
+
+        // Run nfpm
+        $outputFile = DIST_APK_PATH . "/{$name}-{$version}-r{$iteration}.{$architecture}.apk";
+        $nfpmProcess = new Process([
+            'nfpm', 'package',
+            '--config', $nfpmConfigFile,
+            '--packager', 'apk',
+            '--target', $outputFile
+        ]);
+        $nfpmProcess->setTimeout(null);
+        $nfpmProcess->run(function ($type, $buffer) {
             echo $buffer;
         });
 
-        echo "APK package created: " . DIST_APK_PATH . "/{$name}-{$version}-r{$iteration}.{$architecture}.apk\n";
+        if (!$nfpmProcess->isSuccessful()) {
+            echo "nfpm config file contents:\n";
+            echo file_get_contents($nfpmConfigFile);
+            throw new \RuntimeException("nfpm package creation failed: " . $nfpmProcess->getErrorOutput());
+        }
+
+        @unlink($nfpmConfigFile);
+
+        echo "APK package created: {$outputFile}\n";
 
         // Create FrankenPHP debuginfo package if debug file exists
         $frankenDbg = BUILD_ROOT_PATH . '/debug/frankenphp.debug';
         if (file_exists($frankenDbg)) {
-            $dbgArgs = [
-                'fpm',
-                '-s', 'dir',
-                '-t', 'apk',
-                '-p', DIST_APK_PATH,
-                '-n', $name . '-debuginfo',
-                '-v', $version,
-                '--iteration', $iteration,
-                '--architecture', $architecture,
-                '--license', $this->getLicense(),
-                '--depends', sprintf('%s=%s-r%s', $name, $version, $iteration),
-                $frankenDbg . '=/usr/lib/debug/usr/bin/frankenphp.debug',
-            ];
-            $dbgProcess = new Process($dbgArgs);
-            $dbgProcess->setTimeout(null);
-            $dbgProcess->run(function ($type, $buffer) {
-                echo $buffer;
-            });
-            if (!$dbgProcess->isSuccessful()) {
-                throw new \RuntimeException("APK debuginfo package creation failed: " . $dbgProcess->getErrorOutput());
-            }
+            $this->createApkDebuginfo($name, $version, $iteration, $architecture, $frankenDbg, $frankenphpSuffix);
         }
+    }
+
+    private function createApkDebuginfo(string $name, string $version, string $iteration, string $architecture, string $frankenDbg, string $frankenphpSuffix): void
+    {
+        $dbgName = $name . '-debuginfo';
+        
+        $nfpmConfig = [
+            'name' => $dbgName,
+            'arch' => $architecture,
+            'platform' => 'linux',
+            'version' => $version,
+            'release' => $iteration,
+            'section' => 'default',
+            'priority' => 'optional',
+            'maintainer' => 'Marc Henderkes <apks@henderkes.com>',
+            'description' => "Debug symbols for FrankenPHP",
+            'vendor' => 'Marc Henderkes',
+            'homepage' => 'https://apks.henderkes.com',
+            'license' => $this->getLicense(),
+            'depends' => [sprintf('%s=%s-r%s', $name, $version, $iteration)],
+            'contents' => [
+                [
+                    'src' => $frankenDbg,
+                    'dst' => '/usr/lib/debug/usr/bin/frankenphp' . $frankenphpSuffix . '.debug',
+                ],
+            ],
+        ];
+
+        $nfpmConfigFile = TEMP_DIR . "/nfpm-{$dbgName}.yaml";
+        if (!yaml_emit_file($nfpmConfigFile, $nfpmConfig, YAML_UTF8_ENCODING)) {
+            throw new \RuntimeException("Failed to write YAML file: {$nfpmConfigFile}");
+        }
+
+        $outputFile = DIST_APK_PATH . "/{$dbgName}-{$version}-r{$iteration}.{$architecture}.apk";
+        $dbgProcess = new Process([
+            'nfpm', 'package',
+            '--config', $nfpmConfigFile,
+            '--packager', 'apk',
+            '--target', $outputFile
+        ]);
+        $dbgProcess->setTimeout(null);
+        $dbgProcess->run(function ($type, $buffer) {
+            echo $buffer;
+        });
+
+        if (!$dbgProcess->isSuccessful()) {
+            throw new \RuntimeException("nfpm debuginfo package creation failed: " . $dbgProcess->getErrorOutput());
+        }
+
+        @unlink($nfpmConfigFile);
+        echo "APK debuginfo package created: {$outputFile}\n";
     }
 
     /**

@@ -607,29 +607,44 @@ class CreatePackages
         $config = $isDebuginfo ? $package->getDebuginfoFpmConfig() : $package->getFpmConfig();
         $extraArgs = $isDebuginfo ? [] : $package->getFpmExtraArgs();
 
-        echo "Creating APK package for {$name}...\n";
+        echo "Creating APK package for {$name} using nfpm...\n";
 
         // APK uses r{iteration} format for revision number
         $apkIteration = $iteration;
         $fullVersion = "{$phpVersion}-r{$apkIteration}";
 
-        $fpmArgs = [...[
-            'fpm',
-            '-s', 'dir',
-            '-t', 'apk',
-            '-p', DIST_APK_PATH,
-            '--name', $name,
-            '--version', $phpVersion,
-            '--architecture', $architecture,
-            '--iteration', $apkIteration,
-            '--description', "Static PHP Package for {$name}",
-            '--license', $package->getLicense(),
-            '--maintainer', 'Marc Henderkes <apks@henderkes.com>',
-            '--vendor', 'Marc Henderkes <apks@henderkes.com>',
-            '--url', 'apks.henderkes.com',
-        ], ...$extraArgs];
+        // Use nfpm instead of fpm for APK packages
+        self::createApkWithNfpm($package, $name, $phpVersion, $architecture, $apkIteration, $config, $isDebuginfo);
+    }
+    private static function createApkWithNfpm(\staticphp\package $package, string $name, string $phpVersion, string $architecture, string $iteration, array $config, bool $isDebuginfo): void
+    {
+        $fullVersion = "{$phpVersion}-r{$iteration}";
 
-        // Ensure non-CLI packages depend on the same PHP major.minor as php-zts-cli (ignore iteration/patch)
+        // Create nfpm YAML config
+        $nfpmConfig = [
+            'name' => $name,
+            'arch' => $architecture,
+            'platform' => 'linux',
+            'version' => $phpVersion,
+            'release' => $iteration,
+            'section' => 'default',
+            'priority' => 'optional',
+            'maintainer' => 'Marc Henderkes <apks@henderkes.com>',
+            'description' => "Static PHP Package for {$name}",
+            'vendor' => 'Marc Henderkes',
+            'homepage' => 'https://apks.henderkes.com',
+            'license' => $package->getLicense(),
+            'apk' => [
+                'signature' => [
+                    'key_name' => self::getPrefix(),
+                ],
+            ],
+        ];
+
+        // Build dependencies
+        $depends = [];
+
+        // Ensure non-CLI packages depend on the same PHP major.minor
         if ($name !== self::getPrefix() . '-cli') {
             [$fullPhpVersion] = self::getPhpVersionAndArchitecture();
             if (preg_match('/^(\d+)\.(\d+)/', $fullPhpVersion, $m)) {
@@ -638,134 +653,124 @@ class CreatePackages
                 $nextMin = $min + 1;
                 $lowerBound = sprintf('%d.%d', $maj, $min);
                 $upperBound = sprintf('%d.%d', $maj, $nextMin);
-                // APK dependency format: package>=version and package<version
-                $fpmArgs[] = '--depends';
-                $fpmArgs[] = self::getPrefix() . "-cli>={$lowerBound}";
-                $fpmArgs[] = '--depends';
-                $fpmArgs[] = self::getPrefix() . "-cli<{$upperBound}";
+                $depends[] = self::getPrefix() . "-cli>={$lowerBound}";
+                $depends[] = self::getPrefix() . "-cli<{$upperBound}";
             }
         }
 
-        // If this is a debuginfo package, make it depend exactly on its base package version-iteration
+        // Debuginfo packages depend on their base package
         if (str_ends_with($name, '-debuginfo')) {
             $base = preg_replace('/-debuginfo$/', '', $name);
-            $fpmArgs[] = '--depends';
-            $fpmArgs[] = sprintf('%s=%s', $base, $fullVersion);
+            $depends[] = sprintf('%s=%s', $base, $fullVersion);
         }
 
-        if (isset($config['provides']) && is_array($config['provides'])) {
-            foreach ($config['provides'] as $provide) {
-                $fpmArgs[] = '--provides';
-                $fpmArgs[] = "{$provide}={$fullVersion}";
-            }
-        }
+        // Alpine library dependencies
+        $alpineLibMap = [
+            'ld-linux-x86-64' => 'musl',
+            'ld-linux-aarch64' => 'musl',
+            'libc' => 'musl',
+            'libm' => 'musl',
+            'libpthread' => 'musl',
+            'libutil' => 'musl',
+            'libdl' => 'musl',
+            'librt' => 'musl',
+            'libresolv' => 'musl',
+            'libgcc_s' => 'libgcc',
+        ];
 
-        if (isset($config['replaces']) && is_array($config['replaces'])) {
-            foreach ($config['replaces'] as $replace) {
-                $fpmArgs[] = '--replaces';
-                $fpmArgs[] = $replace;
-            }
-        }
-
-        if (isset($config['conflicts']) && is_array($config['conflicts'])) {
-            foreach ($config['conflicts'] as $conflict) {
-                $fpmArgs[] = '--conflicts';
-                $fpmArgs[] = $conflict;
-            }
-        }
-
-        // Alpine library dependencies - simpler naming than Debian
         foreach (self::$binaryDependencies as $lib => $version) {
-            // For Alpine, we can use a simpler approach - most .so files map to package names
-            // by removing the .so suffix and version numbers
             $packageName = preg_replace('/\.so(\.\d+)*$/', '', $lib);
-
-            // Common Alpine package mappings
-            $alpineLibMap = [
-                'ld-linux-x86-64' => 'musl',
-                'ld-linux-aarch64' => 'musl',
-                'libc' => 'musl',
-                'libm' => 'musl',
-                'libpthread' => 'musl',
-                'libutil' => 'musl',
-                'libdl' => 'musl',
-                'librt' => 'musl',
-                'libresolv' => 'musl',
-                'libgcc_s' => 'libgcc',
-            ];
-
             if (isset($alpineLibMap[$packageName])) {
                 $packageName = $alpineLibMap[$packageName];
             }
-
             $numericVersion = preg_replace('/[^0-9.]/', '', $version);
-            $fpmArgs[] = '--depends';
-            $fpmArgs[] = "{$packageName}>={$numericVersion}";
+            $depends[] = "{$packageName}>={$numericVersion}";
         }
 
         if (isset($config['depends']) && is_array($config['depends'])) {
-            foreach ($config['depends'] as $depend) {
-                $fpmArgs[] = '--depends';
-                $fpmArgs[] = $depend;
-            }
+            $depends = array_merge($depends, $config['depends']);
         }
 
-        if (isset($config['directories']) && is_array($config['directories'])) {
-            foreach ($config['directories'] as $dir) {
-                $fpmArgs[] = '--directories';
-                $fpmArgs[] = $dir;
-            }
+        if (!empty($depends)) {
+            $nfpmConfig['depends'] = $depends;
         }
 
-        if (isset($config['config-files']) && is_array($config['config-files'])) {
-            foreach ($config['config-files'] as $configFile) {
-                $fpmArgs[] = '--config-files';
-                $fpmArgs[] = $configFile;
-            }
+        // Add provides, replaces, conflicts
+        if (isset($config['provides']) && is_array($config['provides'])) {
+            $nfpmConfig['provides'] = $config['provides'];
+        }
+        if (isset($config['replaces']) && is_array($config['replaces'])) {
+            $nfpmConfig['replaces'] = $config['replaces'];
+        }
+        if (isset($config['conflicts']) && is_array($config['conflicts'])) {
+            $nfpmConfig['conflicts'] = $config['conflicts'];
         }
 
+        // Build contents (files)
+        $contents = [];
         if (isset($config['files']) && is_array($config['files'])) {
             foreach ($config['files'] as $source => $dest) {
                 if (file_exists($source)) {
-                    // Check if this is a binary that needs its debug link fixed
-                    // Only fix binaries in BUILD_BIN_PATH that are being renamed
+                    // Fix debug link for renamed binaries
                     if (str_starts_with($source, BUILD_BIN_PATH . '/') &&
                         is_executable($source) &&
                         basename($source) !== basename($dest)) {
-                        // Fix the debug link and use the temporary binary instead
                         $source = self::fixBinaryDebugLink($source, $dest);
                     }
-                    $fpmArgs[] = $source . '=' . $dest;
-                }
-                else {
+                    $contentItem = ['src' => $source, 'dst' => $dest];
+                    // Mark config files
+                    if (isset($config['config-files']) && in_array($dest, $config['config-files'])) {
+                        $contentItem['type'] = 'config';
+                    }
+                    $contents[] = $contentItem;
+                } else {
                     echo "Warning: Source file not found: {$source}\n";
                 }
             }
         }
 
+        // Handle empty directories
         if (isset($config['empty_directories']) && is_array($config['empty_directories'])) {
-            $emptyDir = TEMP_DIR . '/spp_empty';
-            if (!file_exists($emptyDir) && !mkdir($emptyDir, 0755, true) && !is_dir($emptyDir)) {
-                throw new \RuntimeException(sprintf('Directory "%s" was not created', $emptyDir));
-            }
-            if (is_dir($emptyDir)) {
-                $files = array_diff((array)scandir($emptyDir), ['.', '..']);
-                if (!empty($files)) {
-                    exec('rm -rf ' . escapeshellarg($emptyDir . '/*'));
-                }
-            }
             foreach ($config['empty_directories'] as $dir) {
-                $fpmArgs[] = $emptyDir . '=' . $dir;
+                $contents[] = ['dst' => $dir, 'type' => 'dir'];
             }
         }
 
-        $apkProcess = new Process($fpmArgs);
-        $apkProcess->setTimeout(null);
-        $apkProcess->run(function ($type, $buffer) {
+        if (!empty($contents)) {
+            $nfpmConfig['contents'] = $contents;
+        }
+
+        // Write nfpm config to YAML file
+        $nfpmConfigFile = TEMP_DIR . "/nfpm-{$name}.yaml";
+        if (!yaml_emit_file($nfpmConfigFile, $nfpmConfig, YAML_UTF8_ENCODING)) {
+            throw new \RuntimeException("Failed to write YAML file: {$nfpmConfigFile}");
+        }
+
+        echo "nfpm config written to: {$nfpmConfigFile}\n";
+
+        // Run nfpm to create the package
+        $outputFile = DIST_APK_PATH . "/{$name}-{$phpVersion}-r{$iteration}.{$architecture}.apk";
+        $nfpmProcess = new Process([
+            'nfpm', 'package',
+            '--config', $nfpmConfigFile,
+            '--packager', 'apk',
+            '--target', $outputFile
+        ]);
+        $nfpmProcess->setTimeout(null);
+        $nfpmProcess->run(function ($type, $buffer) {
             echo $buffer;
         });
 
-        echo "APK package created: " . DIST_APK_PATH . "/{$name}-{$phpVersion}-r{$apkIteration}.{$architecture}.apk\n";
+        if (!$nfpmProcess->isSuccessful()) {
+            echo "nfpm config file contents:\n";
+            echo file_get_contents($nfpmConfigFile);
+            throw new \RuntimeException("nfpm package creation failed: " . $nfpmProcess->getErrorOutput());
+        }
+
+        // Clean up config file
+        @unlink($nfpmConfigFile);
+
+        echo "APK package created: {$outputFile}\n";
     }
 
     private static function getPhpVersionAndArchitecture(): array
@@ -945,6 +950,9 @@ class CreatePackages
             echo "Warning: Failed to copy {$sourceBinary} to {$tempBinary}, debug link won't be fixed\n";
             return $sourceBinary;
         }
+
+        // Ensure the temporary binary is executable
+        chmod($tempBinary, 0755);
 
         // Find the original debug file
         // Map binary names to their debug files
