@@ -76,6 +76,9 @@ class frankenphp implements package
         if (in_array('deb', $packageTypes, true)) {
             $this->createDebPackage($architecture, $binaryDependencies, $iterationOverride);
         }
+        if (in_array('apk', $packageTypes, true)) {
+            $this->createApkPackage($architecture, $binaryDependencies, $iterationOverride);
+        }
     }
 
     /**
@@ -312,6 +315,135 @@ class frankenphp implements package
             });
             if (!$dbgProcess->isSuccessful()) {
                 throw new \RuntimeException("DEB debuginfo package creation failed: " . $dbgProcess->getErrorOutput());
+            }
+        }
+    }
+
+    /**
+     * Create APK package for FrankenPHP
+     */
+    public function createApkPackage(string $architecture, array $binaryDependencies, ?string $iterationOverride = null): void
+    {
+        CreatePackages::setCurrentPackageType('apk');
+        echo "Creating APK package for FrankenPHP...\n";
+
+        $packageFolder = DIST_PATH . '/frankenphp/package';
+        $phpVersion = str_replace('.', '', SPP_PHP_VERSION);
+        $phpEmbedName = 'libphp-zts-' . $phpVersion . '.so';
+
+        $ldLibraryPath = 'LD_LIBRARY_PATH=' . BUILD_LIB_PATH;
+        [, $output] = shell()->execWithResult($ldLibraryPath . ' ' . BUILD_BIN_PATH . '/frankenphp --version');
+        $output = implode("\n", $output);
+        preg_match('/FrankenPHP v(\d+\.\d+\.\d+)/', $output, $matches);
+        $version = $matches[1];
+
+        $name = $this->getName();
+
+        $computed = (string)$this->getNextIteration($name, $version, $architecture);
+        $iteration = $iterationOverride ?? $computed;
+
+        $versionedConflicts = $this->getVersionedConflicts();
+
+        $fpmArgs = [
+            'fpm',
+            '-s', 'dir',
+            '-t', 'apk',
+            '-p', DIST_APK_PATH,
+            '-n', $name,
+            '-v', $version,
+            '--license', $this->getLicense(),
+            '--config-files', '/etc/frankenphp/Caddyfile',
+            '--provides', 'frankenphp',
+        ];
+
+        foreach ($versionedConflicts as $conflict) {
+            $fpmArgs[] = '--conflicts';
+            $fpmArgs[] = $conflict;
+            $fpmArgs[] = '--replaces';
+            $fpmArgs[] = $conflict;
+        }
+
+        // Alpine library dependencies - simpler naming than Debian
+        $alpineLibMap = [
+            'ld-linux-x86-64.so.2' => 'musl',
+            'ld-linux-aarch64.so.1' => 'musl',
+            'libc.so.6' => 'musl',
+            'libm.so.6' => 'musl',
+            'libpthread.so.0' => 'musl',
+            'libutil.so.1' => 'musl',
+            'libdl.so.2' => 'musl',
+            'librt.so.1' => 'musl',
+            'libresolv.so.2' => 'musl',
+            'libgcc_s.so.1' => 'libgcc',
+            'libstdc++.so.6' => 'libstdc++',
+        ];
+
+        foreach ($binaryDependencies as $lib => $ver) {
+            if (isset($alpineLibMap[$lib])) {
+                // Use mapped name for system libraries
+                $packageName = $alpineLibMap[$lib];
+            }
+            else {
+                // For other libraries, remove .so suffix
+                $packageName = preg_replace('/\.so(\.\d+)*$/', '', $lib);
+            }
+
+            $numericVersion = preg_replace('/[^0-9.]/', '', $ver);
+            $fpmArgs[] = '--depends';
+            $fpmArgs[] = "{$packageName}>={$numericVersion}";
+        }
+
+        if (!is_dir("{$packageFolder}/empty/") && !mkdir("{$packageFolder}/empty/", 0755, true) && !is_dir("{$packageFolder}/empty/")) {
+            throw new \RuntimeException(sprintf('Directory "%s" was not created', "{$packageFolder}/empty/"));
+        }
+
+        $alpineFolder = BASE_PATH . '/src/package/frankenphp';
+
+        $fpmArgs = [...$fpmArgs, ...[
+            '--depends', $phpEmbedName,
+            '--after-install', "{$alpineFolder}/alpine/post-install.sh",
+            '--before-remove', "{$alpineFolder}/alpine/pre-deinstall.sh",
+            '--after-remove', "{$alpineFolder}/alpine/post-deinstall.sh",
+            '--iteration', $iteration,
+            BUILD_BIN_PATH . '/frankenphp=/usr/bin/frankenphp',
+            "{$alpineFolder}/alpine/frankenphp.openrc=/etc/init.d/frankenphp",
+            "{$packageFolder}/Caddyfile=/etc/frankenphp/Caddyfile",
+            "{$packageFolder}/content/=/usr/share/frankenphp",
+            "{$packageFolder}/empty/=/var/lib/frankenphp",
+            "{$packageFolder}/empty/=/etc/frankenphp/Caddyfile.d",
+        ]];
+
+        $apkProcess = new Process($fpmArgs);
+        $apkProcess->setTimeout(null);
+        $apkProcess->run(function ($type, $buffer) {
+            echo $buffer;
+        });
+
+        echo "APK package created: " . DIST_APK_PATH . "/{$name}-{$version}-r{$iteration}.{$architecture}.apk\n";
+
+        // Create FrankenPHP debuginfo package if debug file exists
+        $frankenDbg = BUILD_ROOT_PATH . '/debug/frankenphp.debug';
+        if (file_exists($frankenDbg)) {
+            $dbgArgs = [
+                'fpm',
+                '-s', 'dir',
+                '-t', 'apk',
+                '-p', DIST_APK_PATH,
+                '-n', $name . '-debuginfo',
+                '-v', $version,
+                '--iteration', $iteration,
+                '--architecture', $architecture,
+                '--license', $this->getLicense(),
+                '--depends', sprintf('%s=%s-r%s', $name, $version, $iteration),
+                $frankenDbg . '=/usr/lib/debug/usr/bin/frankenphp.debug',
+            ];
+            $dbgProcess = new Process($dbgArgs);
+            $dbgProcess->setTimeout(null);
+            $dbgProcess->run(function ($type, $buffer) {
+                echo $buffer;
+            });
+            if (!$dbgProcess->isSuccessful()) {
+                throw new \RuntimeException("APK debuginfo package creation failed: " . $dbgProcess->getErrorOutput());
             }
         }
     }
