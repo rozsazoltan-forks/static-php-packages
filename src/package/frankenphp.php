@@ -10,9 +10,13 @@ class frankenphp implements package
 {
     public function getName(): string
     {
-        $phpVersion = SPP_PHP_VERSION;
-        if (preg_match('/^(\d+)\.(\d+)/', $phpVersion, $matches)) {
-            return 'frankenphp' . $matches[1] . '.' . $matches[2];
+        // RPM packages use frankenphp (unversioned, for module system)
+        // DEB/APK packages use versioned frankenphp8.3 or frankenphp83
+        $prefix = CreatePackages::getPrefix();
+
+        // Extract version from prefix (e.g., "php-zts8.3" -> "8.3", "php-zts" -> "")
+        if (preg_match('/php-zts(\d+\.?\d*)/', $prefix, $matches)) {
+            return 'frankenphp' . $matches[1];
         }
         return 'frankenphp';
     }
@@ -39,26 +43,17 @@ class frankenphp implements package
 
     /**
      * Get list of versioned frankenphp packages to conflict/replace with
+     * For RPM packages, returns empty array (RPM uses module system instead)
      */
     private function getVersionedConflicts(): array
     {
+        // Get the conflicts list from CreatePackages using the franken prefix
+        $phpConflicts = CreatePackages::getVersionedConflicts('');
+
+        // Transform php-zts8.3 conflicts to frankenphp8.3 conflicts
         $conflicts = [];
-        $phpVersion = SPP_PHP_VERSION;
-
-        if (!preg_match('/^(\d+)\.(\d+)/', $phpVersion, $matches)) {
-            return [];
-        }
-
-        $currentMajor = (int)$matches[1];
-        $currentMinor = (int)$matches[2];
-
-        // Generate conflicts for frankenphp8.0 through frankenphp8.9
-        for ($minor = 0; $minor <= 9; $minor++) {
-            // Skip the current version
-            if ($currentMajor === 8 && $minor === $currentMinor) {
-                continue;
-            }
-            $conflicts[] = "frankenphp{$currentMajor}.{$minor}";
+        foreach ($phpConflicts as $conflict) {
+            $conflicts[] = str_replace('php-zts', 'frankenphp', $conflict);
         }
 
         return $conflicts;
@@ -88,6 +83,7 @@ class frankenphp implements package
      */
     public function createRpmPackage(string $architecture, array $binaryDependencies, ?string $iterationOverride = null): void
     {
+        CreatePackages::setCurrentPackageType('rpm');
         echo "Creating RPM package for FrankenPHP...\n";
 
         $packageFolder = DIST_PATH . '/frankenphp/package';
@@ -196,6 +192,7 @@ class frankenphp implements package
      */
     public function createDebPackage(string $architecture, array $binaryDependencies, ?string $iterationOverride = null): void
     {
+        CreatePackages::setCurrentPackageType('deb');
         echo "Creating DEB package for FrankenPHP...\n";
 
         $packageFolder = DIST_PATH . '/frankenphp/package';

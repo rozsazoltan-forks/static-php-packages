@@ -163,7 +163,7 @@ class extension implements package
                     : []
                 ),
                 ...($this->isSharedExtension() ?
-                    [BUILD_MODULES_PATH . '/' . $this->name . '.so' => getLibdir() . '/php-zts/modules/' . $this->name . '.so']
+                    [BUILD_MODULES_PATH . '/' . $this->name . '.so' => getModuledir() . '/' . $this->name . '.so']
                     : []
                 ),
             ]
@@ -185,9 +185,24 @@ class extension implements package
         }
         $tempIniPath = TEMP_DIR . '/' . $this->prefix . $this->name . '.ini';
         $iniContent = file_get_contents($iniPath);
+
+        // Get the dynamic prefix for path replacements
+        $prefix = CreatePackages::getPrefix();
+
+        // Replace extension directives and versioned paths
         $iniContent = str_replace(
-            [';extension=' . $this->name, ';zend_extension=' . $this->name],
-            ['extension=' . $this->name, 'zend_extension=' . $this->name],
+            [
+                ';extension=' . $this->name,
+                ';zend_extension=' . $this->name,
+                '/usr/share/php-zts/',
+                '/usr/local/share/php-zts/',
+            ],
+            [
+                'extension=' . $this->name,
+                'zend_extension=' . $this->name,
+                '/usr/share/' . $prefix . '/',
+                '/usr/local/share/' . $prefix . '/',
+            ],
             $iniContent
         );
         file_put_contents($tempIniPath, $iniContent);
@@ -215,7 +230,7 @@ class extension implements package
         if (!file_exists($src)) {
             return [];
         }
-        $targetSo = getLibdir() . '/php-zts/modules/' . $this->name . '.so';
+        $targetSo = getModuledir() . '/' . $this->name . '.so';
         $target = '/usr/lib/debug' . $targetSo . '.debug';
         return [
             'depends' => [CreatePackages::getPrefix() . '-' . $this->name],

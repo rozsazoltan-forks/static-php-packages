@@ -34,8 +34,8 @@ build-options:
     with-suggested-libs: true
     with-suggested-exts: true
     no-strip: false
-    with-config-file-path: '/etc/php-zts'
-    with-config-file-scan-dir: '/etc/php-zts/conf.d'
+    with-config-file-path: '{{ confdir }}'
+    with-config-file-scan-dir: '{{ confdir }}/conf.d'
     # Hardcoded INI options for cli and micro SAPI (e.g. "memory_limit=4G", list accepted)
     with-hardcoded-ini: [ ]
     # UPX pack the binary (default: false)
@@ -86,7 +86,7 @@ extra-env:
     {% else -%}
     SPC_TARGET: '{{ target }}'
     {% endif -%}
-    EXTENSION_DIR: "{{ is_rhel ? '/usr/lib64/php-zts/modules' : '/usr/lib/php-zts/modules' }}"
+    EXTENSION_DIR: "{{ moduledir }}"
     SPC_CMD_VAR_PHP_EMBED_TYPE: 'shared'
     SPC_MICRO_PATCHES:
     SPC_DEFAULT_C_FLAGS: "{{ cflags }}"

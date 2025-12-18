@@ -44,7 +44,7 @@ abstract class BaseCommand extends Command
 
     protected function createDirectories(): void
     {
-        $paths = [BUILD_ROOT_PATH, BUILD_BIN_PATH, BUILD_LIB_PATH, BUILD_MODULES_PATH, DIST_PATH, DIST_RPM_PATH, DIST_DEB_PATH];
+        $paths = [BUILD_ROOT_PATH, BUILD_BIN_PATH, BUILD_LIB_PATH, BUILD_MODULES_PATH, DIST_PATH, DIST_RPM_PATH, DIST_DEB_PATH, DIST_APK_PATH];
         foreach ($paths as $path) {
             if (!is_dir($path) && !mkdir($path, 0755, true) && !is_dir($path)) {
                 throw new \RuntimeException("Failed to create directory: " . $path);

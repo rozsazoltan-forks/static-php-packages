@@ -16,7 +16,12 @@ class CreatePackages
     private static $binaryDependencies = [];
     private static $packageTypes = [];
     private static ?string $iterationOverride = null;
+    private static ?string $currentPackageType = null;
 
+    public static function setCurrentPackageType(?string $type): void
+    {
+        self::$currentPackageType = $type;
+    }
 
     public static function run($packageNames = null, string $packageTypes = 'rpm,deb', string $phpVersion = '8.4', ?string $iteration = null): true
     {
@@ -272,10 +277,15 @@ class CreatePackages
         if (in_array('deb', self::$packageTypes, true)) {
             self::createDebPackage($package, $phpVersion, $architecture, $iteration, $isDebuginfo);
         }
+
+        if (in_array('apk', self::$packageTypes, true)) {
+            self::createApkPackage($package, $phpVersion, $architecture, $iteration, $isDebuginfo);
+        }
     }
 
     private static function createRpmPackage(\staticphp\package $package, string $phpVersion, string $architecture, string $iteration, bool $isDebuginfo = false): void
     {
+        self::$currentPackageType = 'rpm';
         $name = $isDebuginfo ? $package->getName() . '-debuginfo' : $package->getName();
         $config = $isDebuginfo ? $package->getDebuginfoFpmConfig() : $package->getFpmConfig();
         $extraArgs = $isDebuginfo ? [] : $package->getFpmExtraArgs();
@@ -421,6 +431,7 @@ class CreatePackages
         bool $isDebuginfo = false,
     ): void
     {
+        self::$currentPackageType = 'deb';
         $name = $isDebuginfo ? $package->getName() . '-debuginfo' : $package->getName();
         $config = $isDebuginfo ? $package->getDebuginfoFpmConfig() : $package->getFpmConfig();
         $extraArgs = $isDebuginfo ? [] : $package->getFpmExtraArgs();
@@ -581,6 +592,165 @@ class CreatePackages
         echo "DEB package created: " . DIST_DEB_PATH . "/{$name}_{$phpVersion}-{$debIteration}_{$architecture}.deb\n";
     }
 
+    private static function createApkPackage(\staticphp\package $package, string $phpVersion, string $architecture, string $iteration, bool $isDebuginfo = false): void
+    {
+        self::$currentPackageType = 'apk';
+        $name = $isDebuginfo ? $package->getName() . '-debuginfo' : $package->getName();
+        $config = $isDebuginfo ? $package->getDebuginfoFpmConfig() : $package->getFpmConfig();
+        $extraArgs = $isDebuginfo ? [] : $package->getFpmExtraArgs();
+
+        echo "Creating APK package for {$name}...\n";
+
+        // APK uses r{iteration} format for revision number
+        $apkIteration = $iteration;
+        $fullVersion = "{$phpVersion}-r{$apkIteration}";
+
+        $fpmArgs = [...[
+            'fpm',
+            '-s', 'dir',
+            '-t', 'apk',
+            '-p', DIST_APK_PATH,
+            '--name', $name,
+            '--version', $phpVersion,
+            '--architecture', $architecture,
+            '--iteration', $apkIteration,
+            '--description', "Static PHP Package for {$name}",
+            '--license', $package->getLicense(),
+            '--maintainer', 'Marc Henderkes <apks@henderkes.com>',
+            '--vendor', 'Marc Henderkes <apks@henderkes.com>',
+            '--url', 'apks.henderkes.com',
+        ], ...$extraArgs];
+
+        // Ensure non-CLI packages depend on the same PHP major.minor as php-zts-cli (ignore iteration/patch)
+        if ($name !== self::getPrefix() . '-cli') {
+            [$fullPhpVersion] = self::getPhpVersionAndArchitecture();
+            if (preg_match('/^(\d+)\.(\d+)/', $fullPhpVersion, $m)) {
+                $maj = (int)$m[1];
+                $min = (int)$m[2];
+                $nextMin = $min + 1;
+                $lowerBound = sprintf('%d.%d', $maj, $min);
+                $upperBound = sprintf('%d.%d', $maj, $nextMin);
+                // APK dependency format: package>=version and package<version
+                $fpmArgs[] = '--depends';
+                $fpmArgs[] = self::getPrefix() . "-cli>={$lowerBound}";
+                $fpmArgs[] = '--depends';
+                $fpmArgs[] = self::getPrefix() . "-cli<{$upperBound}";
+            }
+        }
+
+        // If this is a debuginfo package, make it depend exactly on its base package version-iteration
+        if (str_ends_with($name, '-debuginfo')) {
+            $base = preg_replace('/-debuginfo$/', '', $name);
+            $fpmArgs[] = '--depends';
+            $fpmArgs[] = sprintf('%s=%s', $base, $fullVersion);
+        }
+
+        if (isset($config['provides']) && is_array($config['provides'])) {
+            foreach ($config['provides'] as $provide) {
+                $fpmArgs[] = '--provides';
+                $fpmArgs[] = "{$provide}={$fullVersion}";
+            }
+        }
+
+        if (isset($config['replaces']) && is_array($config['replaces'])) {
+            foreach ($config['replaces'] as $replace) {
+                $fpmArgs[] = '--replaces';
+                $fpmArgs[] = $replace;
+            }
+        }
+
+        if (isset($config['conflicts']) && is_array($config['conflicts'])) {
+            foreach ($config['conflicts'] as $conflict) {
+                $fpmArgs[] = '--conflicts';
+                $fpmArgs[] = $conflict;
+            }
+        }
+
+        // Alpine library dependencies - simpler naming than Debian
+        foreach (self::$binaryDependencies as $lib => $version) {
+            // For Alpine, we can use a simpler approach - most .so files map to package names
+            // by removing the .so suffix and version numbers
+            $packageName = preg_replace('/\.so(\.\d+)*$/', '', $lib);
+
+            // Common Alpine package mappings
+            $alpineLibMap = [
+                'ld-linux-x86-64' => 'musl',
+                'ld-linux-aarch64' => 'musl',
+                'libc' => 'musl',
+                'libm' => 'musl',
+                'libpthread' => 'musl',
+                'libutil' => 'musl',
+                'libdl' => 'musl',
+                'librt' => 'musl',
+                'libresolv' => 'musl',
+            ];
+
+            if (isset($alpineLibMap[$packageName])) {
+                $packageName = $alpineLibMap[$packageName];
+            }
+
+            $numericVersion = preg_replace('/[^0-9.]/', '', $version);
+            $fpmArgs[] = '--depends';
+            $fpmArgs[] = "{$packageName}>={$numericVersion}";
+        }
+
+        if (isset($config['depends']) && is_array($config['depends'])) {
+            foreach ($config['depends'] as $depend) {
+                $fpmArgs[] = '--depends';
+                $fpmArgs[] = $depend;
+            }
+        }
+
+        if (isset($config['directories']) && is_array($config['directories'])) {
+            foreach ($config['directories'] as $dir) {
+                $fpmArgs[] = '--directories';
+                $fpmArgs[] = $dir;
+            }
+        }
+
+        if (isset($config['config-files']) && is_array($config['config-files'])) {
+            foreach ($config['config-files'] as $configFile) {
+                $fpmArgs[] = '--config-files';
+                $fpmArgs[] = $configFile;
+            }
+        }
+
+        if (isset($config['files']) && is_array($config['files'])) {
+            foreach ($config['files'] as $source => $dest) {
+                if (file_exists($source)) {
+                    $fpmArgs[] = $source . '=' . $dest;
+                }
+                else {
+                    echo "Warning: Source file not found: {$source}\n";
+                }
+            }
+        }
+
+        if (isset($config['empty_directories']) && is_array($config['empty_directories'])) {
+            $emptyDir = TEMP_DIR . '/spp_empty';
+            if (!file_exists($emptyDir) && !mkdir($emptyDir, 0755, true) && !is_dir($emptyDir)) {
+                throw new \RuntimeException(sprintf('Directory "%s" was not created', $emptyDir));
+            }
+            if (is_dir($emptyDir)) {
+                $files = array_diff((array)scandir($emptyDir), ['.', '..']);
+                if (!empty($files)) {
+                    exec('rm -rf ' . escapeshellarg($emptyDir . '/*'));
+                }
+            }
+            foreach ($config['empty_directories'] as $dir) {
+                $fpmArgs[] = $emptyDir . '=' . $dir;
+            }
+        }
+
+        $apkProcess = new Process($fpmArgs);
+        $apkProcess->setTimeout(null);
+        $apkProcess->run(function ($type, $buffer) {
+            echo $buffer;
+        });
+
+        echo "APK package created: " . DIST_APK_PATH . "/{$name}-{$phpVersion}-r{$apkIteration}.{$architecture}.apk\n";
+    }
+
     private static function getPhpVersionAndArchitecture(): array
     {
         if (!empty(self::$versionArch)) {
@@ -689,12 +859,37 @@ class CreatePackages
             }
         }
 
+        $apkPattern = DIST_APK_PATH . "/{$name}-{$phpVersion}-r*.{$architecture}.apk";
+        $apkFiles = glob($apkPattern);
+
+        foreach ($apkFiles as $file) {
+            if (preg_match("/{$name}-{$phpVersion}-r(\d+)\.{$architecture}\.apk$/", $file, $matches)) {
+                $iteration = (int)$matches[1];
+                $maxIteration = max($maxIteration, $iteration);
+            }
+        }
+
         return $maxIteration + 1;
     }
 
     public static function getPrefix(): string
     {
         $phpVersion = SPP_PHP_VERSION;
+
+        // RPM packages always use php-zts (for module system)
+        if (self::$currentPackageType === 'rpm') {
+            return 'php-zts';
+        }
+
+        // APK packages use php-zts83 (no dot)
+        if (self::$currentPackageType === 'apk') {
+            if (preg_match('/^(\d+)\.(\d+)/', $phpVersion, $matches)) {
+                return 'php-zts' . $matches[1] . $matches[2];
+            }
+            return 'php-zts';
+        }
+
+        // DEB packages use php-zts8.3 (with dot)
         if (preg_match('/^(\d+)\.(\d+)/', $phpVersion, $matches)) {
             return 'php-zts' . $matches[1] . '.' . $matches[2];
         }
@@ -704,9 +899,15 @@ class CreatePackages
     /**
      * Get list of versioned package names to conflict/replace with
      * For example, for php-zts8.5-cli, returns [php-zts8.0-cli, php-zts8.1-cli, ..., php-zts8.9-cli] excluding 8.5
+     * For RPM packages, returns empty array (RPM uses module system instead)
      */
     public static function getVersionedConflicts(string $suffix): array
     {
+        // RPM packages use module system, no versioned conflicts needed
+        if (self::$currentPackageType === 'rpm') {
+            return [];
+        }
+
         $conflicts = [];
         $phpVersion = SPP_PHP_VERSION;
 
@@ -723,7 +924,13 @@ class CreatePackages
             if ($currentMajor === 8 && $minor === $currentMinor) {
                 continue;
             }
-            $conflicts[] = "php-zts{$currentMajor}.{$minor}{$suffix}";
+
+            // APK uses php-zts83 format (no dot), DEB uses php-zts8.3 (with dot)
+            if (self::$currentPackageType === 'apk') {
+                $conflicts[] = "php-zts{$currentMajor}{$minor}{$suffix}";
+            } else {
+                $conflicts[] = "php-zts{$currentMajor}.{$minor}{$suffix}";
+            }
         }
 
         return $conflicts;

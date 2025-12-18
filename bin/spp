@@ -7,6 +7,7 @@ const INI_PATH = BASE_PATH . '/src/ini';
 const DIST_PATH = BASE_PATH . '/dist';
 const DIST_RPM_PATH = DIST_PATH . '/rpm';
 const DIST_DEB_PATH = DIST_PATH . '/deb';
+const DIST_APK_PATH = DIST_PATH . '/apk';
 define('TEMP_DIR', sys_get_temp_dir() . '/spc-packages');
 
 
@@ -71,5 +72,48 @@ function getLibdir(): string
 
 function getConfdir(): string
 {
-    return '/etc/php-zts';
+    // Get the prefix which is package-type aware (php-zts for RPM, php-zts8.3 for DEB, php-zts83 for APK)
+    $prefix = \staticphp\step\CreatePackages::getPrefix();
+    return '/etc/' . $prefix;
+}
+
+function getModuledir(): string
+{
+    // Get the prefix which is package-type aware
+    $prefix = \staticphp\step\CreatePackages::getPrefix();
+    return getLibdir() . '/' . $prefix . '/modules';
+}
+
+function getPhpLibdir(): string
+{
+    // Get the prefix which is package-type aware
+    $prefix = \staticphp\step\CreatePackages::getPrefix();
+    return getLibdir() . '/' . $prefix;
+}
+
+function getBinarySuffix(): string
+{
+    // Get the suffix for binaries based on package type
+    // RPM: -zts, DEB: -zts8.3, APK: -zts83
+    $prefix = \staticphp\step\CreatePackages::getPrefix();
+
+    // Extract the version suffix from the prefix
+    // php-zts -> -zts
+    // php-zts8.3 -> -zts8.3
+    // php-zts83 -> -zts83
+    return str_replace('php', '', $prefix);
+}
+
+function getVarLibdir(): string
+{
+    // Get /var/lib/{prefix} path
+    $prefix = \staticphp\step\CreatePackages::getPrefix();
+    return '/var/lib/' . $prefix;
+}
+
+function getSharedir(): string
+{
+    // Get /usr/share/{prefix} path
+    $prefix = \staticphp\step\CreatePackages::getPrefix();
+    return '/usr/share/' . $prefix;
 }

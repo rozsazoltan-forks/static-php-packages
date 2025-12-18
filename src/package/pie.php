@@ -49,19 +49,12 @@ class pie implements package
         [$pharSource, $wrapperSource] = $this->prepareArtifacts();
 
         $prefix = CreatePackages::getPrefix();
-        $versionedConflicts = [];
 
-        // Generate conflicts for pie-php-zts8.0, pie-php-zts8.1, etc.
-        $phpVersion = SPP_PHP_VERSION;
-        if (preg_match('/^(\d+)\.(\d+)/', $phpVersion, $matches)) {
-            $currentMajor = (int)$matches[1];
-            $currentMinor = (int)$matches[2];
-            for ($minor = 0; $minor <= 9; $minor++) {
-                if ($currentMajor === 8 && $minor === $currentMinor) {
-                    continue;
-                }
-                $versionedConflicts[] = "pie-php-zts{$currentMajor}.{$minor}";
-            }
+        // Get versioned conflicts for pie packages (pie-php-zts8.0, pie-php-zts8.1, etc.)
+        $phpConflicts = CreatePackages::getVersionedConflicts('');
+        $versionedConflicts = [];
+        foreach ($phpConflicts as $conflict) {
+            $versionedConflicts[] = 'pie-' . $conflict;
         }
 
         return [
@@ -75,8 +68,8 @@ class pie implements package
             'replaces' => $versionedConflicts,
             'conflicts' => $versionedConflicts,
             'files' => [
-                $pharSource => '/usr/share/php-zts/pie.phar',
-                $wrapperSource => '/usr/bin/pie-zts',
+                $pharSource => getSharedir() . '/pie.phar',
+                $wrapperSource => '/usr/bin/pie' . getBinarySuffix(),
             ],
         ];
     }
@@ -103,7 +96,28 @@ class pie implements package
             $this->downloadLatestPiePhar($pharPath);
         }
 
-        $wrapperPath = INI_PATH . '/pie-zts';
+        // Process the pie wrapper script to replace hardcoded paths
+        $wrapperSource = INI_PATH . '/pie-zts';
+        $wrapperPath = TEMP_DIR . '/pie' . getBinarySuffix();
+        $wrapperContents = file_get_contents($wrapperSource);
+        $binarySuffix = getBinarySuffix();
+
+        $wrapperContents = str_replace(
+            [
+                '/usr/bin/php-zts',
+                '/usr/share/php-zts/',
+                '/usr/bin/php-config-zts',
+            ],
+            [
+                '/usr/bin/php' . $binarySuffix,
+                getSharedir() . '/',
+                '/usr/bin/php-config' . $binarySuffix,
+            ],
+            $wrapperContents
+        );
+        file_put_contents($wrapperPath, $wrapperContents);
+        chmod($wrapperPath, 0755);
+
         return [$pharPath, $wrapperPath];
     }
 

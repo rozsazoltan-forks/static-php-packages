@@ -52,13 +52,18 @@ class TwigRenderer
         }
 
         // Prepare template variables
+        $prefix = CreatePackages::getPrefix();
+        $libdir = in_array($majorOsVersion, ['7', '8', '9', '10']) ? '/usr/lib64' : '/usr/lib';
+
         $templateVars = [
             'php_version' => $phpVersion,
             'php_version_nodot' => str_replace('.', '', $phpVersion),
             'target' => SPP_TARGET,
             'arch' => $arch,
             'os' => $majorOsVersion,
-            'prefix' => CreatePackages::getPrefix(),
+            'prefix' => $prefix,
+            'confdir' => '/etc/' . $prefix,
+            'moduledir' => $libdir . '/' . $prefix . '/modules',
             // Optional filter: when provided, craft.yml will include only selected packages
             // across extensions/shared-extensions/sapi, while always including cli SAPI.
             'filter_packages' => $packages,

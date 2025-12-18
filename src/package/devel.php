@@ -55,7 +55,7 @@ class devel implements package
             ],
             [
                 'prefix="/usr"',
-                'datarootdir="/php-zts"',
+                'datarootdir="/' . \staticphp\step\CreatePackages::getPrefix() . '"',
             ],
             $phpizeContent
         );
@@ -65,8 +65,8 @@ class devel implements package
                 '"`eval echo ${prefix}/include`/php"'
             ],
             [
-                str_replace('/usr/', '', getLibdir()) . '/php-zts`',
-                '"`eval echo ${prefix}/include`/php-zts"'
+                str_replace('/usr/', '', getPhpLibdir()) . '`',
+                '"`eval echo ${prefix}/include`/' . \staticphp\step\CreatePackages::getPrefix() . '"'
             ],
             $phpizeContent
         );
@@ -77,18 +77,18 @@ class devel implements package
         $versionedConflicts = CreatePackages::getVersionedConflicts('-devel');
         return [
             'files' => [
-                $modifiedPhpConfigPath => '/usr/bin/php-config-zts',
-                $modifiedPhpizePath => '/usr/bin/phpize-zts',
-                BUILD_INCLUDE_PATH . '/php/' => '/usr/include/php-zts',
-                BUILD_LIB_PATH . '/php/build' => getLibdir() . '/php-zts',
+                $modifiedPhpConfigPath => '/usr/bin/php-config' . getBinarySuffix(),
+                $modifiedPhpizePath => '/usr/bin/phpize' . getBinarySuffix(),
+                BUILD_INCLUDE_PATH . '/php/' => '/usr/include/' . \staticphp\step\CreatePackages::getPrefix(),
+                BUILD_LIB_PATH . '/php/build' => getPhpLibdir(),
             ],
             'depends' => [
                 CreatePackages::getPrefix() . '-cli',
             ],
             'provides' => [
                 'php-zts-devel',
-                'php-config-zts',
-                'phpize-zts',
+                'php-config' . getBinarySuffix(),
+                'phpize' . getBinarySuffix(),
             ],
             'replaces' => $versionedConflicts,
             'conflicts' => $versionedConflicts,

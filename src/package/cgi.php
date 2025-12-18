@@ -25,7 +25,7 @@ class cgi implements package
             'replaces' => $versionedConflicts,
             'conflicts' => $versionedConflicts,
             'files' => [
-                BUILD_BIN_PATH . '/php-cgi' => '/usr/bin/php-cgi-zts',
+                BUILD_BIN_PATH . '/php-cgi' => '/usr/bin/php-cgi' . getBinarySuffix(),
             ]
         ];
     }
@@ -44,7 +44,7 @@ class cgi implements package
         return [
             'depends' => [CreatePackages::getPrefix() . '-cgi'],
             'files' => [
-                $src => '/usr/lib/debug/usr/bin/php-cgi-zts.debug',
+                $src => '/usr/lib/debug/usr/bin/php-cgi' . getBinarySuffix() . '.debug',
             ],
         ];
     }
