@@ -81,12 +81,12 @@
             "source": {
                 "type": "git",
                 "url": "https://github.com/crazywhalecc/static-php-cli.git",
-                "reference": "d064e1353cf7dd8e97a769267fc9a804e38169f1"
+                "reference": "37f604c821217fc56b2229ccdfd6821ec57d8bdb"
             },
             "dist": {
                 "type": "zip",
-                "url": "https://api.github.com/repos/crazywhalecc/static-php-cli/zipball/d064e1353cf7dd8e97a769267fc9a804e38169f1",
-                "reference": "d064e1353cf7dd8e97a769267fc9a804e38169f1",
+                "url": "https://api.github.com/repos/crazywhalecc/static-php-cli/zipball/37f604c821217fc56b2229ccdfd6821ec57d8bdb",
+                "reference": "37f604c821217fc56b2229ccdfd6821ec57d8bdb",
                 "shasum": ""
             },
             "require": {
@@ -141,7 +141,7 @@
                     "type": "other"
                 }
             ],
-            "time": "2025-12-15T17:50:20+00:00"
+            "time": "2025-12-18T08:58:45+00:00"
         },
         {
             "name": "doctrine/inflector",
@@ -2228,12 +2228,12 @@
             "source": {
                 "type": "git",
                 "url": "https://github.com/Roave/SecurityAdvisories.git",
-                "reference": "1553067758ae7f3df13df7c7e232c62d928e1d23"
+                "reference": "e5034c4df32edeafb119b2c1e2b58876d0286ea8"
             },
             "dist": {
                 "type": "zip",
-                "url": "https://api.github.com/repos/Roave/SecurityAdvisories/zipball/1553067758ae7f3df13df7c7e232c62d928e1d23",
-                "reference": "1553067758ae7f3df13df7c7e232c62d928e1d23",
+                "url": "https://api.github.com/repos/Roave/SecurityAdvisories/zipball/e5034c4df32edeafb119b2c1e2b58876d0286ea8",
+                "reference": "e5034c4df32edeafb119b2c1e2b58876d0286ea8",
                 "shasum": ""
             },
             "conflict": {
@@ -2255,6 +2255,7 @@
                 "alextselegidis/easyappointments": "<1.5.2.0-beta1",
                 "alexusmai/laravel-file-manager": "<=3.3.1",
                 "alt-design/alt-redirect": "<1.6.4",
+                "altcha-org/altcha": "<1.3.1",
                 "alterphp/easyadmin-extension-bundle": ">=1.2,<1.2.11|>=1.3,<1.3.1",
                 "amazing/media2click": ">=1,<1.3.3",
                 "ameos/ameos_tarteaucitron": "<1.2.23",
@@ -2278,10 +2279,10 @@
                 "athlon1600/php-proxy-app": "<=3",
                 "athlon1600/youtube-downloader": "<=4",
                 "austintoddj/canvas": "<=3.4.2",
-                "auth0/auth0-php": ">=3.3,<=8.16",
-                "auth0/login": "<=7.18",
-                "auth0/symfony": "<=5.4.1",
-                "auth0/wordpress": "<=5.3",
+                "auth0/auth0-php": ">=3.3,<8.18",
+                "auth0/login": "<7.20",
+                "auth0/symfony": "<=5.5",
+                "auth0/wordpress": "<=5.4",
                 "automad/automad": "<2.0.0.0-alpha5",
                 "automattic/jetpack": "<9.8",
                 "awesome-support/awesome-support": "<=6.0.7",
@@ -3224,7 +3225,7 @@
                     "type": "tidelift"
                 }
             ],
-            "time": "2025-12-12T23:06:01+00:00"
+            "time": "2025-12-17T21:06:23+00:00"
         }
     ],
     "aliases": [],
