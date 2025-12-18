@@ -103,13 +103,13 @@ class cli implements package
     {
         $binarySuffix = getBinarySuffix();
         $afterInstallScript = <<<BASH
-#!/bin/bash
+#!/bin/sh
 if [ ! -e /usr/bin/php ]; then
     ln -sf /usr/bin/php{$binarySuffix} /usr/bin/php
 fi
 BASH;
         $afterRemoveScript = <<<BASH
-#!/bin/bash
+#!/bin/sh
 if [ -L /usr/bin/php ] && [ "\$(readlink /usr/bin/php)" = "/usr/bin/php{$binarySuffix}" ]; then
     rm -f /usr/bin/php
 fi
