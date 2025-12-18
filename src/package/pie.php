@@ -24,8 +24,8 @@ class pie implements package
         // Ensure artifacts exist and get the staged phar path
         [$pharSource] = $this->prepareArtifacts();
 
-        $proc = new Process(['php', $pharSource, '-V']);
-        $proc->setTimeout(2);
+        $proc = new Process(['php', $pharSource, '-V'], env: self::getCleanEnvironment());
+        $proc->setTimeout(30);
         $proc->run();
         if (!$proc->isSuccessful()) {
             // Include both stdout and stderr for parsing attempt/fallback
@@ -87,6 +87,23 @@ class pie implements package
     public function getLicense(): string
     {
         return 'BSD-3-Clause';
+    }
+
+    /**
+     * Get environment without Xdebug variables that would cause connection attempts
+     */
+    private static function getCleanEnvironment(): array
+    {
+        $env = $_SERVER;
+
+        // Explicitly disable Xdebug-related environment variables
+        // Must be set to empty/0, not unset, as they inherit from parent
+        $env['XDEBUG_SESSION'] = '';
+        $env['XDEBUG_CONFIG'] = '';
+        $env['XDEBUG_MODE'] = 'off';
+        $env['PHP_IDE_CONFIG'] = '';
+
+        return $env;
     }
 
     private function prepareArtifacts(): array

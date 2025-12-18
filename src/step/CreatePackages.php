@@ -559,6 +559,14 @@ class CreatePackages
         if (isset($config['files']) && is_array($config['files'])) {
             foreach ($config['files'] as $source => $dest) {
                 if (file_exists($source)) {
+                    // Check if this is a binary that needs its debug link fixed
+                    // Only fix binaries in BUILD_BIN_PATH that are being renamed
+                    if (str_starts_with($source, BUILD_BIN_PATH . '/') &&
+                        is_executable($source) &&
+                        basename($source) !== basename($dest)) {
+                        // Fix the debug link and use the temporary binary instead
+                        $source = self::fixBinaryDebugLink($source, $dest);
+                    }
                     $fpmArgs[] = $source . '=' . $dest;
                 }
                 else {
@@ -683,6 +691,7 @@ class CreatePackages
                 'libdl' => 'musl',
                 'librt' => 'musl',
                 'libresolv' => 'musl',
+                'libgcc_s' => 'libgcc',
             ];
 
             if (isset($alpineLibMap[$packageName])) {
@@ -718,6 +727,14 @@ class CreatePackages
         if (isset($config['files']) && is_array($config['files'])) {
             foreach ($config['files'] as $source => $dest) {
                 if (file_exists($source)) {
+                    // Check if this is a binary that needs its debug link fixed
+                    // Only fix binaries in BUILD_BIN_PATH that are being renamed
+                    if (str_starts_with($source, BUILD_BIN_PATH . '/') &&
+                        is_executable($source) &&
+                        basename($source) !== basename($dest)) {
+                        // Fix the debug link and use the temporary binary instead
+                        $source = self::fixBinaryDebugLink($source, $dest);
+                    }
                     $fpmArgs[] = $source . '=' . $dest;
                 }
                 else {
@@ -795,14 +812,25 @@ class CreatePackages
 
     private static function getBinaryDependencies(string $binaryPath): array
     {
-        $process = new Process(['ldd', '-v', $binaryPath]);
-        $process->run();
+        // Detect if this is a musl binary
+        $fileProcess = new Process(['file', $binaryPath]);
+        $fileProcess->run();
+        $fileOutput = $fileProcess->getOutput();
+        $isMusl = str_contains($fileOutput, 'musl') || str_contains($fileOutput, 'statically linked');
 
-        if (!$process->isSuccessful()) {
-            throw new \RuntimeException("ldd failed: " . $process->getErrorOutput());
+        // For musl binaries, we need to use the musl dynamic linker instead of ldd
+        if ($isMusl) {
+            $output = self::getMuslBinaryDependencies($binaryPath);
+        } else {
+            $process = new Process(['ldd', '-v', $binaryPath]);
+            $process->run();
+
+            if (!$process->isSuccessful()) {
+                throw new \RuntimeException("ldd failed: " . $process->getErrorOutput());
+            }
+
+            $output = $process->getOutput();
         }
-
-        $output = $process->getOutput();
 
         $output = preg_replace('/.*?' . preg_quote($binaryPath, '/') . ':\s*\n/s', '', $output, 1);
 
@@ -833,6 +861,141 @@ class CreatePackages
         }
 
         return $dependencies;
+    }
+
+    /**
+     * Get dependencies for musl-linked binaries using the musl dynamic linker
+     */
+    private static function getMuslBinaryDependencies(string $binaryPath): string
+    {
+        // Detect architecture from the binary
+        $archProcess = new Process(['uname', '-m']);
+        $archProcess->run();
+        $arch = trim($archProcess->getOutput());
+
+        // Map architecture to musl loader name
+        $archMap = [
+            'x86_64' => 'x86_64',
+            'aarch64' => 'aarch64',
+            'arm64' => 'aarch64',
+            'armv7l' => 'armv7',
+            'armhf' => 'armhf',
+        ];
+
+        $muslArch = $archMap[$arch] ?? 'x86_64';
+
+        // Try to find the musl dynamic linker in common locations
+        $basePaths = ['/lib', '/usr/lib', '/usr/lib64'];
+        $muslLoaders = [];
+
+        foreach ($basePaths as $basePath) {
+            $muslLoaders[] = "{$basePath}/ld-musl-{$muslArch}.so.1";
+            // Also try without .1 suffix (some systems)
+            $muslLoaders[] = "{$basePath}/ld-musl-{$muslArch}.so";
+        }
+
+        $muslLoader = null;
+        foreach ($muslLoaders as $loader) {
+            if (file_exists($loader)) {
+                $muslLoader = $loader;
+                break;
+            }
+        }
+
+        if ($muslLoader === null) {
+            throw new \RuntimeException("Could not find musl dynamic linker for architecture {$arch} (tried: " . implode(', ', $muslLoaders) . ")");
+        }
+
+        echo "Using musl dynamic linker: {$muslLoader}\n";
+
+        // Use the musl loader to list dependencies
+        $process = new Process([$muslLoader, '--list', $binaryPath]);
+        $process->run();
+
+        if (!$process->isSuccessful()) {
+            // If the binary is statically linked, --list might fail
+            // Check if it's actually static
+            $readelfProcess = new Process(['readelf', '-d', $binaryPath]);
+            $readelfProcess->run();
+            if (!str_contains($readelfProcess->getOutput(), 'NEEDED')) {
+                echo "Binary {$binaryPath} appears to be statically linked (no dynamic dependencies)\n";
+                return '';
+            }
+            throw new \RuntimeException("Musl ldd failed: " . $process->getErrorOutput());
+        }
+
+        return $process->getOutput();
+    }
+
+    /**
+     * Fix GNU debuglink in a binary to match its new filename
+     * This is needed when binaries are renamed during packaging (e.g., php -> php-zts8.3)
+     */
+    private static function fixBinaryDebugLink(string $sourceBinary, string $targetBinaryName): string
+    {
+        // Extract just the filename from the target path
+        $targetFilename = basename($targetBinaryName);
+        $newDebugFileName = $targetFilename . '.debug';
+
+        // Create a temporary copy of the binary to modify
+        $tempBinary = TEMP_DIR . '/' . $targetFilename;
+
+        // Copy the source binary to temp location
+        if (!copy($sourceBinary, $tempBinary)) {
+            echo "Warning: Failed to copy {$sourceBinary} to {$tempBinary}, debug link won't be fixed\n";
+            return $sourceBinary;
+        }
+
+        // Find the original debug file
+        // Map binary names to their debug files
+        $binaryName = basename($sourceBinary);
+        $debugMap = [
+            'php' => BUILD_ROOT_PATH . '/debug/php-zts.debug',
+            'php-cgi' => BUILD_ROOT_PATH . '/debug/php-cgi-zts.debug',
+            'php-fpm' => BUILD_ROOT_PATH . '/debug/php-fpm-zts.debug',
+            'frankenphp' => BUILD_ROOT_PATH . '/debug/frankenphp.debug',
+        ];
+
+        $originalDebugFile = $debugMap[$binaryName] ?? null;
+
+        // If no debug file exists, we can't fix the debug link
+        if ($originalDebugFile === null || !file_exists($originalDebugFile)) {
+            echo "No debug file found for {$binaryName}, skipping debug link fix\n";
+            return $tempBinary;
+        }
+
+        // Create a temporary copy of the debug file with the new name
+        // objcopy needs the actual file to exist to compute the checksum
+        $tempDebugFile = TEMP_DIR . '/' . $newDebugFileName;
+        if (!copy($originalDebugFile, $tempDebugFile)) {
+            echo "Warning: Failed to copy debug file, debug link won't be fixed\n";
+            return $tempBinary;
+        }
+
+        // Remove existing debug link
+        $removeProcess = new Process(['objcopy', '--remove-section=.gnu_debuglink', $tempBinary]);
+        $removeProcess->run();
+        if (!$removeProcess->isSuccessful()) {
+            echo "Warning: Failed to remove debug link from {$tempBinary}: " . $removeProcess->getErrorOutput() . "\n";
+            @unlink($tempDebugFile);
+            return $sourceBinary;
+        }
+
+        // Add new debug link pointing to the renamed debug file
+        $addProcess = new Process(['objcopy', '--add-gnu-debuglink=' . $tempDebugFile, $tempBinary]);
+        $addProcess->run();
+        if (!$addProcess->isSuccessful()) {
+            echo "Warning: Failed to add debug link to {$tempBinary}: " . $addProcess->getErrorOutput() . "\n";
+            @unlink($tempDebugFile);
+            return $sourceBinary;
+        }
+
+        echo "Fixed debug link in {$targetFilename}: {$newDebugFileName}\n";
+
+        // Clean up the temporary debug file (we don't need it anymore, just needed it for objcopy)
+        @unlink($tempDebugFile);
+
+        return $tempBinary;
     }
 
     private static function getNextIteration(string $name, string $phpVersion, string $architecture): int
