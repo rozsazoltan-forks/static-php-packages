@@ -34,8 +34,9 @@ build-options:
     with-suggested-libs: true
     with-suggested-exts: true
     no-strip: false
-    with-config-file-path: '{{ confdir }}'
-    with-config-file-scan-dir: '{{ confdir }}/conf.d'
+    with-added-patch: ['{{ patch_file }}']
+    with-config-file-path: '/etc/{{ prefix }}'
+    with-config-file-scan-dir: '/etc/{{ prefix }}/conf.d'
     # Hardcoded INI options for cli and micro SAPI (e.g. "memory_limit=4G", list accepted)
     with-hardcoded-ini: [ ]
     # UPX pack the binary (default: false)

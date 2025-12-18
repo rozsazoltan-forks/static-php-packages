@@ -67,6 +67,8 @@ class TwigRenderer
             // Optional filter: when provided, craft.yml will include only selected packages
             // across extensions/shared-extensions/sapi, while always including cli SAPI.
             'filter_packages' => $packages,
+            // Patch file for cleaning up sources during build (absolute path)
+            'patch_file' => BASE_PATH . '/src/patches/cleanup-sources.php',
         ];
 
         try {
