@@ -16,10 +16,10 @@ class embed implements package
     {
         $phpVersion = str_replace('.', '', SPP_PHP_VERSION);
         $prefix = getBinarySuffix(); // e.g., "-zts", "-nts", "-zts8.5"
-        $name = 'libphp' . $prefix . '-' . $phpVersion . '.so';
+        $libphp = 'libphp' . $prefix . '-' . $phpVersion . '.so';
         $versionedConflicts = CreatePackages::getVersionedConflicts('-embed');
         $provides = [
-            $name,
+            $libphp,
             CreatePackages::getPrefix() . '-embedded'
         ];
         if ($this->getName() !== CreatePackages::getPrefix() . '-embed') {
@@ -33,7 +33,7 @@ class embed implements package
             'replaces' => $versionedConflicts,
             'conflicts' => $versionedConflicts,
             'files' => [
-                BUILD_LIB_PATH . '/' . $name => getLibdir() . '/' . $name,
+                BUILD_LIB_PATH . '/' . $libphp => getLibdir() . '/' . $libphp,
             ]
         ];
     }
