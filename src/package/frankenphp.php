@@ -10,12 +10,15 @@ class frankenphp implements package
 {
     public function getName(): string
     {
-        // RPM packages use frankenphp (unversioned, for module system)
-        // DEB/APK packages use versioned frankenphp8.3 or frankenphp83
+        // Extract version suffix from prefix for frankenphp naming
+        // e.g., "php-zts8.3" -> "frankenphp8.3", "php-nts85" -> "frankenphp85", "php-zts" -> "frankenphp"
         $prefix = CreatePackages::getPrefix();
 
-        // Extract version from prefix (e.g., "php-zts8.3" -> "8.3", "php-zts" -> "")
-        if (preg_match('/php-zts(\d+\.?\d*)/', $prefix, $matches)) {
+        // Remove "php" and any non-digit prefix to get just the version part
+        // php-zts8.5 -> -zts8.5 -> 8.5
+        // php-nts85 -> -nts85 -> 85
+        $suffix = str_replace('php', '', $prefix);
+        if (preg_match('/(\d+\.?\d*)/', $suffix, $matches)) {
             return 'frankenphp' . $matches[1];
         }
         return 'frankenphp';
@@ -50,10 +53,15 @@ class frankenphp implements package
         // Get the conflicts list from CreatePackages using the franken prefix
         $phpConflicts = CreatePackages::getVersionedConflicts('');
 
-        // Transform php-zts8.3 conflicts to frankenphp8.3 conflicts
+        // Transform php{prefix} conflicts to frankenphp conflicts
+        // e.g., php-zts8.3 -> frankenphp8.3, php-nts85 -> frankenphp85
         $conflicts = [];
         foreach ($phpConflicts as $conflict) {
-            $conflicts[] = str_replace('php-zts', 'frankenphp', $conflict);
+            // Replace the full php prefix with just the version part for frankenphp
+            // Extract just the version numbers
+            if (preg_match('/(\d+\.?\d*)/', $conflict, $matches)) {
+                $conflicts[] = 'frankenphp' . $matches[1];
+            }
         }
 
         return $conflicts;
@@ -86,12 +94,12 @@ class frankenphp implements package
      */
     public function createRpmPackage(string $architecture, array $binaryDependencies, ?string $iterationOverride = null): void
     {
-        CreatePackages::setCurrentPackageType('rpm');
         echo "Creating RPM package for FrankenPHP...\n";
 
         $packageFolder = DIST_PATH . '/frankenphp/package';
         $phpVersion = str_replace('.', '', SPP_PHP_VERSION);
-        $phpEmbedName = 'libphp-zts-' . $phpVersion . '.so';
+        $binarySuffix = getBinarySuffix();
+        $phpEmbedName = 'libphp' . $binarySuffix . '-' . $phpVersion . '.so';
 
         $ldLibraryPath = 'LD_LIBRARY_PATH=' . BUILD_LIB_PATH;
         [, $output] = shell()->execWithResult($ldLibraryPath . ' ' . BUILD_BIN_PATH . '/frankenphp --version');
@@ -195,12 +203,12 @@ class frankenphp implements package
      */
     public function createDebPackage(string $architecture, array $binaryDependencies, ?string $iterationOverride = null): void
     {
-        CreatePackages::setCurrentPackageType('deb');
         echo "Creating DEB package for FrankenPHP...\n";
 
         $packageFolder = DIST_PATH . '/frankenphp/package';
         $phpVersion = str_replace('.', '', SPP_PHP_VERSION);
-        $phpEmbedName = 'libphp-zts-' . $phpVersion . '.so';
+        $binarySuffix = getBinarySuffix();
+        $phpEmbedName = 'libphp' . $binarySuffix . '-' . $phpVersion . '.so';
 
         $ldLibraryPath = 'LD_LIBRARY_PATH=' . BUILD_LIB_PATH;
         [, $output] = shell()->execWithResult($ldLibraryPath . ' ' . BUILD_BIN_PATH . '/frankenphp --version');
@@ -268,11 +276,12 @@ class frankenphp implements package
             throw new \RuntimeException(sprintf('Directory "%s" was not created', "{$packageFolder}/empty/"));
         }
 
-        // Determine the FrankenPHP suffix (just version, not -zts prefix)
+        // Determine the FrankenPHP suffix (just version, not prefix)
         // Extract version from package name: frankenphp8.5 or frankenphp85
         $prefix = CreatePackages::getPrefix();
         $frankenphpSuffix = '';
-        if (preg_match('/php-zts(\d+\.?\d*)/', $prefix, $matches)) {
+        // Extract version numbers from prefix (e.g., "php-zts8.5" -> "8.5", "php-nts85" -> "85")
+        if (preg_match('/(\d+\.?\d*)/', $prefix, $matches)) {
             $frankenphpSuffix = $matches[1];
         }
 
@@ -332,12 +341,12 @@ class frankenphp implements package
      */
     public function createApkPackage(string $architecture, array $binaryDependencies, ?string $iterationOverride = null): void
     {
-        CreatePackages::setCurrentPackageType('apk');
         echo "Creating APK package for FrankenPHP using nfpm...\n";
 
         $packageFolder = DIST_PATH . '/frankenphp/package';
         $phpVersion = str_replace('.', '', SPP_PHP_VERSION);
-        $phpEmbedName = 'libphp-zts-' . $phpVersion . '.so';
+        $binarySuffix = getBinarySuffix();
+        $phpEmbedName = 'libphp' . $binarySuffix . '-' . $phpVersion . '.so';
 
         $ldLibraryPath = 'LD_LIBRARY_PATH=' . BUILD_LIB_PATH;
         [, $output] = shell()->execWithResult($ldLibraryPath . ' ' . BUILD_BIN_PATH . '/frankenphp --version');
@@ -366,11 +375,6 @@ class frankenphp implements package
             'vendor' => 'Marc Henderkes',
             'homepage' => 'https://apks.henderkes.com',
             'license' => $this->getLicense(),
-            'apk' => [
-                'signature' => [
-                    'key_name' => CreatePackages::getPrefix(),
-                ],
-            ],
         ];
 
         // Build dependencies
@@ -406,10 +410,10 @@ class frankenphp implements package
         $nfpmConfig['replaces'] = $versionedConflicts;
         $nfpmConfig['conflicts'] = $versionedConflicts;
 
-        // Determine the FrankenPHP suffix
+        // Determine the FrankenPHP suffix (just version numbers)
         $prefix = CreatePackages::getPrefix();
         $frankenphpSuffix = '';
-        if (preg_match('/php-zts(\d+\.?\d*)/', $prefix, $matches)) {
+        if (preg_match('/(\d+\.?\d*)/', $prefix, $matches)) {
             $frankenphpSuffix = $matches[1];
         }
 
@@ -494,7 +498,7 @@ class frankenphp implements package
     private function createApkDebuginfo(string $name, string $version, string $iteration, string $architecture, string $frankenDbg, string $frankenphpSuffix): void
     {
         $dbgName = $name . '-debuginfo';
-        
+
         $nfpmConfig = [
             'name' => $dbgName,
             'arch' => $architecture,

@@ -18,7 +18,6 @@ class PackageCommand extends BaseCommand
     {
         parent::configure();
         $this
-            ->addOption('type', null, InputOption::VALUE_REQUIRED, 'Specify which package types to build (rpm,deb)', 'rpm')
             ->addOption('packages', null, InputOption::VALUE_REQUIRED, 'Specify which packages to build (comma-separated)')
             ->addOption('iteration', null, InputOption::VALUE_REQUIRED, 'Specify iteration number to use for packages (overrides auto-detected)');
     }
@@ -26,8 +25,6 @@ class PackageCommand extends BaseCommand
     protected function execute(InputInterface $input, OutputInterface $output): int
     {
         $packageNames = $input->getOption('packages');
-        $packageTypes = $input->getOption('type');
-        $phpVersion = $input->getOption('phpv');
         $iteration = $input->getOption('iteration');
 
         if ($packageNames) {
@@ -37,7 +34,8 @@ class PackageCommand extends BaseCommand
             $output->writeln("Creating packages for all extensions...");
         }
 
-        $result = CreatePackages::run($packageNames, $packageTypes, $phpVersion, $iteration);
+        // All parameters now come from constants set by BaseCommand::initialize()
+        $result = CreatePackages::run($packageNames, $iteration);
 
         if ($result) {
             $output->writeln("Package creation completed successfully.");

@@ -152,9 +152,7 @@ class extension implements package
                 getConfdir() . '/conf.d/' . $this->prefix . $this->name . '.ini',
             ],
             'depends' => $depends,
-            'provides' => [
-                'php-zts-' . $this->name,
-            ],
+            'provides' => [],
             'replaces' => $versionedConflicts,
             'conflicts' => $versionedConflicts,
             'files' => [
@@ -189,17 +187,24 @@ class extension implements package
         // Get the dynamic prefix for path replacements
         $prefix = CreatePackages::getPrefix();
 
-        // Replace extension directives and versioned paths
+        // Replace extension directives and ALL hardcoded php paths with prefix-based paths
         $iniContent = str_replace(
             [
                 ';extension=' . $this->name,
                 ';zend_extension=' . $this->name,
-                '/usr/share/php-zts/',
-                '/usr/local/share/php-zts/',
             ],
             [
                 'extension=' . $this->name,
                 'zend_extension=' . $this->name,
+            ],
+            $iniContent
+        );
+        $iniContent = preg_replace(
+            [
+                '#/usr/share/php[^/]*/#',
+                '#/usr/local/share/php[^/]*/#',
+            ],
+            [
                 '/usr/share/' . $prefix . '/',
                 '/usr/local/share/' . $prefix . '/',
             ],

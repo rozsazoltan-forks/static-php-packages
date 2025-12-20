@@ -14,7 +14,9 @@ abstract class BaseCommand extends Command
         $this
             ->addOption('debug', null, InputOption::VALUE_NONE, 'Print debug messages')
             ->addOption('phpv', null, InputOption::VALUE_REQUIRED, 'Specify PHP version to build', '8.4')
-            ->addOption('target', null, InputOption::VALUE_REQUIRED, 'Specify the target triple for Zig (e.g., x86_64-linux-gnu, aarch64-linux-gnu)', 'native-native');
+            ->addOption('target', null, InputOption::VALUE_REQUIRED, 'Specify the target triple for Zig (e.g., x86_64-linux-gnu, aarch64-linux-gnu)', 'native-native')
+            ->addOption('prefix', null, InputOption::VALUE_REQUIRED, 'Specify the package prefix (e.g., -zts, -zts8.5, -zts85)', '-zts')
+            ->addOption('type', null, InputOption::VALUE_REQUIRED, 'Specify package type: rpm (uses /usr/lib64), deb (uses /usr/lib), or apk (uses /usr/lib). Required.', null);
     }
 
     protected function initialize(InputInterface $input, OutputInterface $output)
@@ -22,6 +24,19 @@ abstract class BaseCommand extends Command
         // Define build paths with PHP version
         $phpVersion = $input->getOption('phpv') ?? '8.4';
         $target = $input->getOption('target') ?? 'native-native';
+        $prefix = $input->getOption('prefix') ?? '-zts';
+        $type = $input->getOption('type');
+
+        // Validate that --type is provided
+        if ($type === null) {
+            throw new \InvalidArgumentException('The --type option is required. Specify: rpm, deb, or apk');
+        }
+
+        // Validate type value
+        $validTypes = ['rpm', 'deb', 'apk'];
+        if (!in_array($type, $validTypes, true)) {
+            throw new \InvalidArgumentException('Invalid --type value. Must be one of: ' . implode(', ', $validTypes));
+        }
 
         // Check if constants are already defined
         if (defined('SPP_PHP_VERSION')) {
@@ -32,6 +47,8 @@ abstract class BaseCommand extends Command
         // Define constants
         define('SPP_PHP_VERSION', $phpVersion);
         define('SPP_TARGET', $target);
+        define('SPP_PREFIX', $prefix);
+        define('SPP_TYPE', $type);
         define('BUILD_ROOT_PATH', BASE_PATH . '/build/' . $phpVersion);
         define('BUILD_BIN_PATH', BUILD_ROOT_PATH . '/bin');
         define('BUILD_LIB_PATH', BUILD_ROOT_PATH . '/lib');

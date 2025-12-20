@@ -12,7 +12,8 @@ class pie implements package
 {
     public function getName(): string
     {
-        return 'pie-' . CreatePackages::getPrefix();
+        // Return pie with the suffix (e.g., "pie-zts", "pie-zts8.5", "pie-zts85")
+        return 'pie' . getBinarySuffix();
     }
 
     /**
@@ -50,11 +51,13 @@ class pie implements package
 
         $prefix = CreatePackages::getPrefix();
 
-        // Get versioned conflicts for pie packages (pie-php-zts8.0, pie-php-zts8.1, etc.)
+        // Get versioned conflicts for pie packages (pie-zts8.0, pie-zts8.1, etc.)
+        // Replace the 'php' prefix from conflicts with 'pie'
         $phpConflicts = CreatePackages::getVersionedConflicts('');
         $versionedConflicts = [];
         foreach ($phpConflicts as $conflict) {
-            $versionedConflicts[] = 'pie-' . $conflict;
+            // Replace 'php' with 'pie' (e.g., php-zts8.5 -> pie-zts8.5, php-nts85 -> pie-nts85)
+            $versionedConflicts[] = str_replace('php', 'pie', $conflict);
         }
 
         return [
@@ -62,9 +65,7 @@ class pie implements package
                 $prefix . '-cli',
                 $prefix . '-devel',
             ],
-            'provides' => [
-                'pie-zts',
-            ],
+            'provides' => [],
             'replaces' => $versionedConflicts,
             'conflicts' => $versionedConflicts,
             'files' => [
@@ -115,19 +116,20 @@ class pie implements package
 
         // Process the pie wrapper script to replace hardcoded paths
         $wrapperSource = INI_PATH . '/pie-zts';
-        $wrapperPath = TEMP_DIR . '/pie' . getBinarySuffix();
-        $wrapperContents = file_get_contents($wrapperSource);
         $binarySuffix = getBinarySuffix();
+        $wrapperPath = TEMP_DIR . '/pie' . $binarySuffix;
+        $wrapperContents = file_get_contents($wrapperSource);
 
-        $wrapperContents = str_replace(
+        // Replace ALL hardcoded paths with prefix-based paths
+        $wrapperContents = preg_replace(
             [
-                '/usr/bin/php-zts',
-                '/usr/share/php-zts/',
-                '/usr/bin/php-config-zts',
+                '#/usr/bin/php[^ ]*#',
+                '#/usr/share/php[^ /]*/pie\.phar#',
+                '#/usr/bin/php-config[^ ]*#',
             ],
             [
                 '/usr/bin/php' . $binarySuffix,
-                getSharedir() . '/',
+                getSharedir() . '/pie.phar',
                 '/usr/bin/php-config' . $binarySuffix,
             ],
             $wrapperContents

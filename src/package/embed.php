@@ -15,19 +15,21 @@ class embed implements package
     public function getFpmConfig(): array
     {
         $phpVersion = str_replace('.', '', SPP_PHP_VERSION);
-        $name = 'libphp-zts-' . $phpVersion . '.so';
+        $prefix = getBinarySuffix(); // e.g., "-zts", "-nts", "-zts8.5"
+        $name = 'libphp' . $prefix . '-' . $phpVersion . '.so';
         $versionedConflicts = CreatePackages::getVersionedConflicts('-embed');
+        $provides = [
+            $name,
+            CreatePackages::getPrefix() . '-embedded'
+        ];
+        if ($this->getName() !== CreatePackages::getPrefix() . '-embed') {
+            $provides[] = CreatePackages::getPrefix() . '-embed';
+        }
         return [
             'depends' => [
                 CreatePackages::getPrefix() . '-cli',
             ],
-            'provides' => [
-                $name,
-                'php-zts-embed',
-                CreatePackages::getPrefix() . '-embed',
-                'php-zts-embedded',
-                CreatePackages::getPrefix() . '-embedded'
-            ],
+            'provides' => $provides,
             'replaces' => $versionedConflicts,
             'conflicts' => $versionedConflicts,
             'files' => [
@@ -44,7 +46,8 @@ class embed implements package
     public function getDebuginfoFpmConfig(): array
     {
         $phpVersionDigits = str_replace('.', '', SPP_PHP_VERSION);
-        $libName = 'libphp-zts-' . $phpVersionDigits . '.so';
+        $prefix = getBinarySuffix();
+        $libName = 'libphp' . $prefix . '-' . $phpVersionDigits . '.so';
         $src = BUILD_ROOT_PATH . '/debug/' . $libName . '.debug';
         if (!file_exists($src)) {
             return [];

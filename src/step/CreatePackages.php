@@ -16,14 +16,9 @@ class CreatePackages
     private static $binaryDependencies = [];
     private static $packageTypes = [];
     private static ?string $iterationOverride = null;
-    private static ?string $currentPackageType = null;
+    private static string $prefix = '-zts';
 
-    public static function setCurrentPackageType(?string $type): void
-    {
-        self::$currentPackageType = $type;
-    }
-
-    public static function run($packageNames = null, string $packageTypes = 'rpm,deb', string $phpVersion = '8.4', ?string $iteration = null): true
+    public static function run($packageNames = null, ?string $iteration = null): true
     {
         self::loadConfig();
 
@@ -33,8 +28,13 @@ class CreatePackages
         $phpBinary = BUILD_BIN_PATH . '/php';
         self::$binaryDependencies = self::getBinaryDependencies($phpBinary);
 
-        self::$packageTypes = explode(',', strtolower($packageTypes));
-        self::$iterationOverride = $iteration !== null && $iteration !== '' ? (string)$iteration : null;
+        // Use values from constants set by BaseCommand
+        self::$prefix = defined('SPP_PREFIX') ? SPP_PREFIX : '-zts';
+        $packageType = defined('SPP_TYPE') ? SPP_TYPE : 'rpm';
+
+        // Package type is now a single value, not a comma-separated list
+        self::$packageTypes = [$packageType];
+        self::$iterationOverride = $iteration !== null && $iteration !== '' ? $iteration : null;
 
         if ($packageNames !== null) {
             if (is_string($packageNames)) {
@@ -285,7 +285,6 @@ class CreatePackages
 
     private static function createRpmPackage(\staticphp\package $package, string $phpVersion, string $architecture, string $iteration, bool $isDebuginfo = false): void
     {
-        self::$currentPackageType = 'rpm';
         $name = $isDebuginfo ? $package->getName() . '-debuginfo' : $package->getName();
         $config = $isDebuginfo ? $package->getDebuginfoFpmConfig() : $package->getFpmConfig();
         $extraArgs = $isDebuginfo ? [] : $package->getFpmExtraArgs();
@@ -431,7 +430,6 @@ class CreatePackages
         bool $isDebuginfo = false,
     ): void
     {
-        self::$currentPackageType = 'deb';
         $name = $isDebuginfo ? $package->getName() . '-debuginfo' : $package->getName();
         $config = $isDebuginfo ? $package->getDebuginfoFpmConfig() : $package->getFpmConfig();
         $extraArgs = $isDebuginfo ? [] : $package->getFpmExtraArgs();
@@ -602,7 +600,6 @@ class CreatePackages
 
     private static function createApkPackage(\staticphp\package $package, string $phpVersion, string $architecture, string $iteration, bool $isDebuginfo = false): void
     {
-        self::$currentPackageType = 'apk';
         $name = $isDebuginfo ? $package->getName() . '-debuginfo' : $package->getName();
         $config = $isDebuginfo ? $package->getDebuginfoFpmConfig() : $package->getFpmConfig();
         $extraArgs = $isDebuginfo ? [] : $package->getFpmExtraArgs();
@@ -955,12 +952,13 @@ class CreatePackages
         chmod($tempBinary, 0755);
 
         // Find the original debug file
-        // Map binary names to their debug files
+        // Map binary names to their debug files using the prefix
         $binaryName = basename($sourceBinary);
+        $binarySuffix = getBinarySuffix();
         $debugMap = [
-            'php' => BUILD_ROOT_PATH . '/debug/php-zts.debug',
-            'php-cgi' => BUILD_ROOT_PATH . '/debug/php-cgi-zts.debug',
-            'php-fpm' => BUILD_ROOT_PATH . '/debug/php-fpm-zts.debug',
+            'php' => BUILD_ROOT_PATH . '/debug/php' . $binarySuffix . '.debug',
+            'php-cgi' => BUILD_ROOT_PATH . '/debug/php-cgi' . $binarySuffix . '.debug',
+            'php-fpm' => BUILD_ROOT_PATH . '/debug/php-fpm' . $binarySuffix . '.debug',
             'frankenphp' => BUILD_ROOT_PATH . '/debug/frankenphp.debug',
         ];
 
@@ -1045,37 +1043,21 @@ class CreatePackages
 
     public static function getPrefix(): string
     {
-        $phpVersion = SPP_PHP_VERSION;
-
-        // RPM packages always use php-zts (for module system)
-        if (self::$currentPackageType === 'rpm') {
-            return 'php-zts';
-        }
-
-        // APK packages use php-zts83 (no dot)
-        if (self::$currentPackageType === 'apk') {
-            if (preg_match('/^(\d+)\.(\d+)/', $phpVersion, $matches)) {
-                return 'php-zts' . $matches[1] . $matches[2];
-            }
-            return 'php-zts';
-        }
-
-        // DEB packages use php-zts8.3 (with dot)
-        if (preg_match('/^(\d+)\.(\d+)/', $phpVersion, $matches)) {
-            return 'php-zts' . $matches[1] . '.' . $matches[2];
-        }
-        return 'php-zts';
+        // Return the prefix set by the user, prepended with "php"
+        // For example: "-zts" becomes "php-zts", "-zts8.5" becomes "php-zts8.5"
+        return 'php' . self::$prefix;
     }
 
     /**
      * Get list of versioned package names to conflict/replace with
      * For example, for php-zts8.5-cli, returns [php-zts8.0-cli, php-zts8.1-cli, ..., php-zts8.9-cli] excluding 8.5
-     * For RPM packages, returns empty array (RPM uses module system instead)
+     * For RPM packages (using unversioned prefix like -zts), returns empty array (RPM uses module system instead)
      */
     public static function getVersionedConflicts(string $suffix): array
     {
         // RPM packages use module system, no versioned conflicts needed
-        if (self::$currentPackageType === 'rpm') {
+        // Detect RPM by checking if prefix is unversioned (e.g., "-zts" or "-nts" without version number)
+        if (!preg_match('/\d/', self::$prefix)) {
             return [];
         }
 
@@ -1089,6 +1071,12 @@ class CreatePackages
         $currentMajor = (int)$matches[1];
         $currentMinor = (int)$matches[2];
 
+        // Extract the base prefix (without version) and whether it uses dots
+        // e.g., "-zts8.5" -> base: "-zts", usesDot: true
+        // e.g., "-nts85" -> base: "-nts", usesDot: false
+        $usesDot = str_contains(self::$prefix, '.');
+        $basePrefix = preg_replace('/\d+\.?\d*/', '', self::$prefix);
+
         // Generate conflicts for versions 8.0 through 8.9
         for ($minor = 0; $minor <= 9; $minor++) {
             // Skip the current version
@@ -1096,11 +1084,11 @@ class CreatePackages
                 continue;
             }
 
-            // APK uses php-zts83 format (no dot), DEB uses php-zts8.3 (with dot)
-            if (self::$currentPackageType === 'apk') {
-                $conflicts[] = "php-zts{$currentMajor}{$minor}{$suffix}";
+            // Use the same format as the current prefix
+            if ($usesDot) {
+                $conflicts[] = "php{$basePrefix}{$currentMajor}.{$minor}{$suffix}";
             } else {
-                $conflicts[] = "php-zts{$currentMajor}.{$minor}{$suffix}";
+                $conflicts[] = "php{$basePrefix}{$currentMajor}{$minor}{$suffix}";
             }
         }
 

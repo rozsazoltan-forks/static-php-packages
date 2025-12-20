@@ -18,6 +18,7 @@ class devel implements package
 
         $phpConfigContent = file_get_contents($phpConfigPath);
 
+        $binarySuffix = getBinarySuffix();
         $phpConfigContent = preg_replace(
             [
                 '/^prefix=.*$/m',
@@ -25,20 +26,21 @@ class devel implements package
                 '/^libs=.*$/m',
                 '/^program_prefix=.*$/m',
                 '/^program_suffix=.*$/m',
-                '#/php(?!-zts)#'
             ],
             [
                 'prefix="/usr"',
                 'ldflags="-lpthread"',
                 'libs=""',
                 'program_prefix=""',
-                'program_suffix="-zts"',
-                '/php-zts'
+                'program_suffix="' . $binarySuffix . '"',
             ],
             $phpConfigContent
         );
+
+        // Replace all /php paths with versioned paths
+        $phpConfigContent = preg_replace('#/php(?!' . preg_quote($binarySuffix, '#') . ')#', '/' . CreatePackages::getPrefix(), $phpConfigContent);
         $phpVersion = str_replace('.', '', SPP_PHP_VERSION);
-        $libName = 'libphp-zts-' . $phpVersion . '.so';
+        $libName = 'libphp' . $binarySuffix . '-' . $phpVersion . '.so';
         $phpConfigContent = str_replace('libphp.so', $libName, $phpConfigContent);
 
         file_put_contents($modifiedPhpConfigPath, $phpConfigContent);
@@ -86,7 +88,6 @@ class devel implements package
                 CreatePackages::getPrefix() . '-cli',
             ],
             'provides' => [
-                'php-zts-devel',
                 'php-config' . getBinarySuffix(),
                 'phpize' . getBinarySuffix(),
             ],

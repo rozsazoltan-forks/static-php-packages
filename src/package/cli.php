@@ -20,19 +20,11 @@ class cli implements package
         $prefix = CreatePackages::getPrefix();
 
         $contents = file_get_contents(INI_PATH . '/php.ini');
-        $contents = str_replace(
-            [
-                '$libdir',
-                '/etc/php-zts',
-            ],
-            [
-                getPhpLibdir(),
-                getConfdir(),
-            ],
-            $contents
-        );
+        $contents = str_replace('$libdir', getPhpLibdir(), $contents);
+        // Replace ALL hardcoded /etc/php* paths with prefix-based conf dir
+        $contents = preg_replace('#/etc/php[^/]*#', getConfdir(), $contents);
         file_put_contents(TEMP_DIR . '/php.ini', $contents);
-        $provides = ['php-zts', $prefix];
+        $provides = [$prefix];
         $versionedConflicts = CreatePackages::getVersionedConflicts('-cli');
         $replaces = $versionedConflicts;
         $conflicts = $versionedConflicts;
@@ -52,12 +44,12 @@ class cli implements package
             // Add .ini files for statically compiled extensions
             $iniFile = INI_PATH . "/extension/{$ext}.ini";
             if (file_exists($iniFile)) {
-                // Process the .ini file to replace hardcoded paths
+                // Process the .ini file to replace ALL hardcoded php paths with prefix-based paths
                 $iniContents = file_get_contents($iniFile);
-                $iniContents = str_replace(
+                $iniContents = preg_replace(
                     [
-                        '/usr/share/php-zts/',
-                        '/usr/local/share/php-zts/',
+                        '#/usr/share/php[^/]*/#',
+                        '#/usr/local/share/php[^/]*/#',
                     ],
                     [
                         getSharedir() . '/',
@@ -128,11 +120,12 @@ BASH;
 
     public function getDebuginfoFpmConfig(): array
     {
-        $src = BUILD_ROOT_PATH . '/debug/php-zts.debug';
+        $binarySuffix = getBinarySuffix();
+        $src = BUILD_ROOT_PATH . '/debug/php' . $binarySuffix . '.debug';
         if (!file_exists($src)) {
             return [];
         }
-        $target = '/usr/lib/debug/usr/bin/php' . getBinarySuffix() . '.debug';
+        $target = '/usr/lib/debug/usr/bin/php' . $binarySuffix . '.debug';
         return [
             'depends' => [CreatePackages::getPrefix() . '-cli'],
             'files' => [

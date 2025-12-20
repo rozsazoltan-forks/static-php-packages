@@ -14,17 +14,22 @@ class fpm implements package
 
     public function getFpmConfig(): array
     {
+        $prefix = CreatePackages::getPrefix();
         $contents = file_get_contents(INI_PATH . '/php-fpm.conf');
         $contents = str_replace('$confdir', getConfdir(), $contents);
+        // Replace ALL hardcoded /var/log/php* paths with prefix-based paths
+        $contents = preg_replace('#/var/log/php[^/]*/#', '/var/log/' . $prefix . '/', $contents);
+        // Replace ALL hardcoded /run/php-fpm* paths with prefix-based paths
+        $contents = preg_replace('#/run/php-fpm[^/]*/#', '/run/php-fpm' . getBinarySuffix() . '/', $contents);
         file_put_contents(TEMP_DIR . '/php-fpm.conf', $contents);
 
-        // Process the systemd service file to replace hardcoded paths
+        // Process the systemd service file to replace ALL hardcoded paths
         $serviceContents = file_get_contents(INI_PATH . '/php-fpm.service');
         $binarySuffix = getBinarySuffix();
-        $serviceContents = str_replace(
+        $serviceContents = preg_replace(
             [
-                '/usr/sbin/php-fpm-zts',
-                'RuntimeDirectory=php-fpm-zts',
+                '#/usr/sbin/php-fpm[^ ]*#',
+                '#RuntimeDirectory=php-fpm[^ ]*#',
             ],
             [
                 '/usr/sbin/php-fpm' . $binarySuffix,
@@ -34,11 +39,19 @@ class fpm implements package
         );
         file_put_contents(TEMP_DIR . '/php-fpm.service', $serviceContents);
 
-        // Process www.conf to replace hardcoded paths
+        // Process www.conf to replace ALL hardcoded paths
         $wwwContents = file_get_contents(INI_PATH . '/www.conf');
-        $wwwContents = str_replace(
-            '/var/lib/php-zts/',
-            getVarLibdir() . '/',
+        $wwwContents = preg_replace(
+            [
+                '#/var/lib/php[^/]*/#',
+                '#/var/log/php[^/]*/#',
+                '#/run/php-fpm[^/]*/#',
+            ],
+            [
+                getVarLibdir() . '/',
+                '/var/log/' . $prefix . '/',
+                '/run/php-fpm' . $binarySuffix . '/',
+            ],
             $wwwContents
         );
         file_put_contents(TEMP_DIR . '/www.conf', $wwwContents);
@@ -48,9 +61,7 @@ class fpm implements package
             'depends' => [
                 CreatePackages::getPrefix() . '-cli',
             ],
-            'provides' => [
-                'php-zts-fpm',
-            ],
+            'provides' => [],
             'replaces' => $versionedConflicts,
             'conflicts' => $versionedConflicts,
             'files' => [
@@ -77,11 +88,12 @@ class fpm implements package
 
     public function getDebuginfoFpmConfig(): array
     {
-        $src = BUILD_ROOT_PATH . '/debug/php-fpm-zts.debug';
+        $binarySuffix = getBinarySuffix();
+        $src = BUILD_ROOT_PATH . '/debug/php-fpm' . $binarySuffix . '.debug';
         if (!file_exists($src)) {
             return [];
         }
-        $target = '/usr/lib/debug/usr/sbin/php-fpm' . getBinarySuffix() . '.debug';
+        $target = '/usr/lib/debug/usr/sbin/php-fpm' . $binarySuffix . '.debug';
         return [
             'depends' => [CreatePackages::getPrefix() . '-fpm'],
             'files' => [

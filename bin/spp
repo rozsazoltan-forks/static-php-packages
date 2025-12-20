@@ -66,42 +66,39 @@ function setupGithubToken(string $method, string $url, array &$headers): void
 
 function getLibdir(): string
 {
-    $libdir = in_array(SystemUtil::getOSRelease()['dist'], ['redhat', 'centos']) ? '/usr/lib64' : '/usr/lib';
-    return $libdir;
+    // Use the SPP_TYPE constant set by BaseCommand
+    // rpm uses /usr/lib64, deb and apk use /usr/lib
+    $type = defined('SPP_TYPE') ? SPP_TYPE : 'rpm';
+    return $type === 'rpm' ? '/usr/lib64' : '/usr/lib';
 }
 
 function getConfdir(): string
 {
-    // Get the prefix which is package-type aware (php-zts for RPM, php-zts8.3 for DEB, php-zts83 for APK)
+    // Get the prefix from user-provided parameter (e.g., php-zts, php-zts8.5, php-zts85)
     $prefix = \staticphp\step\CreatePackages::getPrefix();
     return '/etc/' . $prefix;
 }
 
 function getModuledir(): string
 {
-    // Get the prefix which is package-type aware
+    // Get the prefix from user-provided parameter
     $prefix = \staticphp\step\CreatePackages::getPrefix();
     return getLibdir() . '/' . $prefix . '/modules';
 }
 
 function getPhpLibdir(): string
 {
-    // Get the prefix which is package-type aware
+    // Get the prefix from user-provided parameter
     $prefix = \staticphp\step\CreatePackages::getPrefix();
     return getLibdir() . '/' . $prefix;
 }
 
 function getBinarySuffix(): string
 {
-    // Get the suffix for binaries based on package type
-    // RPM: -zts, DEB: -zts8.3, APK: -zts83
-    $prefix = \staticphp\step\CreatePackages::getPrefix();
-
-    // Extract the version suffix from the prefix
-    // php-zts -> -zts
-    // php-zts8.3 -> -zts8.3
-    // php-zts83 -> -zts83
-    return str_replace('php', '', $prefix);
+    // Get the suffix for binaries from the prefix
+    // The prefix is set by the user, e.g., "-zts", "-zts8.5", "-zts85"
+    // This returns exactly what was passed as --prefix
+    return defined('SPP_PREFIX') ? SPP_PREFIX : '-zts';
 }
 
 function getVarLibdir(): string

@@ -57,6 +57,9 @@ class RunSPC
             return;
         }
 
+        // Get the binary suffix from the prefix (e.g., "-zts", "-nts", "-zts8.5")
+        $binarySuffix = defined('SPP_PREFIX') ? SPP_PREFIX : '-zts';
+
         $ensureRename = function (string $from, string $to) {
             if ($from === $to) {
                 return;
@@ -74,16 +77,17 @@ class RunSPC
             }
         };
 
+        // Rename debug files using the prefix
         $sapiMap = [
-            $binDir . '/php' => $debugDir . '/php-zts.debug',
-            $binDir . '/php-fpm' => $debugDir . '/php-fpm-zts.debug',
-            $binDir . '/php-cgi' => $debugDir . '/php-cgi-zts.debug',
+            $binDir . '/php' => $debugDir . '/php' . $binarySuffix . '.debug',
+            $binDir . '/php-fpm' => $debugDir . '/php-fpm' . $binarySuffix . '.debug',
+            $binDir . '/php-cgi' => $debugDir . '/php-cgi' . $binarySuffix . '.debug',
             $binDir . '/frankenphp' => $debugDir . '/frankenphp.debug',
         ];
 
-        $ensureRename($debugDir . '/php.debug', $debugDir . '/php-zts.debug');
-        $ensureRename($debugDir . '/php-fpm.debug', $debugDir . '/php-fpm-zts.debug');
-        $ensureRename($debugDir . '/php-cgi.debug', $debugDir . '/php-cgi-zts.debug');
+        $ensureRename($debugDir . '/php.debug', $debugDir . '/php' . $binarySuffix . '.debug');
+        $ensureRename($debugDir . '/php-fpm.debug', $debugDir . '/php-fpm' . $binarySuffix . '.debug');
+        $ensureRename($debugDir . '/php-cgi.debug', $debugDir . '/php-cgi' . $binarySuffix . '.debug');
 
         foreach ($sapiMap as $binary => $dbgFile) {
             if (!file_exists($binary)) {

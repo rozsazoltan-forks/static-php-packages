@@ -19,9 +19,7 @@ class cgi implements package
             'depends' => [
                 CreatePackages::getPrefix() . '-cli',
             ],
-            'provides' => [
-                'php-zts-cgi',
-            ],
+            'provides' => [],
             'replaces' => $versionedConflicts,
             'conflicts' => $versionedConflicts,
             'files' => [
@@ -37,14 +35,15 @@ class cgi implements package
 
     public function getDebuginfoFpmConfig(): array
     {
-        $src = BUILD_ROOT_PATH . '/debug/php-cgi-zts.debug';
+        $binarySuffix = getBinarySuffix();
+        $src = BUILD_ROOT_PATH . '/debug/php-cgi' . $binarySuffix . '.debug';
         if (!file_exists($src)) {
             return [];
         }
         return [
             'depends' => [CreatePackages::getPrefix() . '-cgi'],
             'files' => [
-                $src => '/usr/lib/debug/usr/bin/php-cgi' . getBinarySuffix() . '.debug',
+                $src => '/usr/lib/debug/usr/bin/php-cgi' . $binarySuffix . '.debug',
             ],
         ];
     }

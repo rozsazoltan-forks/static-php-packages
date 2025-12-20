@@ -17,9 +17,7 @@ class spx extends extension
             'depends' => [
                 CreatePackages::getPrefix() . '-cli'
             ],
-            'provides' => [
-                'php-zts-spx',
-            ],
+            'provides' => [],
             'replaces' => $versionedConflicts,
             'conflicts' => $versionedConflicts,
             'files' => [

@@ -52,8 +52,10 @@ class TwigRenderer
         }
 
         // Prepare template variables
-        $prefix = CreatePackages::getPrefix();
-        $libdir = in_array($majorOsVersion, ['7', '8', '9', '10']) ? '/usr/lib64' : '/usr/lib';
+        // Use SPP_PREFIX and SPP_TYPE constants set by BaseCommand
+        $prefix = 'php' . (defined('SPP_PREFIX') ? SPP_PREFIX : '-zts');
+        $packageType = defined('SPP_TYPE') ? SPP_TYPE : 'rpm';
+        $libdir = $packageType === 'rpm' ? '/usr/lib64' : '/usr/lib';
 
         $templateVars = [
             'php_version' => $phpVersion,
