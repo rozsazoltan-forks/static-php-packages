@@ -18,6 +18,11 @@ class devel implements package
 
         $phpConfigContent = file_get_contents($phpConfigPath);
 
+        // Replace buildroot paths with BUILD_ROOT_PATH
+        $builtDir = BASE_PATH . '/vendor/crazywhalecc/static-php-cli/buildroot';
+        $phpConfigContent = str_replace($builtDir, BUILD_ROOT_PATH, $phpConfigContent);
+        $phpConfigContent = str_replace('/app/buildroot', BUILD_ROOT_PATH, $phpConfigContent);
+
         $binarySuffix = getBinarySuffix();
         $phpConfigContent = preg_replace(
             [
@@ -40,7 +45,11 @@ class devel implements package
         // Replace all /php paths with versioned paths
         $phpConfigContent = preg_replace('#/php(?!' . preg_quote($binarySuffix, '#') . ')#', '/' . CreatePackages::getPrefix(), $phpConfigContent);
         $phpVersion = str_replace('.', '', SPP_PHP_VERSION);
-        $libName = 'libphp' . $binarySuffix . '-' . $phpVersion . '.so';
+        // Use release prefix format for libphp (leading dash removed, dots kept)
+        $releasePrefix = ltrim($binarySuffix, '-');
+        $libName = $releasePrefix !== ''
+            ? 'libphp-' . $releasePrefix . '-' . $phpVersion . '.so'
+            : 'libphp-' . $phpVersion . '.so';
         $phpConfigContent = str_replace('libphp.so', $libName, $phpConfigContent);
 
         file_put_contents($modifiedPhpConfigPath, $phpConfigContent);
@@ -50,6 +59,11 @@ class devel implements package
         $modifiedPhpizePath = TEMP_DIR . '/phpize';
 
         $phpizeContent = file_get_contents($phpizePath);
+
+        // Replace buildroot paths with BUILD_ROOT_PATH
+        $phpizeContent = str_replace($builtDir, BUILD_ROOT_PATH, $phpizeContent);
+        $phpizeContent = str_replace('/app/buildroot', BUILD_ROOT_PATH, $phpizeContent);
+
         $phpizeContent = preg_replace(
             [
                 '/^prefix=.*$/m',

@@ -68,6 +68,10 @@ class CreatePackages
             self::createSapiPackages();
             self::createSapiPackage('devel');
             self::createGenericPackage('pie');
+            // Create metapackage for APK to allow "apk add php-zts85"
+            if (in_array('apk', self::$packageTypes, true)) {
+                self::createGenericPackage('meta');
+            }
             self::createExtensionPackages();
         }
 

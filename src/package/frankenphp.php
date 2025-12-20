@@ -99,12 +99,18 @@ class frankenphp implements package
         $packageFolder = DIST_PATH . '/frankenphp/package';
         $phpVersion = str_replace('.', '', SPP_PHP_VERSION);
         $binarySuffix = getBinarySuffix();
-        $phpEmbedName = 'libphp' . $binarySuffix . '-' . $phpVersion . '.so';
+        // SPC produces libphp-{prefix}-{version}.so with only leading dash removed from prefix
+        $releasePrefix = ltrim($binarySuffix, '-');
+        $phpEmbedName = $releasePrefix !== ''
+            ? 'libphp-' . $releasePrefix . '-' . $phpVersion . '.so'
+            : 'libphp-' . $phpVersion . '.so';
 
         $ldLibraryPath = 'LD_LIBRARY_PATH=' . BUILD_LIB_PATH;
         [, $output] = shell()->execWithResult($ldLibraryPath . ' ' . BUILD_BIN_PATH . '/frankenphp --version');
         $output = implode("\n", $output);
-        preg_match('/FrankenPHP v(\d+\.\d+\.\d+)/', $output, $matches);
+        if (!preg_match('/FrankenPHP v(\d+\.\d+\.\d+)/', $output, $matches)) {
+            throw new \RuntimeException("Unable to detect FrankenPHP version from output: " . $output);
+        }
         $version = $matches[1];
 
         $name = $this->getName();
@@ -208,12 +214,18 @@ class frankenphp implements package
         $packageFolder = DIST_PATH . '/frankenphp/package';
         $phpVersion = str_replace('.', '', SPP_PHP_VERSION);
         $binarySuffix = getBinarySuffix();
-        $phpEmbedName = 'libphp' . $binarySuffix . '-' . $phpVersion . '.so';
+        // SPC produces libphp-{prefix}-{version}.so with only leading dash removed from prefix
+        $releasePrefix = ltrim($binarySuffix, '-');
+        $phpEmbedName = $releasePrefix !== ''
+            ? 'libphp-' . $releasePrefix . '-' . $phpVersion . '.so'
+            : 'libphp-' . $phpVersion . '.so';
 
         $ldLibraryPath = 'LD_LIBRARY_PATH=' . BUILD_LIB_PATH;
         [, $output] = shell()->execWithResult($ldLibraryPath . ' ' . BUILD_BIN_PATH . '/frankenphp --version');
         $output = implode("\n", $output);
-        preg_match('/FrankenPHP v(\d+\.\d+\.\d+)/', $output, $matches);
+        if (!preg_match('/FrankenPHP v(\d+\.\d+\.\d+)/', $output, $matches)) {
+            throw new \RuntimeException("Unable to detect FrankenPHP version from output: " . $output);
+        }
         $version = $matches[1];
 
         $name = $this->getName();
@@ -346,12 +358,18 @@ class frankenphp implements package
         $packageFolder = DIST_PATH . '/frankenphp/package';
         $phpVersion = str_replace('.', '', SPP_PHP_VERSION);
         $binarySuffix = getBinarySuffix();
-        $phpEmbedName = 'libphp' . $binarySuffix . '-' . $phpVersion . '.so';
+        // SPC produces libphp-{prefix}-{version}.so with only leading dash removed from prefix
+        $releasePrefix = ltrim($binarySuffix, '-');
+        $phpEmbedName = $releasePrefix !== ''
+            ? 'libphp-' . $releasePrefix . '-' . $phpVersion . '.so'
+            : 'libphp-' . $phpVersion . '.so';
 
         $ldLibraryPath = 'LD_LIBRARY_PATH=' . BUILD_LIB_PATH;
         [, $output] = shell()->execWithResult($ldLibraryPath . ' ' . BUILD_BIN_PATH . '/frankenphp --version');
         $output = implode("\n", $output);
-        preg_match('/FrankenPHP v(\d+\.\d+\.\d+)/', $output, $matches);
+        if (!preg_match('/FrankenPHP v(\d+\.\d+\.\d+)/', $output, $matches)) {
+            throw new \RuntimeException("Unable to detect FrankenPHP version from output: " . $output);
+        }
         $version = $matches[1];
 
         $name = $this->getName();
