@@ -698,7 +698,14 @@ class CreatePackages
 
         // Add provides, replaces, conflicts
         if (isset($config['provides']) && is_array($config['provides'])) {
-            $nfpmConfig['provides'] = $config['provides'];
+            // For APK cli packages: filter out the base prefix from provides since we have a separate meta package
+            // This prevents conflicts between php-zts-cli (which provides php-zts) and the php-zts meta package
+            $provides = $config['provides'];
+            if ($name === self::getPrefix() . '-cli') {
+                $provides = array_values(array_filter($provides, fn($p) => $p !== self::getPrefix()));
+                $provides = array_values($provides);
+            }
+            $nfpmConfig['provides'] = $provides;
         }
         if (isset($config['replaces']) && is_array($config['replaces'])) {
             $nfpmConfig['replaces'] = $config['replaces'];
