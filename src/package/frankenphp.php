@@ -46,25 +46,11 @@ class frankenphp implements package
 
     /**
      * Get list of versioned frankenphp packages to conflict/replace with
-     * For RPM packages, returns empty array (RPM uses module system instead)
+     * Returns empty array - versioned FrankenPHP packages can coexist
      */
     private function getVersionedConflicts(): array
     {
-        // Get the conflicts list from CreatePackages using the franken prefix
-        $phpConflicts = CreatePackages::getVersionedConflicts('');
-
-        // Transform php{prefix} conflicts to frankenphp conflicts
-        // e.g., php-zts8.3 -> frankenphp8.3, php-nts85 -> frankenphp85
-        $conflicts = [];
-        foreach ($phpConflicts as $conflict) {
-            // Replace the full php prefix with just the version part for frankenphp
-            // Extract just the version numbers
-            if (preg_match('/(\d+\.?\d*)/', $conflict, $matches)) {
-                $conflicts[] = 'frankenphp' . $matches[1];
-            }
-        }
-
-        return $conflicts;
+        return [];
     }
 
     /**
@@ -424,7 +410,7 @@ class frankenphp implements package
         }
 
         $nfpmConfig['depends'] = $depends;
-        $nfpmConfig['provides'] = ['frankenphp'];
+        $nfpmConfig['provides'] = [$this->getName() !== 'frankenphp' ? 'frankenphp' : ''];
         $nfpmConfig['replaces'] = $versionedConflicts;
         $nfpmConfig['conflicts'] = $versionedConflicts;
 
@@ -671,6 +657,16 @@ class frankenphp implements package
 
         foreach ($debFiles as $file) {
             if (preg_match("/{$name}_{$version}-(\d+)_{$architecture}\.deb$/", $file, $matches)) {
+                $iteration = (int)$matches[1];
+                $maxIteration = max($maxIteration, $iteration);
+            }
+        }
+
+        $apkPattern = DIST_APK_PATH . "/{$name}-{$version}-r*.{$architecture}.apk";
+        $apkFiles = glob($apkPattern);
+
+        foreach ($apkFiles as $file) {
+            if (preg_match("/{$name}-{$version}-r(\d+)\.{$architecture}\.apk$/", $file, $matches)) {
                 $iteration = (int)$matches[1];
                 $maxIteration = max($maxIteration, $iteration);
             }

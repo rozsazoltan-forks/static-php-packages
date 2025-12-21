@@ -18,7 +18,11 @@ fi
 
 # trust FrankenPHP certificates
 if [ -x /usr/bin/frankenphp ]; then
+	HOME=/var/lib/frankenphp /usr/bin/frankenphp run >/dev/null 2>&1 &
+	FRANKENPHP_PID=$!
+	sleep 2
 	HOME=/var/lib/frankenphp /usr/bin/frankenphp trust || true
+	kill -TERM $FRANKENPHP_PID 2>/dev/null || true
 fi
 
 if command -v rc-update >/dev/null 2>&1; then

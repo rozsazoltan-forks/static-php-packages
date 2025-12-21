@@ -1059,43 +1059,7 @@ class CreatePackages
      */
     public static function getVersionedConflicts(string $suffix): array
     {
-        // RPM packages use module system, no versioned conflicts needed
-        // Detect RPM by checking if prefix is unversioned (e.g., "-zts" or "-nts" without version number)
-        if (!preg_match('/\d/', self::$prefix)) {
-            return [];
-        }
-
-        $conflicts = [];
-        $phpVersion = SPP_PHP_VERSION;
-
-        if (!preg_match('/^(\d+)\.(\d+)/', $phpVersion, $matches)) {
-            return [];
-        }
-
-        $currentMajor = (int)$matches[1];
-        $currentMinor = (int)$matches[2];
-
-        // Extract the base prefix (without version) and whether it uses dots
-        // e.g., "-zts8.5" -> base: "-zts", usesDot: true
-        // e.g., "-nts85" -> base: "-nts", usesDot: false
-        $usesDot = str_contains(self::$prefix, '.');
-        $basePrefix = preg_replace('/\d+\.?\d*/', '', self::$prefix);
-
-        // Generate conflicts for versions 8.0 through 8.9
-        for ($minor = 0; $minor <= 9; $minor++) {
-            // Skip the current version
-            if ($currentMajor === 8 && $minor === $currentMinor) {
-                continue;
-            }
-
-            // Use the same format as the current prefix
-            if ($usesDot) {
-                $conflicts[] = "php{$basePrefix}{$currentMajor}.{$minor}{$suffix}";
-            } else {
-                $conflicts[] = "php{$basePrefix}{$currentMajor}{$minor}{$suffix}";
-            }
-        }
-
-        return $conflicts;
+        // Versioned packages can coexist - no conflicts
+        return [];
     }
 }
