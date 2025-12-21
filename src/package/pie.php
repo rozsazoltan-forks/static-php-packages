@@ -26,7 +26,7 @@ class pie implements package
         [$pharSource] = $this->prepareArtifacts();
 
         $proc = new Process(['php', $pharSource, '-V'], env: self::getCleanEnvironment());
-        $proc->setTimeout(30);
+        $proc->setTimeout(2);
         $proc->run();
         if (!$proc->isSuccessful()) {
             // Include both stdout and stderr for parsing attempt/fallback
@@ -114,26 +114,15 @@ class pie implements package
             $this->downloadLatestPiePhar($pharPath);
         }
 
-        // Process the pie wrapper script to replace hardcoded paths
-        $wrapperSource = INI_PATH . '/pie-zts';
+        // Render the pie wrapper script using Twig template
         $binarySuffix = getBinarySuffix();
         $wrapperPath = TEMP_DIR . '/pie' . $binarySuffix;
-        $wrapperContents = file_get_contents($wrapperSource);
 
-        // Replace ALL hardcoded paths with prefix-based paths
-        $wrapperContents = preg_replace(
-            [
-                '#/usr/bin/php[^ ]*#',
-                '#/usr/share/php[^ /]*/pie\.phar#',
-                '#/usr/bin/php-config[^ ]*#',
-            ],
-            [
-                '/usr/bin/php' . $binarySuffix,
-                getSharedir() . '/pie.phar',
-                '/usr/bin/php-config' . $binarySuffix,
-            ],
-            $wrapperContents
-        );
+        $wrapperContents = \staticphp\util\TwigRenderer::render('pie-wrapper.twig', [
+            'binary_suffix' => $binarySuffix,
+            'sharedir' => getSharedir(),
+        ]);
+
         file_put_contents($wrapperPath, $wrapperContents);
         chmod($wrapperPath, 0755);
 

@@ -52,6 +52,11 @@ class devel implements package
             : 'libphp-' . $phpVersion . '.so';
         $phpConfigContent = str_replace('libphp.so', $libName, $phpConfigContent);
 
+        // For APK, sed is in /bin/sed instead of /usr/bin/sed
+        if (defined('SPP_TYPE') && SPP_TYPE === 'apk') {
+            $phpConfigContent = str_replace('/usr/bin/sed', '/bin/sed', $phpConfigContent);
+        }
+
         file_put_contents($modifiedPhpConfigPath, $phpConfigContent);
         chmod($modifiedPhpConfigPath, 0755);
 
@@ -87,20 +92,30 @@ class devel implements package
             $phpizeContent
         );
 
+        // For APK, sed is in /bin/sed instead of /usr/bin/sed
+        if (defined('SPP_TYPE') && SPP_TYPE === 'apk') {
+            $phpizeContent = str_replace('/usr/bin/sed', '/bin/sed', $phpizeContent);
+        }
+
         file_put_contents($modifiedPhpizePath, $phpizeContent);
         chmod($modifiedPhpizePath, 0755);
 
         $versionedConflicts = CreatePackages::getVersionedConflicts('-devel');
+
+        // APK needs sed dependency since php-config uses sed
+        $depends = [CreatePackages::getPrefix() . '-cli'];
+        if (defined('SPP_TYPE') && SPP_TYPE === 'apk') {
+            $depends[] = 'sed';
+        }
+
         return [
             'files' => [
                 $modifiedPhpConfigPath => '/usr/bin/php-config' . getBinarySuffix(),
                 $modifiedPhpizePath => '/usr/bin/phpize' . getBinarySuffix(),
                 BUILD_INCLUDE_PATH . '/php/' => '/usr/include/' . \staticphp\step\CreatePackages::getPrefix(),
-                BUILD_LIB_PATH . '/php/build' => getPhpLibdir(),
+                BUILD_LIB_PATH . '/php/build' => getPhpLibdir() . '/build',
             ],
-            'depends' => [
-                CreatePackages::getPrefix() . '-cli',
-            ],
+            'depends' => $depends,
             'provides' => [
                 'php-config' . getBinarySuffix(),
                 'phpize' . getBinarySuffix(),

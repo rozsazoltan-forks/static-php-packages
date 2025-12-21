@@ -382,7 +382,9 @@ class frankenphp implements package
         ];
 
         // Build dependencies
-        $depends = [$phpEmbedName];
+        // For APK, depend on the embed package, not the .so file
+        $embedPackageName = CreatePackages::getPrefix() . '-embed';
+        $depends = [$embedPackageName];
 
         // Alpine library dependencies
         $alpineLibMap = [

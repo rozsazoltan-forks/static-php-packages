@@ -9,6 +9,26 @@ use Twig\Loader\FilesystemLoader;
 class TwigRenderer
 {
     /**
+     * Renders any Twig template with the given variables
+     *
+     * @param string $templateName Template file name (e.g., 'pie-wrapper.twig')
+     * @param array $variables Variables to pass to the template
+     * @return string The rendered template content
+     * @throws \RuntimeException If there's an error rendering the template
+     */
+    public static function render(string $templateName, array $variables = []): string
+    {
+        $loader = new FilesystemLoader(BASE_PATH . '/config/templates');
+        $twig = new Environment($loader);
+
+        try {
+            return $twig->render($templateName, $variables);
+        } catch (\Exception $e) {
+            throw new \RuntimeException("Error rendering template {$templateName}: " . $e->getMessage());
+        }
+    }
+
+    /**
      * Renders a Twig template with the given variables
      *
      * @param string $phpVersion PHP version to use in the template
