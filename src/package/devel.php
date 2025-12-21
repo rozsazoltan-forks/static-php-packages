@@ -102,12 +102,6 @@ class devel implements package
 
         $versionedConflicts = CreatePackages::getVersionedConflicts('-devel');
 
-        // APK needs sed dependency since php-config uses sed
-        $depends = [CreatePackages::getPrefix() . '-cli'];
-        if (defined('SPP_TYPE') && SPP_TYPE === 'apk') {
-            $depends[] = 'sed';
-        }
-
         return [
             'files' => [
                 $modifiedPhpConfigPath => '/usr/bin/php-config' . getBinarySuffix(),
@@ -115,7 +109,7 @@ class devel implements package
                 BUILD_INCLUDE_PATH . '/php/' => '/usr/include/' . \staticphp\step\CreatePackages::getPrefix(),
                 BUILD_LIB_PATH . '/php/build' => getPhpLibdir() . '/build',
             ],
-            'depends' => $depends,
+            'depends' => [CreatePackages::getPrefix() . '-cli'],
             'provides' => [
                 'php-config' . getBinarySuffix(),
                 'phpize' . getBinarySuffix(),
