@@ -14,11 +14,12 @@ class CreatePackages
     private static $sharedExtensions = [];
     private static $sapis = [];
     private static $binaryDependencies = [];
-    private static $packageTypes = [];
+    private static string $packageType = 'rpm';
     private static ?string $iterationOverride = null;
     private static string $prefix = '-zts';
+    private static bool $debuginfo = false;
 
-    public static function run($packageNames = null, ?string $iteration = null): true
+    public static function run($packageNames = null, ?string $iteration = null, ?bool $debuginfo = null): true
     {
         self::loadConfig();
 
@@ -30,11 +31,13 @@ class CreatePackages
 
         // Use values from constants set by BaseCommand
         self::$prefix = defined('SPP_PREFIX') ? SPP_PREFIX : '-zts';
-        $packageType = defined('SPP_TYPE') ? SPP_TYPE : 'rpm';
-
-        // Package type is now a single value, not a comma-separated list
-        self::$packageTypes = [$packageType];
+        self::$packageType = defined('SPP_TYPE') ? SPP_TYPE : 'rpm';
         self::$iterationOverride = $iteration !== null && $iteration !== '' ? $iteration : null;
+
+        // Set debuginfo flag from parameter
+        if ($debuginfo !== null) {
+            self::$debuginfo = $debuginfo;
+        }
 
         if ($packageNames !== null) {
             if (is_string($packageNames)) {
@@ -69,7 +72,7 @@ class CreatePackages
             self::createSapiPackage('devel');
             self::createGenericPackage('pie');
             // Create metapackage for APK to allow "apk add php-zts85"
-            if (in_array('apk', self::$packageTypes, true)) {
+            if (self::$packageType === 'apk') {
                 self::createGenericPackage('meta');
             }
             self::createExtensionPackages();
@@ -106,9 +109,12 @@ class CreatePackages
 
         self::createPackageWithFpm($package, $pkgVersion, $architecture, $iteration);
 
+        // Create debuginfo packages: always for RPM, only if --debuginfo flag set for others
         $dbgConfig = $package->getDebuginfoFpmConfig();
         if (is_array($dbgConfig) && !empty($dbgConfig['files'])) {
-            self::createPackageWithFpm($package, $pkgVersion, $architecture, $iteration, true);
+            if (self::$packageType === 'rpm' || self::$debuginfo) {
+                self::createPackageWithFpm($package, $pkgVersion, $architecture, $iteration, true);
+            }
         }
     }
 
@@ -149,7 +155,7 @@ class CreatePackages
         // FrankenPHP has a special package creation flow
         if ($sapi === 'frankenphp') {
             $package = new $packageClass();
-            $package->createPackages(self::$packageTypes, self::$binaryDependencies, self::$iterationOverride);
+            $package->createPackages(self::$packageType, self::$binaryDependencies, self::$iterationOverride, self::$debuginfo);
             return;
         }
 
@@ -162,9 +168,12 @@ class CreatePackages
 
         self::createPackageWithFpm($package, $phpVersion, $architecture, $iteration);
 
+        // Create debuginfo packages: always for RPM, only if --debuginfo flag set for others
         $dbgConfig = $package->getDebuginfoFpmConfig();
         if (is_array($dbgConfig) && !empty($dbgConfig['files'])) {
-            self::createPackageWithFpm($package, $phpVersion, $architecture, $iteration, true);
+            if (self::$packageType === 'rpm' || self::$debuginfo) {
+                self::createPackageWithFpm($package, $phpVersion, $architecture, $iteration, true);
+            }
         }
     }
 
@@ -201,9 +210,12 @@ class CreatePackages
 
         self::createPackageWithFpm($package, $extensionVersion, $architecture, $iteration);
 
+        // Create debuginfo packages: always for RPM, only if --debuginfo flag set for others
         $dbgConfig = $package->getDebuginfoFpmConfig();
         if (is_array($dbgConfig) && !empty($dbgConfig['files'])) {
-            self::createPackageWithFpm($package, $extensionVersion, $architecture, $iteration, true);
+            if (self::$packageType === 'rpm' || self::$debuginfo) {
+                self::createPackageWithFpm($package, $extensionVersion, $architecture, $iteration, true);
+            }
         }
     }
 
@@ -274,15 +286,15 @@ class CreatePackages
 
     private static function createPackageWithFpm(\staticphp\package $package, string $phpVersion, string $architecture, string $iteration, bool $isDebuginfo = false): void
     {
-        if (in_array('rpm', self::$packageTypes, true)) {
+        if (self::$packageType === 'rpm') {
             self::createRpmPackage($package, $phpVersion, $architecture, $iteration, $isDebuginfo);
         }
 
-        if (in_array('deb', self::$packageTypes, true)) {
+        if (self::$packageType === 'deb') {
             self::createDebPackage($package, $phpVersion, $architecture, $iteration, $isDebuginfo);
         }
 
-        if (in_array('apk', self::$packageTypes, true)) {
+        if (self::$packageType === 'apk') {
             self::createApkPackage($package, $phpVersion, $architecture, $iteration, $isDebuginfo);
         }
     }
@@ -1057,6 +1069,11 @@ class CreatePackages
         // Return the prefix set by the user, prepended with "php"
         // For example: "-zts" becomes "php-zts", "-zts8.5" becomes "php-zts8.5"
         return 'php' . self::$prefix;
+    }
+
+    public static function getDebuginfo(): bool
+    {
+        return self::$debuginfo;
     }
 
     /**

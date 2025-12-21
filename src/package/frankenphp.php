@@ -56,7 +56,7 @@ class frankenphp implements package
     /**
      * Create FrankenPHP packages (both RPM and DEB)
      */
-    public function createPackages(array $packageTypes, array $binaryDependencies, ?string $iterationOverride = null): void
+    public function createPackages(string $packageType, array $binaryDependencies, ?string $iterationOverride = null, bool $debuginfo = false): void
     {
         echo "Creating FrankenPHP package\n";
 
@@ -64,21 +64,21 @@ class frankenphp implements package
 
         $this->prepareFrankenPhpRepository();
 
-        if (in_array('rpm', $packageTypes, true)) {
-            $this->createRpmPackage($architecture, $binaryDependencies, $iterationOverride);
+        if ($packageType === 'rpm') {
+            $this->createRpmPackage($architecture, $binaryDependencies, $iterationOverride, $debuginfo);
         }
-        if (in_array('deb', $packageTypes, true)) {
-            $this->createDebPackage($architecture, $binaryDependencies, $iterationOverride);
+        if ($packageType === 'deb') {
+            $this->createDebPackage($architecture, $binaryDependencies, $iterationOverride, $debuginfo);
         }
-        if (in_array('apk', $packageTypes, true)) {
-            $this->createApkPackage($architecture, $binaryDependencies, $iterationOverride);
+        if ($packageType === 'apk') {
+            $this->createApkPackage($architecture, $binaryDependencies, $iterationOverride, $debuginfo);
         }
     }
 
     /**
      * Create RPM package for FrankenPHP
      */
-    public function createRpmPackage(string $architecture, array $binaryDependencies, ?string $iterationOverride = null): void
+    public function createRpmPackage(string $architecture, array $binaryDependencies, ?string $iterationOverride = null, bool $debuginfo = false): void
     {
         echo "Creating RPM package for FrankenPHP...\n";
 
@@ -193,7 +193,7 @@ class frankenphp implements package
     /**
      * Create DEB package for FrankenPHP
      */
-    public function createDebPackage(string $architecture, array $binaryDependencies, ?string $iterationOverride = null): void
+    public function createDebPackage(string $architecture, array $binaryDependencies, ?string $iterationOverride = null, bool $debuginfo = false): void
     {
         echo "Creating DEB package for FrankenPHP...\n";
 
@@ -306,9 +306,10 @@ class frankenphp implements package
 
         echo "DEB package created: " . DIST_DEB_PATH . "/{$name}-{$version}-{$debIteration}.{$architecture}.deb\n";
 
-        // Create FrankenPHP debuginfo package if debug file exists
-        $frankenDbg = BUILD_ROOT_PATH . '/debug/frankenphp.debug';
-        if (file_exists($frankenDbg)) {
+        // Create FrankenPHP debuginfo package if debug file exists (only if --debuginfo flag set for DEB)
+        if ($debuginfo) {
+            $frankenDbg = BUILD_ROOT_PATH . '/debug/frankenphp.debug';
+            if (file_exists($frankenDbg)) {
             $dbgArgs = [
                 'fpm',
                 '-s', 'dir',
@@ -331,13 +332,14 @@ class frankenphp implements package
             if (!$dbgProcess->isSuccessful()) {
                 throw new \RuntimeException("DEB debuginfo package creation failed: " . $dbgProcess->getErrorOutput());
             }
+            }
         }
     }
 
     /**
      * Create APK package for FrankenPHP
      */
-    public function createApkPackage(string $architecture, array $binaryDependencies, ?string $iterationOverride = null): void
+    public function createApkPackage(string $architecture, array $binaryDependencies, ?string $iterationOverride = null, bool $debuginfo = false): void
     {
         echo "Creating APK package for FrankenPHP using nfpm...\n";
 
@@ -494,10 +496,12 @@ class frankenphp implements package
 
         echo "APK package created: {$outputFile}\n";
 
-        // Create FrankenPHP debuginfo package if debug file exists
-        $frankenDbg = BUILD_ROOT_PATH . '/debug/frankenphp.debug';
-        if (file_exists($frankenDbg)) {
-            $this->createApkDebuginfo($name, $version, $iteration, $architecture, $frankenDbg, $frankenphpSuffix);
+        // Create FrankenPHP debuginfo package if debug file exists (only if --debuginfo flag set for APK)
+        if ($debuginfo) {
+            $frankenDbg = BUILD_ROOT_PATH . '/debug/frankenphp.debug';
+            if (file_exists($frankenDbg)) {
+                $this->createApkDebuginfo($name, $version, $iteration, $architecture, $frankenDbg, $frankenphpSuffix);
+            }
         }
     }
 
