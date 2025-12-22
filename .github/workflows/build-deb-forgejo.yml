@@ -109,7 +109,7 @@ jobs:
             -   name: Upload to Forgejo
                 working-directory: dist/deb
                 run: |
-                    ../../bin/forgejo-helper upload deb "${{ env.PHP_VERSION_SHORT }}" "${{ secrets.FORGEJO_PASSWORD }}" "*.deb"
+                    ../../bin/forgejo-helper upload debian "${{ env.PHP_VERSION_SHORT }}" "${{ secrets.FORGEJO_PASSWORD }}" "*.deb"
 
             -   name: Upload logs on failure
                 if: ${{ failure() }}
