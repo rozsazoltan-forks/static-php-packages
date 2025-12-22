@@ -122,8 +122,8 @@ jobs:
                 if: ${{ failure() && inputs.debug_tmate == true }}
                 run: |
                     case "${RPM_ARCH}" in
-                      x86_64) arch="amd64" ;;
-                      arm64)  arch="arm64v8" ;;
+                      x86_64)  arch="amd64" ;;
+                      aarch64) arch="arm64v8" ;;
                     esac
                     dir="tmate-2.4.0-static-linux-$arch"
                     curl -L "https://github.com/tmate-io/tmate/releases/download/2.4.0/$dir.tar.xz" | tar -xJ -O "$dir/tmate" > /usr/bin/tmate
@@ -134,5 +134,5 @@ jobs:
                 uses: mxschmitt/action-tmate@c0afd6f790e3a5564914980036ebf83216678101 # v3
                 with:
                     install-dependencies: false
-                    sudo: false
+                    sudo: true
                 timeout-minutes: 30
