@@ -121,7 +121,7 @@ BASH;
     public function getDebuginfoFpmConfig(): array
     {
         $binarySuffix = getBinarySuffix();
-        $src = BUILD_ROOT_PATH . '/debug/php' . $binarySuffix . '.debug';
+        $src = BUILD_ROOT_PATH . '/debug/php.debug';
         if (!file_exists($src)) {
             return [];
         }

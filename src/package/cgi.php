@@ -36,7 +36,7 @@ class cgi implements package
     public function getDebuginfoFpmConfig(): array
     {
         $binarySuffix = getBinarySuffix();
-        $src = BUILD_ROOT_PATH . '/debug/php-cgi' . $binarySuffix . '.debug';
+        $src = BUILD_ROOT_PATH . '/debug/php-cgi.debug';
         if (!file_exists($src)) {
             return [];
         }

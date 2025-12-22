@@ -89,7 +89,7 @@ class fpm implements package
     public function getDebuginfoFpmConfig(): array
     {
         $binarySuffix = getBinarySuffix();
-        $src = BUILD_ROOT_PATH . '/debug/php-fpm' . $binarySuffix . '.debug';
+        $src = BUILD_ROOT_PATH . '/debug/php-fpm.debug';
         if (!file_exists($src)) {
             return [];
         }

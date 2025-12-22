@@ -57,7 +57,9 @@ class embed implements package
         $libName = $releasePrefix !== ''
             ? 'libphp-' . $releasePrefix . '-' . $phpVersionDigits . '.so'
             : 'libphp-' . $phpVersionDigits . '.so';
-        $src = BUILD_ROOT_PATH . '/debug/' . $libName . '.debug';
+
+        // Debug file is just libphp.so.debug (without version/prefix)
+        $src = BUILD_ROOT_PATH . '/debug/libphp.so.debug';
         if (!file_exists($src)) {
             return [];
         }
