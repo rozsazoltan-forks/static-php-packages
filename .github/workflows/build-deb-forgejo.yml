@@ -3,6 +3,18 @@ name: Build and upload Debian packages to Forgejo
 on:
     workflow_dispatch:
         inputs:
+            iteration:
+                description: "Optional: override package iteration (integer). Leave empty for auto"
+                required: false
+                default: ""
+            php_versions:
+                description: "Optional: PHP versions (comma-separated, e.g., 8.2,8.5). Leave empty for all"
+                required: false
+                default: ""
+            architectures:
+                description: "Optional: Architectures (comma-separated, e.g., amd64,arm64). Leave empty for all"
+                required: false
+                default: ""
             debug_tmate:
                 description: "Open tmate session on failure"
                 type: boolean
@@ -15,7 +27,46 @@ permissions:
     contents: read
 
 jobs:
+    setup-matrix:
+        runs-on: ubuntu-24.04
+        permissions:
+            contents: read
+        outputs:
+            matrix: ${{ steps.set-matrix.outputs.matrix }}
+        steps:
+            -   name: Set up matrix
+                id: set-matrix
+                run: |
+                    # Default values
+                    default_php='["8.2","8.3","8.4","8.5"]'
+                    default_arch='["amd64","arm64"]'
+
+                    # Parse inputs or use defaults
+                    if [[ -n "${INPUTS_PHP_VERSIONS}" ]]; then
+                        php_versions=$(echo "${INPUTS_PHP_VERSIONS}" | jq -R 'split(",") | map(gsub("^\\s+|\\s+$";""))')
+                    else
+                        php_versions=$default_php
+                    fi
+
+                    if [[ -n "${INPUTS_ARCHITECTURES}" ]]; then
+                        arch_versions=$(echo "${INPUTS_ARCHITECTURES}" | jq -R 'split(",") | map(gsub("^\\s+|\\s+$";""))')
+                    else
+                        arch_versions=$default_arch
+                    fi
+
+                    # Create matrix JSON (compact, single line)
+                    matrix=$(jq -nc \
+                        --argjson php "$php_versions" \
+                        --argjson arch "$arch_versions" \
+                        '{"php-version":$php,"arch":$arch}')
+
+                    echo "matrix=$matrix" >> $GITHUB_OUTPUT
+                env:
+                    INPUTS_PHP_VERSIONS: ${{ inputs.php_versions }}
+                    INPUTS_ARCHITECTURES: ${{ inputs.architectures }}
+
     build:
+        needs: setup-matrix
         name: Build for ${{ matrix.arch }} PHP ${{ matrix.php-version }}
         runs-on: ubuntu-24.04${{ matrix.arch == 'arm64' && '-arm' || '' }}
         container:
@@ -27,12 +78,11 @@ jobs:
                 shell: bash
         strategy:
             fail-fast: false
-            matrix:
-                php-version: ['8.2', '8.3', '8.4', '8.5']
-                arch: ['amd64', 'arm64']
+            matrix: ${{ fromJson(needs.setup-matrix.outputs.matrix) }}
         env:
             GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
             BASH_ENV: /tmp/gha-bashenv
+            ITERATION: ${{ inputs.iteration || '' }}
 
         steps:
             -   name: Checkout code
@@ -104,7 +154,12 @@ jobs:
                     rm downloads.tar.gz
 
             -   name: Build PHP packages
-                run: bin/spp all --target=native-native-gnu --phpv=${{ matrix.php-version }} --prefix="-zts" --type=deb
+                run: |
+                    if [[ -n "${ITERATION}" ]]; then
+                        bin/spp all --target=native-native-gnu --phpv=${{ matrix.php-version }} --prefix="-zts" --type=deb --iteration="${ITERATION}"
+                    else
+                        bin/spp all --target=native-native-gnu --phpv=${{ matrix.php-version }} --prefix="-zts" --type=deb
+                    fi
 
             -   name: Upload to Forgejo
                 working-directory: dist/deb
@@ -134,5 +189,5 @@ jobs:
                 uses: mxschmitt/action-tmate@c0afd6f790e3a5564914980036ebf83216678101 # v3
                 with:
                     install-dependencies: false
-                    sudo: true
+                    sudo: false
                 timeout-minutes: 30
