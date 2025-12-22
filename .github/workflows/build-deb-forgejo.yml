@@ -16,8 +16,8 @@ permissions:
 
 jobs:
     build:
-        name: Build Debian packages for PHP ${{ matrix.php_version }} on ${{ matrix.arch }}
-        runs-on: ${{ matrix.arch == 'aarch64' && 'ubuntu-24.04-arm64' || 'ubuntu-24.04' }}
+        name: Build for ${{ matrix.arch }} PHP ${{ matrix.php-version }}
+        runs-on: ubuntu-24.04${{ matrix.arch == 'arm64' && '-arm' || '' }}
         container:
             image: debian:11
         permissions:
@@ -26,13 +26,13 @@ jobs:
             run:
                 shell: bash
         strategy:
+            fail-fast: false
             matrix:
-                php_version: ['8.2', '8.3', '8.4', '8.5']
-                arch: ['x86_64', 'aarch64']
+                php-version: ['8.2', '8.3', '8.4', '8.5']
+                arch: ['amd64', 'arm64']
         env:
             GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
             BASH_ENV: /tmp/gha-bashenv
-            PHP_VERSION: ${{ matrix.php_version }}
 
         steps:
             -   name: Checkout code
@@ -41,10 +41,18 @@ jobs:
                     ref: versioned
                     persist-credentials: false
 
+            -   name: Set architecture variables
+                run: |
+                    if [[ "${{ matrix.arch }}" == "arm64" ]]; then
+                      echo "RPM_ARCH=aarch64" >> $GITHUB_ENV
+                    else
+                      echo "RPM_ARCH=x86_64" >> $GITHUB_ENV
+                    fi
+
             -   name: Set PHP version short
                 run: |
                     # Convert "8.5" to "85"
-                    PHP_VERSION_SHORT=$(echo "$PHP_VERSION" | tr -d '.')
+                    PHP_VERSION_SHORT=$(echo "${{ matrix.php-version }}" | tr -d '.')
                     echo "PHP_VERSION_SHORT=$PHP_VERSION_SHORT" >> $GITHUB_ENV
 
             -   name: Bootstrap container
@@ -56,13 +64,13 @@ jobs:
 
             -   name: Install cmake
                 run: |
-                    curl -o cmake.tar.gz -fsSL https://github.com/Kitware/CMake/releases/download/v3.31.4/cmake-3.31.4-linux-${{ matrix.arch }}.tar.gz && \
+                    curl -o cmake.tar.gz -fsSL https://github.com/Kitware/CMake/releases/download/v3.31.4/cmake-3.31.4-linux-$(uname -m).tar.gz && \
                     sudo tar -xzf cmake.tar.gz -C /usr/local --strip-components=1 && \
                     rm cmake.tar.gz
 
             -   name: Install composer
                 run: |
-                    sudo curl -L https://files.henderkes.com/${{ matrix.arch }}-linux/php -o /usr/local/bin/php
+                    sudo curl -L https://files.henderkes.com/${RPM_ARCH}-linux/php -o /usr/local/bin/php
                     sudo chmod +x /usr/local/bin/php
                     sudo curl -sS https://raw.githubusercontent.com/composer/getcomposer.org/f3108f64b4e1c1ce6eb462b159956461592b3e3e/web/installer | php -- --quiet
                     sudo mv composer.phar /usr/local/bin/composer
@@ -96,7 +104,7 @@ jobs:
                     rm downloads.tar.gz
 
             -   name: Build PHP packages
-                run: bin/spp all --target=${{ matrix.arch }}-native-gnu --phpv=${{ matrix.php_version }} --prefix="-zts" --type=deb
+                run: bin/spp all --target=native-native-gnu --phpv=${{ matrix.php-version }} --prefix="-zts" --type=deb
 
             -   name: Upload to Forgejo
                 working-directory: dist/deb
@@ -107,7 +115,7 @@ jobs:
                 if: ${{ failure() }}
                 uses: actions/upload-artifact@v4
                 with:
-                    name: build-logs-deb-${{ matrix.arch }}-php${{ matrix.php_version }}
+                    name: build-logs-${{ matrix.arch }}-php${{ matrix.php-version }}
                     path: vendor/crazywhalecc/static-php-cli/log
 
             -   name: Setup tmate session
