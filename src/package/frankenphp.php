@@ -226,25 +226,32 @@ class frankenphp implements package
 
         $name = $this->getName();
 
+        // Convert system architecture to Debian architecture naming
+        $debArch = match($architecture) {
+            'x86_64' => 'amd64',
+            'aarch64' => 'arm64',
+            default => $architecture,
+        };
+
         // Calculate iteration for DEB (with possible override)
-        $computed = (string)$this->getNextIteration($name, $version, $architecture, 'deb');
+        $computed = (string)$this->getNextIteration($name, $version, $debArch, 'deb');
         $iteration = $iterationOverride ?? $computed;
         $debIteration = $iteration;
 
         $versionedConflicts = $this->getVersionedConflicts();
 
-        // Generate full package filename with PHP version suffix
-        $phpSuffix = $this->getPhpVersionSuffix();
-        $packageFile = DIST_DEB_PATH . "/{$name}_{$version}-{$debIteration}.{$phpSuffix}_{$architecture}.deb";
+        // Debian filename format: {name}_{version}-{revision}_{arch}.deb
+        $packageFile = DIST_DEB_PATH . "/{$name}_{$version}-{$debIteration}_{$debArch}.deb";
 
         $fpmArgs = [
             'fpm',
             '-s', 'dir',
             '-t', 'deb',
             '--deb-compression', 'xz',
-            '-p', $packageFile,  // Full path with phpSuffix in filename
+            '-p', $packageFile,
             '-n', $name,
             '-v', $version,
+            '--architecture', $debArch,
             '--license', $this->getLicense(),
             '--config-files', '/etc/frankenphp/Caddyfile',
             '--provides', 'frankenphp',
@@ -325,17 +332,18 @@ class frankenphp implements package
         if ($debuginfo) {
             $frankenDbg = BUILD_ROOT_PATH . '/debug/frankenphp.debug';
             if (file_exists($frankenDbg)) {
-                $dbgPackageFile = DIST_DEB_PATH . "/{$name}-debuginfo_{$version}-{$debIteration}.{$phpSuffix}_{$architecture}.deb";
+                $dbgDebName = "{$name}-debuginfo";
+                $dbgPackageFile = DIST_DEB_PATH . "/{$dbgDebName}_{$version}-{$debIteration}_{$debArch}.deb";
                 $dbgArgs = [
                     'fpm',
                     '-s', 'dir',
                     '-t', 'deb',
                     '--deb-compression', 'xz',
                     '-p', $dbgPackageFile,
-                    '-n', $name . '-debuginfo',
+                    '-n', $dbgDebName,
                     '-v', $version,
                     '--iteration', $debIteration,
-                    '--architecture', $architecture,
+                    '--architecture', $debArch,
                     '--license', $this->getLicense(),
                     '--depends', sprintf('%s (= %s-%s)', $name, $version, $debIteration),
                     $frankenDbg . '=/usr/lib/debug/usr/bin/frankenphp.debug',
@@ -688,16 +696,15 @@ class frankenphp implements package
         }
 
         if ($packageType === 'deb') {
-            // DEB: {name}_{version}-{iteration}.{phpSuffix}_{arch}.deb
-            // Also match old format without phpSuffix: {name}_{version}-{iteration}_{arch}.deb
-            $debPattern = DIST_DEB_PATH . "/{$name}_{$version}-*.deb";
+            // DEB: {name}-{phpSuffix}_{version}-{iteration}_{arch}.deb
+            // Also match old formats for backwards compatibility
+            $debPattern = DIST_DEB_PATH . "/{$name}*.deb";
             $debFiles = glob($debPattern);
 
             foreach ($debFiles as $file) {
-                // Match both formats:
-                // - New: {name}_{version}-{iteration}.{phpSuffix}_{arch}.deb
-                // - Old: {name}_{version}-{iteration}_{arch}.deb (without phpSuffix)
-                if (preg_match("/{$name}_" . preg_quote($version, '/') . "-(\d+)(?:\.[^_]+)?_{$architecture}\.deb$/", $file, $matches)) {
+                // Match new format: {name}-{phpSuffix}_{version}-{iteration}_{arch}.deb
+                // The name might have the phpSuffix included or not
+                if (preg_match("/" . preg_quote($name, '/') . "(?:-[^_]+)?_" . preg_quote($version, '/') . "-(\d+)_{$architecture}\.deb$/", $file, $matches)) {
                     $iteration = (int)$matches[1];
                     $maxIteration = max($maxIteration, $iteration);
                 }

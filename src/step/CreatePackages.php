@@ -454,8 +454,15 @@ class CreatePackages
 
         echo "Creating DEB package for {$name}...\n";
 
+        // Convert system architecture to Debian architecture naming
+        $debArch = match($architecture) {
+            'x86_64' => 'amd64',
+            'aarch64' => 'arm64',
+            default => $architecture,
+        };
+
         // Calculate iteration for DEB (with possible override)
-        $computed = (string)self::getNextIteration($name, $phpVersion, $architecture, 'deb');
+        $computed = (string)self::getNextIteration($name, $phpVersion, $debArch, 'deb');
         $iteration = self::$iterationOverride ?? $computed;
 
         //$osRelease = parse_ini_file('/etc/os-release');
@@ -464,19 +471,18 @@ class CreatePackages
         $debIteration = $iteration;
         $fullVersion = "{$phpVersion}-{$debIteration}";
 
-        // Generate full package filename with PHP version suffix
-        $phpSuffix = self::getPhpVersionSuffix();
-        $packageFile = DIST_DEB_PATH . "/{$name}_{$phpVersion}-{$debIteration}.{$phpSuffix}_{$architecture}.deb";
+        // Debian filename format: {name}_{version}-{revision}_{arch}.deb
+        $packageFile = DIST_DEB_PATH . "/{$name}_{$phpVersion}-{$debIteration}_{$debArch}.deb";
 
         $fpmArgs = [...[
             'fpm',
             '-s', 'dir',
             '-t', 'deb',
             '--deb-compression', 'xz',
-            '-p', $packageFile,  // Full path with phpSuffix in filename
+            '-p', $packageFile,
             '--name', $name,
             '--version', $phpVersion,
-            '--architecture', $architecture,
+            '--architecture', $debArch,
             '--iteration', $debIteration,       // Debian revision (includes distro)
             '--description', "Static PHP Package for {$name}",
             '--license', $package->getLicense(),
@@ -1067,16 +1073,13 @@ class CreatePackages
         }
 
         if ($packageType === 'deb') {
-            // DEB: {name}_{version}-{iteration}.{phpSuffix}_{arch}.deb
-            // Also match old format without phpSuffix: {name}_{version}-{iteration}_{arch}.deb
+            // DEB: {name}_{version}-{iteration}_{arch}.deb
             $debPattern = DIST_DEB_PATH . "/{$name}_{$phpVersion}-*.deb";
             $debFiles = glob($debPattern);
 
             foreach ($debFiles as $file) {
-                // Match both formats:
-                // - New: {name}_{version}-{iteration}.{phpSuffix}_{arch}.deb
-                // - Old: {name}_{version}-{iteration}_{arch}.deb (without phpSuffix)
-                if (preg_match("/{$name}_" . preg_quote($phpVersion, '/') . "-(\d+)(?:\.[^_]+)?_{$architecture}\.deb$/", $file, $matches)) {
+                // Match: {name}_{version}-{iteration}_{arch}.deb
+                if (preg_match("/" . preg_quote($name, '/') . "_" . preg_quote($phpVersion, '/') . "-(\d+)_{$architecture}\.deb$/", $file, $matches)) {
                     $iteration = (int)$matches[1];
                     $maxIteration = max($maxIteration, $iteration);
                 }

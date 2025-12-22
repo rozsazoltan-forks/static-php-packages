@@ -18,11 +18,20 @@ jobs:
         env:
             GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         steps:
-            -   name: Set up PHP
-                uses: shivammathur/setup-php@44454db4f0199b8b9685a5d763dc37cbf79108e1 # v2
-                with:
-                    php-version: '8.4'
-                    tools: composer:v2
+            -   name: Set architecture variables
+                run: |
+                    if [[ "${{ matrix.arch }}" == "arm64" ]]; then
+                      echo "RPM_ARCH=aarch64" >> $GITHUB_ENV
+                    else
+                      echo "RPM_ARCH=x86_64" >> $GITHUB_ENV
+                    fi
+
+            -   name: Install composer
+                run: |
+                    sudo curl -L https://files.henderkes.com/${RPM_ARCH}-linux/php -o /usr/local/bin/php
+                    sudo chmod +x /usr/local/bin/php
+                    sudo curl -sS https://raw.githubusercontent.com/composer/getcomposer.org/f3108f64b4e1c1ce6eb462b159956461592b3e3e/web/installer | php -- --quiet
+                    sudo mv composer.phar /usr/local/bin/composer
 
             -   name: Checkout code
                 uses: actions/checkout@v4
@@ -56,5 +65,11 @@ jobs:
             -   name: Trigger build-gcc-deb-packages workflow
                 if: success()
                 run: gh workflow run build-gcc-deb-packages.yml
+                env:
+                    GH_TOKEN: ${{ secrets.GH_PAT }} # use our own user as the triggering user
+
+            -   name: Trigger build-deb-forgejo workflow on versioned branch
+                if: success()
+                run: gh workflow run build-deb-forgejo.yml --ref versioned
                 env:
                     GH_TOKEN: ${{ secrets.GH_PAT }} # use our own user as the triggering user

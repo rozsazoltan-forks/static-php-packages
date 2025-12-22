@@ -1,0 +1,116 @@
+name: Build and upload Debian packages to Forgejo
+
+on:
+    workflow_dispatch:
+        inputs:
+            debug_tmate:
+                description: "Open tmate session on failure"
+                type: boolean
+                required: false
+                default: false
+    repository_dispatch:
+        types: [spc-download]
+
+permissions:
+    contents: read
+
+jobs:
+    build:
+        name: Build Debian packages for PHP ${{ matrix.php_version }} on ${{ matrix.arch }}
+        runs-on: ubuntu-24.04
+        container:
+            image: debian:11
+        permissions:
+            contents: read
+        defaults:
+            run:
+                shell: bash
+        strategy:
+            matrix:
+                php_version: ['8.2', '8.3', '8.4', '8.5']
+                arch: ['x86_64', 'aarch64']
+        env:
+            GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+            BASH_ENV: /tmp/gha-bashenv
+            PHP_VERSION: ${{ matrix.php_version }}
+
+        steps:
+            -   name: Checkout code
+                uses: actions/checkout@v4
+                with:
+                    ref: versioned
+                    persist-credentials: false
+
+            -   name: Set PHP version short
+                run: |
+                    # Convert "8.5" to "85"
+                    PHP_VERSION_SHORT=$(echo "$PHP_VERSION" | tr -d '.')
+                    echo "PHP_VERSION_SHORT=$PHP_VERSION_SHORT" >> $GITHUB_ENV
+
+            -   name: Bootstrap container
+                run: |
+                    apt-get update
+                    apt-get install -y ruby build-essential jq curl gzip sudo git gnupg tar zstd python3 python3-requests
+                    apt-get upgrade -y
+                    gem install --no-document fpm
+
+            -   name: Install cmake
+                run: |
+                    curl -o cmake.tar.gz -fsSL https://github.com/Kitware/CMake/releases/download/v3.31.4/cmake-3.31.4-linux-${{ matrix.arch }}.tar.gz && \
+                    sudo tar -xzf cmake.tar.gz -C /usr/local --strip-components=1 && \
+                    rm cmake.tar.gz
+
+            -   name: Install composer
+                run: |
+                    sudo curl -L https://files.henderkes.com/${{ matrix.arch }}-linux/php -o /usr/local/bin/php
+                    sudo chmod +x /usr/local/bin/php
+                    sudo curl -sS https://raw.githubusercontent.com/composer/getcomposer.org/f3108f64b4e1c1ce6eb462b159956461592b3e3e/web/installer | php -- --quiet
+                    sudo mv composer.phar /usr/local/bin/composer
+
+            -   name: Prepare cache directories
+                run: |
+                    composer config -g cache-dir
+
+            -   name: Cache Composer downloads
+                uses: actions/cache@v4
+                with:
+                    path: ~/.cache/composer
+                    key: composer-${{ hashFiles('**/composer.lock') }}
+                    restore-keys: |
+                        composer-
+
+            -   name: Install vendor
+                run: composer install --no-interaction --prefer-dist --no-progress
+
+            -   name: Download artifact from spc-download.yml
+                uses: dawidd6/action-download-artifact@ac66b43f0e6a346234dd65d4d0c8fbb31cb316e5 # v11
+                with:
+                    workflow: spc-download.yml
+                    name: downloads-tarball
+                    branch: master
+
+            -   name: Extract with permissions
+                run: |
+                    mkdir -p vendor/crazywhalecc/static-php-cli/downloads
+                    tar -xzf downloads.tar.gz -C vendor/crazywhalecc/static-php-cli/downloads
+                    rm downloads.tar.gz
+
+            -   name: Build PHP packages
+                run: bin/spp all --target=${{ matrix.arch }}-native-gnu --phpv=${{ matrix.php_version }} --prefix="-zts" --type=deb
+
+            -   name: Upload to Forgejo
+                working-directory: dist/deb
+                run: |
+                    ../../bin/forgejo-helper upload deb "${{ env.PHP_VERSION_SHORT }}" "${{ secrets.FORGEJO_PASSWORD }}" "*.deb"
+
+            -   name: Upload logs on failure
+                if: ${{ failure() }}
+                uses: actions/upload-artifact@v4
+                with:
+                    name: build-logs-deb-${{ matrix.arch }}-php${{ matrix.php_version }}
+                    path: vendor/crazywhalecc/static-php-cli/log
+
+            -   name: Setup tmate session
+                if: ${{ failure() && inputs.debug_tmate == true }}
+                uses: mxschmitt/action-tmate@c0afd6f790e3a5564914980036ebf83216678101 # v3
+                timeout-minutes: 10
