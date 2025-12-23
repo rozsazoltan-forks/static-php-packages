@@ -461,18 +461,34 @@ class CreatePackages
             default => $architecture,
         };
 
+        // For DEB packages, append PHP version to package version for extensions
+        // This ensures proper version ordering when the same extension version is built for different PHP versions
+        // e.g., redis 6.0.2+php85 is higher than redis 6.0.2+php83
+        [$fullPhpVersion] = self::getPhpVersionAndArchitecture();
+        $debVersion = $phpVersion;
+
+        // If package version differs from PHP version, it's an extension - append PHP version
+        if ($phpVersion !== $fullPhpVersion) {
+            if (preg_match('/^(\d+)\.(\d+)/', $fullPhpVersion, $phpMatches)) {
+                $phpVersionSuffix = $phpMatches[1] . $phpMatches[2]; // e.g., "85" from "8.5"
+            } else {
+                $phpVersionSuffix = str_replace('.', '', $fullPhpVersion);
+            }
+            $debVersion = $phpVersion . '+php' . $phpVersionSuffix;
+        }
+
         // Calculate iteration for DEB (with possible override)
-        $computed = (string)self::getNextIteration($name, $phpVersion, $debArch, 'deb');
+        $computed = (string)self::getNextIteration($name, $debVersion, $debArch, 'deb');
         $iteration = self::$iterationOverride ?? $computed;
 
         //$osRelease = parse_ini_file('/etc/os-release');
         //$distroCodename = $osRelease['VERSION_CODENAME'] ?? null;
         //$debIteration = $distroCodename !== '' ? "{$iteration}~{$distroCodename}" : $iteration;
         $debIteration = $iteration;
-        $fullVersion = "{$phpVersion}-{$debIteration}";
+        $fullVersion = "{$debVersion}-{$debIteration}";
 
         // Debian filename format: {name}_{version}-{revision}_{arch}.deb
-        $packageFile = DIST_DEB_PATH . "/{$name}_{$phpVersion}-{$debIteration}_{$debArch}.deb";
+        $packageFile = DIST_DEB_PATH . "/{$name}_{$debVersion}-{$debIteration}_{$debArch}.deb";
 
         $fpmArgs = [...[
             'fpm',
@@ -481,7 +497,7 @@ class CreatePackages
             '--deb-compression', 'xz',
             '-p', $packageFile,
             '--name', $name,
-            '--version', $phpVersion,
+            '--version', $debVersion,
             '--architecture', $debArch,
             '--iteration', $debIteration,       // Debian revision (includes distro)
             '--description', "Static PHP Package for {$name}",
