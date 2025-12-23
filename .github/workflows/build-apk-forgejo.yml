@@ -99,9 +99,8 @@ jobs:
             -   name: Install APT dependencies
                 run: |
                     sudo apt-get update
-                    sudo apt-get install -y curl ruby build-essential tar zstd python3 python3-requests
+                    sudo apt-get install -y curl build-essential tar zstd python3 python3-requests
                     sudo apt-get upgrade -y
-                    sudo gem install fpm
 
             -   name: Install nfpm
                 run: |
