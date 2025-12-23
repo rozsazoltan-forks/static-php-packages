@@ -88,7 +88,6 @@ jobs:
             -   name: Checkout code
                 uses: actions/checkout@v4
                 with:
-                    ref: versioned
                     persist-credentials: false
 
             -   name: Set architecture variables

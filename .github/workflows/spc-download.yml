@@ -62,14 +62,20 @@ jobs:
                 env:
                     GH_TOKEN: ${{ secrets.GH_PAT }} # use our own user as the triggering user
 
-            -   name: Trigger build-gcc-deb-packages workflow
+#            -   name: Trigger build-gcc-deb-packages workflow
+#                if: success()
+#                run: gh workflow run build-gcc-deb-packages.yml
+#                env:
+#                    GH_TOKEN: ${{ secrets.GH_PAT }} # use our own user as the triggering user
+
+            -   name: Trigger build-deb-forgejo workflow
                 if: success()
-                run: gh workflow run build-gcc-deb-packages.yml
+                run: gh workflow run build-deb-forgejo.yml
                 env:
                     GH_TOKEN: ${{ secrets.GH_PAT }} # use our own user as the triggering user
 
-            -   name: Trigger build-deb-forgejo workflow on versioned branch
+            -   name: Trigger build-apk-forgejo workflow
                 if: success()
-                run: gh workflow run build-deb-forgejo.yml --ref versioned
+                run: gh workflow run build-apk-forgejo.yml
                 env:
                     GH_TOKEN: ${{ secrets.GH_PAT }} # use our own user as the triggering user
