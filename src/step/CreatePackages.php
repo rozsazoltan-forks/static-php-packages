@@ -335,9 +335,9 @@ class CreatePackages
             '--architecture', $architecture,
             '--description', "Static PHP Package for {$name}",
             '--license', $package->getLicense(),
-            '--maintainer', 'Marc Henderkes <rpms@henderkes.com>',
-            '--vendor', 'Marc Henderkes <rpms@henderkes.com>',
-            '--url', 'rpms.henderkes.com',
+            '--maintainer', 'Marc Henderkes <pkg@henderkes.com>',
+            '--vendor', 'Marc Henderkes <pkg@henderkes.com>',
+            '--url', 'pkgs.henderkes.com',
         ], ...$extraArgs];
 
         // Ensure non-CLI packages depend on the same PHP major.minor as php-zts-cli (ignore iteration/patch)
@@ -517,9 +517,9 @@ class CreatePackages
             '--iteration', $debIteration,       // Debian revision (includes distro)
             '--description', "Static PHP Package for {$name}",
             '--license', $package->getLicense(),
-            '--maintainer', 'Marc Henderkes <debs@henderkes.com>',
-            '--vendor', 'Marc Henderkes <debs@henderkes.com>',
-            '--url', 'debs.henderkes.com',
+            '--maintainer', 'Marc Henderkes <pkg@henderkes.com>',
+            '--vendor', 'Marc Henderkes <pkg@henderkes.com>',
+            '--url', 'pkgs.henderkes.com',
         ], ...$extraArgs];
 
         // Ensure non-CLI packages depend on the same PHP major.minor as php-zts-cli (ignore iteration/patch)
@@ -711,7 +711,7 @@ class CreatePackages
             'release' => $iteration,
             'section' => 'default',
             'priority' => 'optional',
-            'maintainer' => 'Marc Henderkes <apks@henderkes.com>',
+            'maintainer' => 'Marc Henderkes <pkg@henderkes.com>',
             'description' => "Static PHP Package for {$name}",
             'vendor' => 'Marc Henderkes',
             'homepage' => 'https://apks.henderkes.com',
