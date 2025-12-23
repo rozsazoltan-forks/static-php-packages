@@ -233,15 +233,25 @@ class frankenphp implements package
             default => $architecture,
         };
 
+        // For DEB packages, append PHP version to package version for proper sorting
+        // e.g., 1.11.0+php85 is higher than 1.11.0+php83
+        $phpMajorMinor = SPP_PHP_VERSION;
+        if (preg_match('/^(\d+)\.(\d+)/', $phpMajorMinor, $phpMatches)) {
+            $phpVersionSuffix = $phpMatches[1] . $phpMatches[2]; // e.g., "85" from "8.5"
+        } else {
+            $phpVersionSuffix = str_replace('.', '', $phpMajorMinor);
+        }
+        $debVersion = $version . '+php' . $phpVersionSuffix;
+
         // Calculate iteration for DEB (with possible override)
-        $computed = (string)$this->getNextIteration($name, $version, $debArch, 'deb');
+        $computed = (string)$this->getNextIteration($name, $debVersion, $debArch, 'deb');
         $iteration = $iterationOverride ?? $computed;
         $debIteration = $iteration;
 
         $versionedConflicts = $this->getVersionedConflicts();
 
         // Debian filename format: {name}_{version}-{revision}_{arch}.deb
-        $packageFile = DIST_DEB_PATH . "/{$name}_{$version}-{$debIteration}_{$debArch}.deb";
+        $packageFile = DIST_DEB_PATH . "/{$name}_{$debVersion}-{$debIteration}_{$debArch}.deb";
 
         $fpmArgs = [
             'fpm',
@@ -250,7 +260,7 @@ class frankenphp implements package
             '--deb-compression', 'xz',
             '-p', $packageFile,
             '-n', $name,
-            '-v', $version,
+            '-v', $debVersion,
             '--architecture', $debArch,
             '--license', $this->getLicense(),
             '--config-files', '/etc/frankenphp/Caddyfile',
@@ -333,7 +343,7 @@ class frankenphp implements package
             $frankenDbg = BUILD_ROOT_PATH . '/debug/frankenphp.debug';
             if (file_exists($frankenDbg)) {
                 $dbgDebName = "{$name}-debuginfo";
-                $dbgPackageFile = DIST_DEB_PATH . "/{$dbgDebName}_{$version}-{$debIteration}_{$debArch}.deb";
+                $dbgPackageFile = DIST_DEB_PATH . "/{$dbgDebName}_{$debVersion}-{$debIteration}_{$debArch}.deb";
                 $dbgArgs = [
                     'fpm',
                     '-s', 'dir',
@@ -341,11 +351,11 @@ class frankenphp implements package
                     '--deb-compression', 'xz',
                     '-p', $dbgPackageFile,
                     '-n', $dbgDebName,
-                    '-v', $version,
+                    '-v', $debVersion,
                     '--iteration', $debIteration,
                     '--architecture', $debArch,
                     '--license', $this->getLicense(),
-                    '--depends', sprintf('%s (= %s-%s)', $name, $version, $debIteration),
+                    '--depends', sprintf('%s (= %s-%s)', $name, $debVersion, $debIteration),
                     $frankenDbg . '=/usr/lib/debug/usr/bin/frankenphp.debug',
                 ];
                 $dbgProcess = new Process($dbgArgs);
