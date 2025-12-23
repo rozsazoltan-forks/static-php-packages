@@ -310,18 +310,17 @@ class CreatePackages
             } else {
                 $phpVersionSuffix = str_replace('.', '', $fullPhpVersion);
             }
-            $rpmVersion = $phpVersion . '+php' . $phpVersionSuffix;
+            $rpmVersion = $phpVersion . '_' . $phpVersionSuffix;
         }
 
         // Calculate iteration for RPM (with possible override)
         $computed = (string)self::getNextIteration($name, $rpmVersion, $architecture, 'rpm');
         $iteration = self::$iterationOverride ?? $computed;
 
-        // Generate full package filename with PHP version suffix and distribution version
-        $phpSuffix = self::getPhpVersionSuffix();
+        // Generate full package filename with distribution version
         $distVersion = self::getDistVersion();
         $distSuffix = $distVersion !== '' ? ".{$distVersion}" : '';
-        $packageFile = DIST_RPM_PATH . "/{$name}-{$rpmVersion}-{$iteration}.{$phpSuffix}{$distSuffix}.{$architecture}.rpm";
+        $packageFile = DIST_RPM_PATH . "/{$name}-{$rpmVersion}-{$iteration}{$distSuffix}.{$architecture}.rpm";
 
         $fpmArgs = [...[
             'fpm',
@@ -1102,10 +1101,10 @@ class CreatePackages
         $maxIteration = 0;
 
         if ($packageType === 'rpm') {
-            // RPM: {name}-{version}-{iteration}.{phpSuffix}.{distVersion}.{arch}.rpm
+            // RPM: {name}-{version}-{iteration}.{distVersion}.{arch}.rpm
             // Also match old formats:
-            // - {name}-{version}-{iteration}.{arch}.rpm (no suffix)
-            // - {name}-{version}-{iteration}.{phpSuffix}.{arch}.rpm (no distVersion)
+            // - {name}-{version}-{iteration}.{phpSuffix}.{distVersion}.{arch}.rpm (with phpSuffix)
+            // - {name}-{version}-{iteration}.{arch}.rpm (no distVersion)
             $rpmPattern = DIST_RPM_PATH . "/{$name}-{$phpVersion}-*.rpm";
             $rpmFiles = glob($rpmPattern);
 

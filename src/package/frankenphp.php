@@ -99,28 +99,36 @@ class frankenphp implements package
         }
         $version = $matches[1];
 
+        // Append PHP version suffix to FrankenPHP version
+        $phpMajorMinor = SPP_PHP_VERSION;
+        if (preg_match('/^(\d+)\.(\d+)/', $phpMajorMinor, $phpMatches)) {
+            $phpVersionSuffix = $phpMatches[1] . $phpMatches[2]; // e.g., "85" from "8.5"
+        } else {
+            $phpVersionSuffix = str_replace('.', '', $phpMajorMinor);
+        }
+        $rpmVersion = $version . '_' . $phpVersionSuffix;
+
         $name = $this->getName();
 
         // Calculate iteration for RPM (with possible override)
-        $computed = (string)$this->getNextIteration($name, $version, $architecture, 'rpm');
+        $computed = (string)$this->getNextIteration($name, $rpmVersion, $architecture, 'rpm');
         $iteration = $iterationOverride ?? $computed;
 
         $versionedConflicts = $this->getVersionedConflicts();
 
-        // Generate full package filename with PHP version suffix and distribution version
-        $phpSuffix = $this->getPhpVersionSuffix();
+        // Generate full package filename with distribution version
         $distVersion = $this->getDistVersion();
         $distSuffix = $distVersion !== '' ? ".{$distVersion}" : '';
-        $packageFile = DIST_RPM_PATH . "/{$name}-{$version}-{$iteration}.{$phpSuffix}{$distSuffix}.{$architecture}.rpm";
+        $packageFile = DIST_RPM_PATH . "/{$name}-{$rpmVersion}-{$iteration}{$distSuffix}.{$architecture}.rpm";
 
         $fpmArgs = [
             'fpm',
             '-s', 'dir',
             '-t', 'rpm',
             '--rpm-compression', 'xz',
-            '-p', $packageFile,  // Full path with phpSuffix and distVersion in filename
+            '-p', $packageFile,  // Full path with distVersion in filename
             '-n', $name,
-            '-v', $version,
+            '-v', $rpmVersion,
             '--license', $this->getLicense(),
             '--config-files', '/etc/frankenphp/Caddyfile',
             '--provides', 'frankenphp',
@@ -172,7 +180,7 @@ class frankenphp implements package
         // Create FrankenPHP debuginfo package if debug file exists
         $frankenDbg = BUILD_ROOT_PATH . '/debug/frankenphp.debug';
         if (file_exists($frankenDbg)) {
-            $dbgPackageFile = DIST_RPM_PATH . "/{$name}-debuginfo-{$version}-{$iteration}.{$phpSuffix}{$distSuffix}.{$architecture}.rpm";
+            $dbgPackageFile = DIST_RPM_PATH . "/{$name}-debuginfo-{$rpmVersion}-{$iteration}{$distSuffix}.{$architecture}.rpm";
             $dbgArgs = [
                 'fpm',
                 '-s', 'dir',
@@ -180,11 +188,11 @@ class frankenphp implements package
                 '--rpm-compression', 'xz',
                 '-p', $dbgPackageFile,
                 '-n', $name . '-debuginfo',
-                '-v', $version,
+                '-v', $rpmVersion,
                 '--iteration', $iteration,
                 '--architecture', $architecture,
                 '--license', $this->getLicense(),
-                '--depends', sprintf('%s = %s-%s', $name, $version, $iteration),
+                '--depends', sprintf('%s = %s-%s', $name, $rpmVersion, $iteration),
                 $frankenDbg . '=/usr/lib/debug/usr/bin/frankenphp.debug',
             ];
             $dbgProcess = new Process($dbgArgs);
@@ -699,10 +707,10 @@ class frankenphp implements package
         $maxIteration = 0;
 
         if ($packageType === 'rpm') {
-            // RPM: {name}-{version}-{iteration}.{phpSuffix}.{distVersion}.{arch}.rpm
+            // RPM: {name}-{version}-{iteration}.{distVersion}.{arch}.rpm
             // Also match old formats:
-            // - {name}-{version}-{iteration}.{arch}.rpm (no suffix)
-            // - {name}-{version}-{iteration}.{phpSuffix}.{arch}.rpm (no distVersion)
+            // - {name}-{version}-{iteration}.{phpSuffix}.{distVersion}.{arch}.rpm (with phpSuffix)
+            // - {name}-{version}-{iteration}.{arch}.rpm (no distVersion)
             $rpmPattern = DIST_RPM_PATH . "/{$name}-{$version}-*.rpm";
             $rpmFiles = glob($rpmPattern);
 
