@@ -1,15 +1,13 @@
 #!/usr/bin/env php
 <?php
 
-// Main entrypoint for SPC Packages
-// Uses Symfony Console for command-line parsing
-
 // Define constants
 define('BASE_PATH', dirname(__DIR__));
 const INI_PATH = BASE_PATH . '/src/ini';
 const DIST_PATH = BASE_PATH . '/dist';
 const DIST_RPM_PATH = DIST_PATH . '/rpm';
 const DIST_DEB_PATH = DIST_PATH . '/deb';
+const DIST_APK_PATH = DIST_PATH . '/apk';
 define('TEMP_DIR', sys_get_temp_dir() . '/spc-packages');
 
 
@@ -68,11 +66,51 @@ function setupGithubToken(string $method, string $url, array &$headers): void
 
 function getLibdir(): string
 {
-    $libdir = in_array(SystemUtil::getOSRelease()['dist'], ['redhat', 'centos']) ? '/usr/lib64' : '/usr/lib';
-    return $libdir;
+    // Use the SPP_TYPE constant set by BaseCommand
+    // rpm uses /usr/lib64, deb and apk use /usr/lib
+    $type = defined('SPP_TYPE') ? SPP_TYPE : 'rpm';
+    return $type === 'rpm' ? '/usr/lib64' : '/usr/lib';
 }
 
 function getConfdir(): string
 {
-    return '/etc/' . \staticphp\step\CreatePackages::getPrefix();
+    // Get the prefix from user-provided parameter (e.g., php-zts, php-zts8.5, php-zts85)
+    $prefix = \staticphp\step\CreatePackages::getPrefix();
+    return '/etc/' . $prefix;
+}
+
+function getModuledir(): string
+{
+    // Get the prefix from user-provided parameter
+    $prefix = \staticphp\step\CreatePackages::getPrefix();
+    return getLibdir() . '/' . $prefix . '/modules';
+}
+
+function getPhpLibdir(): string
+{
+    // Get the prefix from user-provided parameter
+    $prefix = \staticphp\step\CreatePackages::getPrefix();
+    return getLibdir() . '/' . $prefix;
+}
+
+function getBinarySuffix(): string
+{
+    // Get the suffix for binaries from the prefix
+    // The prefix is set by the user, e.g., "-zts", "-zts8.5", "-zts85"
+    // This returns exactly what was passed as --prefix
+    return defined('SPP_PREFIX') ? SPP_PREFIX : '-zts';
+}
+
+function getVarLibdir(): string
+{
+    // Get /var/lib/{prefix} path
+    $prefix = \staticphp\step\CreatePackages::getPrefix();
+    return '/var/lib/' . $prefix;
+}
+
+function getSharedir(): string
+{
+    // Get /usr/share/{prefix} path
+    $prefix = \staticphp\step\CreatePackages::getPrefix();
+    return '/usr/share/' . $prefix;
 }

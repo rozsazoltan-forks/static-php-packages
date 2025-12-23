@@ -15,17 +15,30 @@ class embed implements package
     public function getFpmConfig(): array
     {
         $phpVersion = str_replace('.', '', SPP_PHP_VERSION);
-        $name = 'lib' . CreatePackages::getPrefix() . "-$phpVersion.so";
+        $prefix = getBinarySuffix(); // e.g., "-zts", "-nts", "-zts8.5", or ""
+        // SPC produces libphp-{prefix}-{version}.so with only leading dash removed from prefix
+        // e.g., "-zts" -> "libphp-zts-85.so", "-zts8.5" -> "libphp-zts8.5-85.so", "" -> "libphp-85.so"
+        $releasePrefix = ltrim($prefix, '-');
+        $libphp = $releasePrefix !== ''
+            ? 'libphp-' . $releasePrefix . '-' . $phpVersion . '.so'
+            : 'libphp-' . $phpVersion . '.so';
+        $versionedConflicts = CreatePackages::getVersionedConflicts('-embed');
+        $provides = [
+            $libphp,
+            CreatePackages::getPrefix() . '-embedded'
+        ];
+        if ($this->getName() !== CreatePackages::getPrefix() . '-embed') {
+            $provides[] = CreatePackages::getPrefix() . '-embed';
+        }
         return [
             'depends' => [
                 CreatePackages::getPrefix() . '-cli',
             ],
-            'provides' => [
-                $name,
-                CreatePackages::getPrefix() . '-embedded'
-            ],
+            'provides' => $provides,
+            'replaces' => $versionedConflicts,
+            'conflicts' => $versionedConflicts,
             'files' => [
-                BUILD_LIB_PATH . '/' . $name => getLibdir() . '/' . $name,
+                BUILD_LIB_PATH . '/' . $libphp => getLibdir() . '/' . $libphp,
             ]
         ];
     }
@@ -38,8 +51,15 @@ class embed implements package
     public function getDebuginfoFpmConfig(): array
     {
         $phpVersionDigits = str_replace('.', '', SPP_PHP_VERSION);
-        $libName = 'lib' . CreatePackages::getPrefix() . "-{$phpVersionDigits}.so";
-        $src = BUILD_ROOT_PATH . '/debug/' . $libName . '.debug';
+        $prefix = getBinarySuffix();
+        // SPC produces libphp-{prefix}-{version}.so with only leading dash removed from prefix
+        $releasePrefix = ltrim($prefix, '-');
+        $libName = $releasePrefix !== ''
+            ? 'libphp-' . $releasePrefix . '-' . $phpVersionDigits . '.so'
+            : 'libphp-' . $phpVersionDigits . '.so';
+
+        // Debug file is just libphp.so.debug (without version/prefix)
+        $src = BUILD_ROOT_PATH . '/debug/libphp.so.debug';
         if (!file_exists($src)) {
             return [];
         }

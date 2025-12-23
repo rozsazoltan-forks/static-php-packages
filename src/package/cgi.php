@@ -14,12 +14,16 @@ class cgi implements package
 
     public function getFpmConfig(): array
     {
+        $versionedConflicts = CreatePackages::getVersionedConflicts('-cgi');
         return [
             'depends' => [
                 CreatePackages::getPrefix() . '-cli',
             ],
+            'provides' => [],
+            'replaces' => $versionedConflicts,
+            'conflicts' => $versionedConflicts,
             'files' => [
-                BUILD_BIN_PATH . '/php-cgi' => '/usr/bin/php-cgi-zts',
+                BUILD_BIN_PATH . '/php-cgi' => '/usr/bin/php-cgi' . getBinarySuffix(),
             ]
         ];
     }
@@ -31,14 +35,15 @@ class cgi implements package
 
     public function getDebuginfoFpmConfig(): array
     {
-        $src = BUILD_ROOT_PATH . '/debug/php-cgi-zts.debug';
+        $binarySuffix = getBinarySuffix();
+        $src = BUILD_ROOT_PATH . '/debug/php-cgi.debug';
         if (!file_exists($src)) {
             return [];
         }
         return [
             'depends' => [CreatePackages::getPrefix() . '-cgi'],
             'files' => [
-                $src => '/usr/lib/debug/usr/bin/php-cgi-zts.debug',
+                $src => '/usr/lib/debug/usr/bin/php-cgi' . $binarySuffix . '.debug',
             ],
         ];
     }

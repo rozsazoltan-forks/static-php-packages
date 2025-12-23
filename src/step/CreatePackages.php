@@ -14,11 +14,12 @@ class CreatePackages
     private static $sharedExtensions = [];
     private static $sapis = [];
     private static $binaryDependencies = [];
-    private static $packageTypes = [];
+    private static string $packageType = 'rpm';
     private static ?string $iterationOverride = null;
+    private static string $prefix = '-zts';
+    private static bool $debuginfo = false;
 
-
-    public static function run($packageNames = null, string $packageTypes = 'rpm,deb', string $phpVersion = '8.4', ?string $iteration = null): true
+    public static function run($packageNames = null, ?string $iteration = null, ?bool $debuginfo = null): true
     {
         self::loadConfig();
 
@@ -28,8 +29,15 @@ class CreatePackages
         $phpBinary = BUILD_BIN_PATH . '/php';
         self::$binaryDependencies = self::getBinaryDependencies($phpBinary);
 
-        self::$packageTypes = explode(',', strtolower($packageTypes));
-        self::$iterationOverride = $iteration !== null && $iteration !== '' ? (string)$iteration : null;
+        // Use values from constants set by BaseCommand
+        self::$prefix = defined('SPP_PREFIX') ? SPP_PREFIX : '-zts';
+        self::$packageType = defined('SPP_TYPE') ? SPP_TYPE : 'rpm';
+        self::$iterationOverride = $iteration !== null && $iteration !== '' ? $iteration : null;
+
+        // Set debuginfo flag from parameter
+        if ($debuginfo !== null) {
+            self::$debuginfo = $debuginfo;
+        }
 
         if ($packageNames !== null) {
             if (is_string($packageNames)) {
@@ -63,6 +71,10 @@ class CreatePackages
             self::createSapiPackages();
             self::createSapiPackage('devel');
             self::createGenericPackage('pie');
+            // Create metapackage for APK to allow "apk add php-zts85"
+            if (self::$packageType === 'apk') {
+                self::createGenericPackage('meta');
+            }
             self::createExtensionPackages();
         }
 
@@ -88,28 +100,18 @@ class CreatePackages
         $pkg = new $packageClass();
         if (method_exists($pkg, 'getVersion')) {
             $pkgVersion = $pkg->getVersion();
-            if ($pkgVersion !== $phpVersion) {
-                // Extract major and minor version numbers from PHP version
-                if (preg_match('/^(\d+)\.(\d+)/', $phpVersion, $matches)) {
-                    $majorMinor = $matches[1] . $matches[2]; // Combine major and minor without dot
-                    $pkgVersion .= '_' . $majorMinor;
-                }
-                else {
-                    throw new \RuntimeException("Warning: Could not extract major.minor from PHP version: {$phpVersion}");
-                }
-            }
         }
 
         $package = $pkg ?? new $packageClass();
 
-        $computed = (string)self::getNextIteration($package->getName(), $pkgVersion, $architecture);
-        $iteration = self::$iterationOverride ?? $computed;
+        self::createPackageWithFpm($package, $pkgVersion, $architecture);
 
-        self::createPackageWithFpm($package, $pkgVersion, $architecture, $iteration);
-
+        // Create debuginfo packages: always for RPM, only if --debuginfo flag set for others
         $dbgConfig = $package->getDebuginfoFpmConfig();
         if (is_array($dbgConfig) && !empty($dbgConfig['files'])) {
-            self::createPackageWithFpm($package, $pkgVersion, $architecture, $iteration, true);
+            if (self::$packageType === 'rpm' || self::$debuginfo) {
+                self::createPackageWithFpm($package, $pkgVersion, $architecture, true);
+            }
         }
     }
 
@@ -150,7 +152,7 @@ class CreatePackages
         // FrankenPHP has a special package creation flow
         if ($sapi === 'frankenphp') {
             $package = new $packageClass();
-            $package->createPackages(self::$packageTypes, self::$binaryDependencies, self::$iterationOverride);
+            $package->createPackages(self::$packageType, self::$binaryDependencies, self::$iterationOverride, self::$debuginfo);
             return;
         }
 
@@ -158,14 +160,14 @@ class CreatePackages
 
         $package = new $packageClass();
 
-        $computed = (string)self::getNextIteration($package->getName(), $phpVersion, $architecture);
-        $iteration = self::$iterationOverride ?? $computed;
+        self::createPackageWithFpm($package, $phpVersion, $architecture);
 
-        self::createPackageWithFpm($package, $phpVersion, $architecture, $iteration);
-
+        // Create debuginfo packages: always for RPM, only if --debuginfo flag set for others
         $dbgConfig = $package->getDebuginfoFpmConfig();
         if (is_array($dbgConfig) && !empty($dbgConfig['files'])) {
-            self::createPackageWithFpm($package, $phpVersion, $architecture, $iteration, true);
+            if (self::$packageType === 'rpm' || self::$debuginfo) {
+                self::createPackageWithFpm($package, $phpVersion, $architecture, true);
+            }
         }
     }
 
@@ -186,9 +188,6 @@ class CreatePackages
         [$phpVersion, $architecture] = self::getPhpVersionAndArchitecture();
         $extensionVersion = self::getExtensionVersion($extension, $phpVersion);
 
-        $computed = (string)self::getNextIteration(self::getPrefix() . "-{$extension}", $extensionVersion, $architecture);
-        $iteration = self::$iterationOverride ?? $computed;
-
         $package = new extension($extension);
         $packageClass = "\\staticphp\\package\\{$extension}";
         if (class_exists($packageClass)) {
@@ -200,11 +199,14 @@ class CreatePackages
             return;
         }
 
-        self::createPackageWithFpm($package, $extensionVersion, $architecture, $iteration);
+        self::createPackageWithFpm($package, $extensionVersion, $architecture);
 
+        // Create debuginfo packages: always for RPM, only if --debuginfo flag set for others
         $dbgConfig = $package->getDebuginfoFpmConfig();
         if (is_array($dbgConfig) && !empty($dbgConfig['files'])) {
-            self::createPackageWithFpm($package, $extensionVersion, $architecture, $iteration, true);
+            if (self::$packageType === 'rpm' || self::$debuginfo) {
+                self::createPackageWithFpm($package, $extensionVersion, $architecture, true);
+            }
         }
     }
 
@@ -270,33 +272,25 @@ class CreatePackages
 
         echo "Detected version for extension {$extension}: {$extensionVersion}\n";
 
-        // If extension version is different from PHP version, add postfix based on PHP major.minor version
-        if ($extensionVersion !== $phpVersion) {
-            // Extract major and minor version numbers from PHP version
-            if (preg_match('/^(\d+)\.(\d+)/', $phpVersion, $matches)) {
-                $majorMinor = $matches[1] . $matches[2]; // Combine major and minor without dot
-                $extensionVersion .= '_' . $majorMinor;
-            }
-            else {
-                throw new \RuntimeException("Warning: Could not extract major.minor from PHP version: {$phpVersion}");
-            }
-        }
-
         return $extensionVersion;
     }
 
-    private static function createPackageWithFpm(\staticphp\package $package, string $phpVersion, string $architecture, string $iteration, bool $isDebuginfo = false): void
+    private static function createPackageWithFpm(\staticphp\package $package, string $phpVersion, string $architecture, bool $isDebuginfo = false): void
     {
-        if (in_array('rpm', self::$packageTypes, true)) {
-            self::createRpmPackage($package, $phpVersion, $architecture, $iteration, $isDebuginfo);
+        if (self::$packageType === 'rpm') {
+            self::createRpmPackage($package, $phpVersion, $architecture, $isDebuginfo);
         }
 
-        if (in_array('deb', self::$packageTypes, true)) {
-            self::createDebPackage($package, $phpVersion, $architecture, $iteration, $isDebuginfo);
+        if (self::$packageType === 'deb') {
+            self::createDebPackage($package, $phpVersion, $architecture, $isDebuginfo);
+        }
+
+        if (self::$packageType === 'apk') {
+            self::createApkPackage($package, $phpVersion, $architecture, $isDebuginfo);
         }
     }
 
-    private static function createRpmPackage(\staticphp\package $package, string $phpVersion, string $architecture, string $iteration, bool $isDebuginfo = false): void
+    private static function createRpmPackage(\staticphp\package $package, string $phpVersion, string $architecture, bool $isDebuginfo = false): void
     {
         $name = $isDebuginfo ? $package->getName() . '-debuginfo' : $package->getName();
         $config = $isDebuginfo ? $package->getDebuginfoFpmConfig() : $package->getFpmConfig();
@@ -304,21 +298,45 @@ class CreatePackages
 
         echo "Creating RPM package for {$name}...\n";
 
+        // For RPM packages, append PHP version to package version for extensions
+        // This ensures proper version ordering when the same extension version is built for different PHP versions
+        [$fullPhpVersion] = self::getPhpVersionAndArchitecture();
+        $rpmVersion = $phpVersion;
+
+        // If package version differs from PHP version, it's an extension - append PHP version
+        if ($phpVersion !== $fullPhpVersion) {
+            if (preg_match('/^(\d+)\.(\d+)/', $fullPhpVersion, $phpMatches)) {
+                $phpVersionSuffix = $phpMatches[1] . $phpMatches[2]; // e.g., "85" from "8.5"
+            } else {
+                $phpVersionSuffix = str_replace('.', '', $fullPhpVersion);
+            }
+            $rpmVersion = $phpVersion . '_' . $phpVersionSuffix;
+        }
+
+        // Calculate iteration for RPM (with possible override)
+        $computed = (string)self::getNextIteration($name, $rpmVersion, $architecture, 'rpm');
+        $iteration = self::$iterationOverride ?? $computed;
+
+        // Generate full package filename with distribution version
+        $distVersion = self::getDistVersion();
+        $distSuffix = $distVersion !== '' ? ".{$distVersion}" : '';
+        $packageFile = DIST_RPM_PATH . "/{$name}-{$rpmVersion}-{$iteration}{$distSuffix}.{$architecture}.rpm";
+
         $fpmArgs = [...[
             'fpm',
             '-s', 'dir',
             '-t', 'rpm',
             '--rpm-compression', 'xz',
-            '-p', DIST_RPM_PATH,
+            '-p', $packageFile,  // Full path with phpSuffix and distVersion in filename
             '--name', $name,
-            '--version', $phpVersion,
+            '--version', $rpmVersion,
             '--iteration', $iteration,
             '--architecture', $architecture,
             '--description', "Static PHP Package for {$name}",
             '--license', $package->getLicense(),
-            '--maintainer', 'Marc Henderkes <rpms@henderkes.com>',
-            '--vendor', 'Marc Henderkes <rpms@henderkes.com>',
-            '--url', 'rpms.henderkes.com',
+            '--maintainer', 'Marc Henderkes <pkg@henderkes.com>',
+            '--vendor', 'Marc Henderkes <pkg@henderkes.com>',
+            '--url', 'pkgs.henderkes.com',
         ], ...$extraArgs];
 
         // Ensure non-CLI packages depend on the same PHP major.minor as php-zts-cli (ignore iteration/patch)
@@ -341,17 +359,17 @@ class CreatePackages
         if (str_ends_with($name, '-debuginfo')) {
             $base = preg_replace('/-debuginfo$/', '', $name);
             $fpmArgs[] = '--depends';
-            $fpmArgs[] = sprintf('%s = %s-%s', $base, $phpVersion, $iteration);
+            $fpmArgs[] = sprintf('%s = %s-%s', $base, $rpmVersion, $iteration);
         }
 
         if (isset($config['provides']) && is_array($config['provides'])) {
             foreach ($config['provides'] as $provide) {
                 $fpmArgs[] = '--provides';
-                $fpmArgs[] = "$provide = $phpVersion-$iteration";
+                $fpmArgs[] = "$provide = $rpmVersion-$iteration";
                 if (str_ends_with($provide, '.so')) {
                     $provide = str_replace('.so', '.so()(64bit)', $provide);
                     $fpmArgs[] = '--provides';
-                    $fpmArgs[] = "$provide = $phpVersion-$iteration";
+                    $fpmArgs[] = "$provide = $rpmVersion-$iteration";
                 }
             }
         }
@@ -359,7 +377,14 @@ class CreatePackages
         if (isset($config['replaces']) && is_array($config['replaces'])) {
             foreach ($config['replaces'] as $replace) {
                 $fpmArgs[] = '--replaces';
-                $fpmArgs[] = "$replace < {$phpVersion}-{$iteration}";
+                $fpmArgs[] = "$replace < {$rpmVersion}-{$iteration}";
+            }
+        }
+
+        if (isset($config['conflicts']) && is_array($config['conflicts'])) {
+            foreach ($config['conflicts'] as $conflict) {
+                $fpmArgs[] = '--conflicts';
+                $fpmArgs[] = $conflict;
             }
         }
 
@@ -426,13 +451,14 @@ class CreatePackages
         if (!$rpmProcess->isSuccessful()) {
             throw new \RuntimeException("RPM package creation failed: " . $rpmProcess->getErrorOutput());
         }
+
+        echo "RPM package created: {$packageFile}\n";
     }
 
     private static function createDebPackage(
         \staticphp\package $package,
         string $phpVersion,
         string $architecture,
-        string $iteration,
         bool $isDebuginfo = false,
     ): void
     {
@@ -442,29 +468,57 @@ class CreatePackages
 
         echo "Creating DEB package for {$name}...\n";
 
-        $phpVersion = preg_replace('/_\d+$/', '', $phpVersion);
+        // Convert system architecture to Debian architecture naming
+        $debArch = match($architecture) {
+            'x86_64' => 'amd64',
+            'aarch64' => 'arm64',
+            default => $architecture,
+        };
+
+        // For DEB packages, append PHP version to package version for extensions
+        // This ensures proper version ordering when the same extension version is built for different PHP versions
+        // e.g., redis 6.0.2+php85 is higher than redis 6.0.2+php83
+        [$fullPhpVersion] = self::getPhpVersionAndArchitecture();
+        $debVersion = $phpVersion;
+
+        // If package version differs from PHP version, it's an extension - append PHP version
+        if ($phpVersion !== $fullPhpVersion) {
+            if (preg_match('/^(\d+)\.(\d+)/', $fullPhpVersion, $phpMatches)) {
+                $phpVersionSuffix = $phpMatches[1] . $phpMatches[2]; // e.g., "85" from "8.5"
+            } else {
+                $phpVersionSuffix = str_replace('.', '', $fullPhpVersion);
+            }
+            $debVersion = $phpVersion . '+php' . $phpVersionSuffix;
+        }
+
+        // Calculate iteration for DEB (with possible override)
+        $computed = (string)self::getNextIteration($name, $debVersion, $debArch, 'deb');
+        $iteration = self::$iterationOverride ?? $computed;
 
         //$osRelease = parse_ini_file('/etc/os-release');
         //$distroCodename = $osRelease['VERSION_CODENAME'] ?? null;
         //$debIteration = $distroCodename !== '' ? "{$iteration}~{$distroCodename}" : $iteration;
         $debIteration = $iteration;
-        $fullVersion = "{$phpVersion}-{$debIteration}";
+        $fullVersion = "{$debVersion}-{$debIteration}";
+
+        // Debian filename format: {name}_{version}-{revision}_{arch}.deb
+        $packageFile = DIST_DEB_PATH . "/{$name}_{$debVersion}-{$debIteration}_{$debArch}.deb";
 
         $fpmArgs = [...[
             'fpm',
             '-s', 'dir',
             '-t', 'deb',
             '--deb-compression', 'xz',
-            '-p', DIST_DEB_PATH,
+            '-p', $packageFile,
             '--name', $name,
-            '--version', $phpVersion,
-            '--architecture', $architecture,
+            '--version', $debVersion,
+            '--architecture', $debArch,
             '--iteration', $debIteration,       // Debian revision (includes distro)
             '--description', "Static PHP Package for {$name}",
             '--license', $package->getLicense(),
-            '--maintainer', 'Marc Henderkes <debs@henderkes.com>',
-            '--vendor', 'Marc Henderkes <debs@henderkes.com>',
-            '--url', 'debs.henderkes.com',
+            '--maintainer', 'Marc Henderkes <pkg@henderkes.com>',
+            '--vendor', 'Marc Henderkes <pkg@henderkes.com>',
+            '--url', 'pkgs.henderkes.com',
         ], ...$extraArgs];
 
         // Ensure non-CLI packages depend on the same PHP major.minor as php-zts-cli (ignore iteration/patch)
@@ -503,6 +557,13 @@ class CreatePackages
             foreach ($config['replaces'] as $replace) {
                 $fpmArgs[] = '--replaces';
                 $fpmArgs[] = "{$replace} (<= {$fullVersion})";
+            }
+        }
+
+        if (isset($config['conflicts']) && is_array($config['conflicts'])) {
+            foreach ($config['conflicts'] as $conflict) {
+                $fpmArgs[] = '--conflicts';
+                $fpmArgs[] = $conflict;
             }
         }
 
@@ -558,6 +619,14 @@ class CreatePackages
         if (isset($config['files']) && is_array($config['files'])) {
             foreach ($config['files'] as $source => $dest) {
                 if (file_exists($source)) {
+                    // Check if this is a binary that needs its debug link fixed
+                    // Only fix binaries in BUILD_BIN_PATH that are being renamed
+                    if (str_starts_with($source, BUILD_BIN_PATH . '/') &&
+                        is_executable($source) &&
+                        basename($source) !== basename($dest)) {
+                        // Fix the debug link and use the temporary binary instead
+                        $source = self::fixBinaryDebugLink($source, $dest);
+                    }
                     $fpmArgs[] = $source . '=' . $dest;
                 }
                 else {
@@ -587,8 +656,210 @@ class CreatePackages
         $debProcess->run(function ($type, $buffer) {
             echo $buffer;
         });
+        if (!$debProcess->isSuccessful()) {
+            throw new \RuntimeException("DEB package creation failed: " . $debProcess->getErrorOutput());
+        }
 
-        echo "DEB package created: " . DIST_DEB_PATH . "/{$name}_{$phpVersion}-{$debIteration}_{$architecture}.deb\n";
+        echo "DEB package created: {$packageFile}\n";
+    }
+
+    private static function createApkPackage(\staticphp\package $package, string $phpVersion, string $architecture, bool $isDebuginfo = false): void
+    {
+        $name = $isDebuginfo ? $package->getName() . '-debuginfo' : $package->getName();
+        $config = $isDebuginfo ? $package->getDebuginfoFpmConfig() : $package->getFpmConfig();
+        $extraArgs = $isDebuginfo ? [] : $package->getFpmExtraArgs();
+
+        echo "Creating APK package for {$name} using nfpm...\n";
+
+        // For APK packages, append PHP version to package version for extensions
+        // This ensures proper version ordering when the same extension version is built for different PHP versions
+        [$fullPhpVersion] = self::getPhpVersionAndArchitecture();
+        $apkVersion = $phpVersion;
+
+        // If package version differs from PHP version, it's an extension - append PHP version
+        if ($phpVersion !== $fullPhpVersion) {
+            if (preg_match('/^(\d+)\.(\d+)/', $fullPhpVersion, $phpMatches)) {
+                $phpVersionSuffix = $phpMatches[1] . $phpMatches[2]; // e.g., "85" from "8.5"
+            } else {
+                $phpVersionSuffix = str_replace('.', '', $fullPhpVersion);
+            }
+            $apkVersion = $phpVersion . '_' . $phpVersionSuffix;
+        }
+
+        // Calculate iteration for APK (with possible override)
+        $computed = (string)self::getNextIteration($name, $apkVersion, $architecture, 'apk');
+        $iteration = self::$iterationOverride ?? $computed;
+
+        // APK uses r{iteration} format for revision number
+        $apkIteration = $iteration;
+        $fullVersion = "{$apkVersion}-r{$apkIteration}";
+
+        // Use nfpm instead of fpm for APK packages
+        self::createApkWithNfpm($package, $name, $apkVersion, $architecture, $apkIteration, $config, $isDebuginfo);
+    }
+    private static function createApkWithNfpm(\staticphp\package $package, string $name, string $phpVersion, string $architecture, string $iteration, array $config, bool $isDebuginfo): void
+    {
+        $fullVersion = "{$phpVersion}-r{$iteration}";
+
+        // Create nfpm YAML config
+        $nfpmConfig = [
+            'name' => $name,
+            'arch' => $architecture,
+            'platform' => 'linux',
+            'version' => $phpVersion,
+            'release' => $iteration,
+            'section' => 'default',
+            'priority' => 'optional',
+            'maintainer' => 'Marc Henderkes <pkg@henderkes.com>',
+            'description' => "Static PHP Package for {$name}",
+            'vendor' => 'Marc Henderkes',
+            'homepage' => 'https://apks.henderkes.com',
+            'license' => $package->getLicense(),
+            'apk' => [
+                'signature' => [
+                    'key_name' => self::getPrefix(),
+                ],
+            ],
+        ];
+
+        // Build dependencies
+        $depends = [];
+
+        // Ensure non-CLI packages depend on the same PHP major.minor
+        if ($name !== self::getPrefix() . '-cli') {
+            [$fullPhpVersion] = self::getPhpVersionAndArchitecture();
+            if (preg_match('/^(\d+)\.(\d+)/', $fullPhpVersion, $m)) {
+                $maj = (int)$m[1];
+                $min = (int)$m[2];
+                $nextMin = $min + 1;
+                $lowerBound = sprintf('%d.%d', $maj, $min);
+                $upperBound = sprintf('%d.%d', $maj, $nextMin);
+                $depends[] = self::getPrefix() . "-cli>={$lowerBound}";
+                $depends[] = self::getPrefix() . "-cli<{$upperBound}";
+            }
+        }
+
+        // Debuginfo packages depend on their base package
+        if (str_ends_with($name, '-debuginfo')) {
+            $base = preg_replace('/-debuginfo$/', '', $name);
+            $depends[] = sprintf('%s=%s', $base, $fullVersion);
+        }
+
+        // Alpine library dependencies
+        $alpineLibMap = [
+            'ld-linux-x86-64' => 'musl',
+            'ld-linux-aarch64' => 'musl',
+            'libc' => 'musl',
+            'libm' => 'musl',
+            'libpthread' => 'musl',
+            'libutil' => 'musl',
+            'libdl' => 'musl',
+            'librt' => 'musl',
+            'libresolv' => 'musl',
+            'libgcc_s' => 'libgcc',
+        ];
+
+        foreach (self::$binaryDependencies as $lib => $version) {
+            $packageName = preg_replace('/\.so(\.\d+)*$/', '', $lib);
+            if (isset($alpineLibMap[$packageName])) {
+                $packageName = $alpineLibMap[$packageName];
+            }
+            $numericVersion = preg_replace('/[^0-9.]/', '', $version);
+            $depends[] = "{$packageName}>={$numericVersion}";
+        }
+
+        if (isset($config['depends']) && is_array($config['depends'])) {
+            $depends = array_merge($depends, $config['depends']);
+        }
+
+        if (!empty($depends)) {
+            $nfpmConfig['depends'] = $depends;
+        }
+
+        // Add provides, replaces, conflicts
+        if (isset($config['provides']) && is_array($config['provides'])) {
+            // For APK cli packages: filter out the base prefix from provides since we have a separate meta package
+            // This prevents conflicts between php-zts-cli (which provides php-zts) and the php-zts meta package
+            $provides = $config['provides'];
+            if ($name === self::getPrefix() . '-cli') {
+                $provides = array_values(array_filter($provides, fn($p) => $p !== self::getPrefix()));
+                $provides = array_values($provides);
+            }
+            $nfpmConfig['provides'] = $provides;
+        }
+        if (isset($config['replaces']) && is_array($config['replaces'])) {
+            $nfpmConfig['replaces'] = $config['replaces'];
+        }
+        if (isset($config['conflicts']) && is_array($config['conflicts'])) {
+            $nfpmConfig['conflicts'] = $config['conflicts'];
+        }
+
+        // Build contents (files)
+        $contents = [];
+        if (isset($config['files']) && is_array($config['files'])) {
+            foreach ($config['files'] as $source => $dest) {
+                if (file_exists($source)) {
+                    // Fix debug link for renamed binaries
+                    if (str_starts_with($source, BUILD_BIN_PATH . '/') &&
+                        is_executable($source) &&
+                        basename($source) !== basename($dest)) {
+                        $source = self::fixBinaryDebugLink($source, $dest);
+                    }
+                    $contentItem = ['src' => $source, 'dst' => $dest];
+                    // Mark config files
+                    if (isset($config['config-files']) && in_array($dest, $config['config-files'])) {
+                        $contentItem['type'] = 'config';
+                    }
+                    $contents[] = $contentItem;
+                } else {
+                    echo "Warning: Source file not found: {$source}\n";
+                }
+            }
+        }
+
+        // Handle empty directories
+        if (isset($config['empty_directories']) && is_array($config['empty_directories'])) {
+            foreach ($config['empty_directories'] as $dir) {
+                $contents[] = ['dst' => $dir, 'type' => 'dir'];
+            }
+        }
+
+        if (!empty($contents)) {
+            $nfpmConfig['contents'] = $contents;
+        }
+
+        // Write nfpm config to YAML file
+        $nfpmConfigFile = TEMP_DIR . "/nfpm-{$name}.yaml";
+        if (!yaml_emit_file($nfpmConfigFile, $nfpmConfig, YAML_UTF8_ENCODING)) {
+            throw new \RuntimeException("Failed to write YAML file: {$nfpmConfigFile}");
+        }
+
+        echo "nfpm config written to: {$nfpmConfigFile}\n";
+
+        // Run nfpm to create the package with full filename including PHP version suffix
+        $phpSuffix = self::getPhpVersionSuffix();
+        $outputFile = DIST_APK_PATH . "/{$name}-{$phpVersion}-r{$iteration}.{$phpSuffix}.{$architecture}.apk";
+        $nfpmProcess = new Process([
+            'nfpm', 'package',
+            '--config', $nfpmConfigFile,
+            '--packager', 'apk',
+            '--target', $outputFile
+        ]);
+        $nfpmProcess->setTimeout(null);
+        $nfpmProcess->run(function ($type, $buffer) {
+            echo $buffer;
+        });
+
+        if (!$nfpmProcess->isSuccessful()) {
+            echo "nfpm config file contents:\n";
+            echo file_get_contents($nfpmConfigFile);
+            throw new \RuntimeException("nfpm package creation failed: " . $nfpmProcess->getErrorOutput());
+        }
+
+        // Clean up config file
+        @unlink($nfpmConfigFile);
+
+        echo "APK package created: {$outputFile}\n";
     }
 
     private static function getPhpVersionAndArchitecture(): array
@@ -635,14 +906,25 @@ class CreatePackages
 
     private static function getBinaryDependencies(string $binaryPath): array
     {
-        $process = new Process(['ldd', '-v', $binaryPath]);
-        $process->run();
+        // Detect if this is a musl binary
+        $fileProcess = new Process(['file', $binaryPath]);
+        $fileProcess->run();
+        $fileOutput = $fileProcess->getOutput();
+        $isMusl = str_contains($fileOutput, 'musl') || str_contains($fileOutput, 'statically linked');
 
-        if (!$process->isSuccessful()) {
-            throw new \RuntimeException("ldd failed: " . $process->getErrorOutput());
+        // For musl binaries, we need to use the musl dynamic linker instead of ldd
+        if ($isMusl) {
+            $output = self::getMuslBinaryDependencies($binaryPath);
+        } else {
+            $process = new Process(['ldd', '-v', $binaryPath]);
+            $process->run();
+
+            if (!$process->isSuccessful()) {
+                throw new \RuntimeException("ldd failed: " . $process->getErrorOutput());
+            }
+
+            $output = $process->getOutput();
         }
-
-        $output = $process->getOutput();
 
         $output = preg_replace('/.*?' . preg_quote($binaryPath, '/') . ':\s*\n/s', '', $output, 1);
 
@@ -675,27 +957,192 @@ class CreatePackages
         return $dependencies;
     }
 
-    private static function getNextIteration(string $name, string $phpVersion, string $architecture): int
+    /**
+     * Get dependencies for musl-linked binaries using the musl dynamic linker
+     */
+    private static function getMuslBinaryDependencies(string $binaryPath): string
     {
-        $maxIteration = 0;
+        // Detect architecture from the binary
+        $archProcess = new Process(['uname', '-m']);
+        $archProcess->run();
+        $arch = trim($archProcess->getOutput());
 
-        $rpmPattern = DIST_RPM_PATH . "/{$name}-{$phpVersion}-*.{$architecture}.rpm";
-        $rpmFiles = glob($rpmPattern);
+        // Map architecture to musl loader name
+        $archMap = [
+            'x86_64' => 'x86_64',
+            'aarch64' => 'aarch64',
+            'arm64' => 'aarch64',
+            'armv7l' => 'armv7',
+            'armhf' => 'armhf',
+        ];
 
-        foreach ($rpmFiles as $file) {
-            if (preg_match("/{$name}-{$phpVersion}-(\d+)\.{$architecture}\.rpm$/", $file, $matches)) {
-                $iteration = (int)$matches[1];
-                $maxIteration = max($maxIteration, $iteration);
+        $muslArch = $archMap[$arch] ?? 'x86_64';
+
+        // Try to find the musl dynamic linker in common locations
+        $basePaths = ['/lib', '/usr/lib', '/usr/lib64'];
+        $muslLoaders = [];
+
+        foreach ($basePaths as $basePath) {
+            $muslLoaders[] = "{$basePath}/ld-musl-{$muslArch}.so.1";
+            // Also try without .1 suffix (some systems)
+            $muslLoaders[] = "{$basePath}/ld-musl-{$muslArch}.so";
+        }
+
+        $muslLoader = null;
+        foreach ($muslLoaders as $loader) {
+            if (file_exists($loader)) {
+                $muslLoader = $loader;
+                break;
             }
         }
 
-        $debPattern = DIST_DEB_PATH . "/{$name}_{$phpVersion}-*_{$architecture}.deb";
-        $debFiles = glob($debPattern);
+        if ($muslLoader === null) {
+            throw new \RuntimeException("Could not find musl dynamic linker for architecture {$arch} (tried: " . implode(', ', $muslLoaders) . ")");
+        }
 
-        foreach ($debFiles as $file) {
-            if (preg_match("/{$name}_{$phpVersion}-(\d+)_{$architecture}\.deb$/", $file, $matches)) {
-                $iteration = (int)$matches[1];
-                $maxIteration = max($maxIteration, $iteration);
+        echo "Using musl dynamic linker: {$muslLoader}\n";
+
+        // Use the musl loader to list dependencies
+        $process = new Process([$muslLoader, '--list', $binaryPath]);
+        $process->run();
+
+        if (!$process->isSuccessful()) {
+            // If the binary is statically linked, --list might fail
+            // Check if it's actually static
+            $readelfProcess = new Process(['readelf', '-d', $binaryPath]);
+            $readelfProcess->run();
+            if (!str_contains($readelfProcess->getOutput(), 'NEEDED')) {
+                echo "Binary {$binaryPath} appears to be statically linked (no dynamic dependencies)\n";
+                return '';
+            }
+            throw new \RuntimeException("Musl ldd failed: " . $process->getErrorOutput());
+        }
+
+        return $process->getOutput();
+    }
+
+    /**
+     * Fix GNU debuglink in a binary to match its new filename
+     * This is needed when binaries are renamed during packaging (e.g., php -> php-zts8.3)
+     */
+    private static function fixBinaryDebugLink(string $sourceBinary, string $targetBinaryName): string
+    {
+        // Extract just the filename from the target path
+        $targetFilename = basename($targetBinaryName);
+        $newDebugFileName = $targetFilename . '.debug';
+
+        // Create a temporary copy of the binary to modify
+        $tempBinary = TEMP_DIR . '/' . $targetFilename;
+
+        // Copy the source binary to temp location
+        if (!copy($sourceBinary, $tempBinary)) {
+            echo "Warning: Failed to copy {$sourceBinary} to {$tempBinary}, debug link won't be fixed\n";
+            return $sourceBinary;
+        }
+
+        // Ensure the temporary binary is executable
+        chmod($tempBinary, 0755);
+
+        // Find the original debug file
+        // Map binary names to their debug files using the prefix
+        $binaryName = basename($sourceBinary);
+        $binarySuffix = getBinarySuffix();
+        $debugMap = [
+            'php' => BUILD_ROOT_PATH . '/debug/php.debug',
+            'php-cgi' => BUILD_ROOT_PATH . '/debug/php-cgi.debug',
+            'php-fpm' => BUILD_ROOT_PATH . '/debug/php-fpm.debug',
+            'frankenphp' => BUILD_ROOT_PATH . '/debug/frankenphp.debug',
+        ];
+
+        $originalDebugFile = $debugMap[$binaryName] ?? null;
+
+        // If no debug file exists, we can't fix the debug link
+        if ($originalDebugFile === null || !file_exists($originalDebugFile)) {
+            echo "No debug file found for {$binaryName}, skipping debug link fix\n";
+            return $tempBinary;
+        }
+
+        // Create a temporary copy of the debug file with the new name
+        // objcopy needs the actual file to exist to compute the checksum
+        $tempDebugFile = TEMP_DIR . '/' . $newDebugFileName;
+        if (!copy($originalDebugFile, $tempDebugFile)) {
+            echo "Warning: Failed to copy debug file, debug link won't be fixed\n";
+            return $tempBinary;
+        }
+
+        // Remove existing debug link
+        $removeProcess = new Process(['objcopy', '--remove-section=.gnu_debuglink', $tempBinary]);
+        $removeProcess->run();
+        if (!$removeProcess->isSuccessful()) {
+            echo "Warning: Failed to remove debug link from {$tempBinary}: " . $removeProcess->getErrorOutput() . "\n";
+            @unlink($tempDebugFile);
+            return $sourceBinary;
+        }
+
+        // Add new debug link pointing to the renamed debug file
+        $addProcess = new Process(['objcopy', '--add-gnu-debuglink=' . $tempDebugFile, $tempBinary]);
+        $addProcess->run();
+        if (!$addProcess->isSuccessful()) {
+            echo "Warning: Failed to add debug link to {$tempBinary}: " . $addProcess->getErrorOutput() . "\n";
+            @unlink($tempDebugFile);
+            return $sourceBinary;
+        }
+
+        echo "Fixed debug link in {$targetFilename}: {$newDebugFileName}\n";
+
+        // Clean up the temporary debug file (we don't need it anymore, just needed it for objcopy)
+        @unlink($tempDebugFile);
+
+        return $tempBinary;
+    }
+
+    private static function getNextIteration(string $name, string $phpVersion, string $architecture, string $packageType): int
+    {
+        $maxIteration = 0;
+
+        if ($packageType === 'rpm') {
+            // RPM: {name}-{version}-{iteration}.{distVersion}.{arch}.rpm
+            // Also match old formats:
+            // - {name}-{version}-{iteration}.{phpSuffix}.{distVersion}.{arch}.rpm (with phpSuffix)
+            // - {name}-{version}-{iteration}.{arch}.rpm (no distVersion)
+            $rpmPattern = DIST_RPM_PATH . "/{$name}-{$phpVersion}-*.rpm";
+            $rpmFiles = glob($rpmPattern);
+
+            foreach ($rpmFiles as $file) {
+                // Match all formats: iteration followed by 0-2 parts, then arch.rpm
+                if (preg_match("/{$name}-" . preg_quote($phpVersion, '/') . "-(\d+)(?:\.[^.]+){0,2}\.{$architecture}\.rpm$/", $file, $matches)) {
+                    $iteration = (int)$matches[1];
+                    $maxIteration = max($maxIteration, $iteration);
+                }
+            }
+        }
+
+        if ($packageType === 'deb') {
+            // DEB: {name}_{version}-{iteration}_{arch}.deb
+            $debPattern = DIST_DEB_PATH . "/{$name}_{$phpVersion}-*.deb";
+            $debFiles = glob($debPattern);
+
+            foreach ($debFiles as $file) {
+                // Match: {name}_{version}-{iteration}_{arch}.deb
+                if (preg_match("/" . preg_quote($name, '/') . "_" . preg_quote($phpVersion, '/') . "-(\d+)_{$architecture}\.deb$/", $file, $matches)) {
+                    $iteration = (int)$matches[1];
+                    $maxIteration = max($maxIteration, $iteration);
+                }
+            }
+        }
+
+        if ($packageType === 'apk') {
+            // APK: {name}-{version}-r{iteration}.{phpSuffix}.{arch}.apk
+            // Also match old format: {name}-{version}-r{iteration}.{arch}.apk (no phpSuffix)
+            $apkPattern = DIST_APK_PATH . "/{$name}-{$phpVersion}-r*.apk";
+            $apkFiles = glob($apkPattern);
+
+            foreach ($apkFiles as $file) {
+                // Match both formats: r{iteration} followed by 0-1 parts, then arch.apk
+                if (preg_match("/{$name}-" . preg_quote($phpVersion, '/') . "-r(\d+)(?:\.[^.]+)?\.{$architecture}\.apk$/", $file, $matches)) {
+                    $iteration = (int)$matches[1];
+                    $maxIteration = max($maxIteration, $iteration);
+                }
             }
         }
 
@@ -704,6 +1151,74 @@ class CreatePackages
 
     public static function getPrefix(): string
     {
-        return 'php-zts';
+        // Return the prefix set by the user, prepended with "php"
+        // For example: "-zts" becomes "php-zts", "-zts8.5" becomes "php-zts8.5"
+        return 'php' . self::$prefix;
+    }
+
+    /**
+     * Get PHP version suffix for package filenames (e.g., "static-83" for PHP 8.3)
+     */
+    private static function getPhpVersionSuffix(): string
+    {
+        [$phpVersion,] = self::getPhpVersionAndArchitecture();
+
+        // Extract major.minor version (e.g., "8.3.29" -> "8.3")
+        if (preg_match('/^(\d+)\.(\d+)/', $phpVersion, $matches)) {
+            $majorMinorNoDot = $matches[1] . $matches[2]; // e.g., "83"
+        } else {
+            $majorMinorNoDot = str_replace('.', '', $phpVersion);
+        }
+
+        // Construct suffix: static-{version} (e.g., "static-83")
+        return 'static-' . $majorMinorNoDot;
+    }
+
+    /**
+     * Get distribution version for RPM filenames (e.g., "el9", "el8", "fc39")
+     */
+    private static function getDistVersion(): string
+    {
+        if (!file_exists('/etc/os-release')) {
+            return '';
+        }
+
+        $osRelease = parse_ini_file('/etc/os-release');
+        if (!$osRelease || !isset($osRelease['ID'], $osRelease['VERSION_ID'])) {
+            return '';
+        }
+
+        $id = $osRelease['ID'];
+        $versionId = $osRelease['VERSION_ID'];
+
+        // Extract major version number
+        if (preg_match('/^(\d+)/', $versionId, $matches)) {
+            $majorVersion = $matches[1];
+        } else {
+            return '';
+        }
+
+        // Map distribution ID to prefix
+        $distMap = [
+            'rhel' => 'el',
+            'centos' => 'el',
+            'rocky' => 'el',
+            'almalinux' => 'el',
+            'fedora' => 'fc',
+        ];
+
+        $prefix = $distMap[$id] ?? '';
+        return $prefix !== '' ? $prefix . $majorVersion : '';
+    }
+
+    /**
+     * Get list of versioned package names to conflict/replace with
+     * For example, for php-zts8.5-cli, returns [php-zts8.0-cli, php-zts8.1-cli, ..., php-zts8.9-cli] excluding 8.5
+     * For RPM packages (using unversioned prefix like -zts), returns empty array (RPM uses module system instead)
+     */
+    public static function getVersionedConflicts(string $suffix): array
+    {
+        // Versioned packages can coexist - no conflicts
+        return [];
     }
 }

@@ -12,7 +12,8 @@ class pie implements package
 {
     public function getName(): string
     {
-        return 'pie-zts';
+        // Return pie with the suffix (e.g., "pie-zts", "pie-zts8.5", "pie-zts85")
+        return 'pie' . getBinarySuffix();
     }
 
     /**
@@ -24,7 +25,7 @@ class pie implements package
         // Ensure artifacts exist and get the staged phar path
         [$pharSource] = $this->prepareArtifacts();
 
-        $proc = new Process(['php', $pharSource, '-V']);
+        $proc = new Process(['php', $pharSource, '-V'], env: self::getCleanEnvironment());
         $proc->setTimeout(2);
         $proc->run();
         if (!$proc->isSuccessful()) {
@@ -50,14 +51,26 @@ class pie implements package
 
         $prefix = CreatePackages::getPrefix();
 
+        // Get versioned conflicts for pie packages (pie-zts8.0, pie-zts8.1, etc.)
+        // Replace the 'php' prefix from conflicts with 'pie'
+        $phpConflicts = CreatePackages::getVersionedConflicts('');
+        $versionedConflicts = [];
+        foreach ($phpConflicts as $conflict) {
+            // Replace 'php' with 'pie' (e.g., php-zts8.5 -> pie-zts8.5, php-nts85 -> pie-nts85)
+            $versionedConflicts[] = str_replace('php', 'pie', $conflict);
+        }
+
         return [
             'depends' => [
                 $prefix . '-cli',
                 $prefix . '-devel',
             ],
+            'provides' => [],
+            'replaces' => $versionedConflicts,
+            'conflicts' => $versionedConflicts,
             'files' => [
-                $pharSource => '/usr/share/php-zts/pie.phar',
-                $wrapperSource => '/usr/bin/pie-zts',
+                $pharSource => getSharedir() . '/pie.phar',
+                $wrapperSource => '/usr/bin/pie' . getBinarySuffix(),
             ],
         ];
     }
@@ -77,6 +90,23 @@ class pie implements package
         return 'BSD-3-Clause';
     }
 
+    /**
+     * Get environment without Xdebug variables that would cause connection attempts
+     */
+    private static function getCleanEnvironment(): array
+    {
+        $env = $_SERVER;
+
+        // Explicitly disable Xdebug-related environment variables
+        // Must be set to empty/0, not unset, as they inherit from parent
+        $env['XDEBUG_SESSION'] = '';
+        $env['XDEBUG_CONFIG'] = '';
+        $env['XDEBUG_MODE'] = 'off';
+        $env['PHP_IDE_CONFIG'] = '';
+
+        return $env;
+    }
+
     private function prepareArtifacts(): array
     {
         $pharPath = DOWNLOAD_PATH . '/pie.phar';
@@ -84,7 +114,18 @@ class pie implements package
             $this->downloadLatestPiePhar($pharPath);
         }
 
-        $wrapperPath = INI_PATH . '/pie-zts';
+        // Render the pie wrapper script using Twig template
+        $binarySuffix = getBinarySuffix();
+        $wrapperPath = TEMP_DIR . '/pie' . $binarySuffix;
+
+        $wrapperContents = \staticphp\util\TwigRenderer::render('pie-wrapper.twig', [
+            'binary_suffix' => $binarySuffix,
+            'sharedir' => getSharedir(),
+        ]);
+
+        file_put_contents($wrapperPath, $wrapperContents);
+        chmod($wrapperPath, 0755);
+
         return [$pharPath, $wrapperPath];
     }
 

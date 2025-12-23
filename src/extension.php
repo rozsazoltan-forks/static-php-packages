@@ -146,18 +146,22 @@ class extension implements package
 
         $depends = array_merge($depends, $ordered);
 
+        $versionedConflicts = CreatePackages::getVersionedConflicts('-' . $this->name);
         return [
             'config-files' => [
                 getConfdir() . '/conf.d/' . $this->prefix . $this->name . '.ini',
             ],
             'depends' => $depends,
+            'provides' => [],
+            'replaces' => $versionedConflicts,
+            'conflicts' => $versionedConflicts,
             'files' => [
                 ...($this->getIniPath() ?
                     [$this->getIniPath() => getConfdir() . '/conf.d/' . $this->prefix . $this->name . '.ini']
                     : []
                 ),
                 ...($this->isSharedExtension() ?
-                    [BUILD_MODULES_PATH . '/' . $this->name . '.so' => getLibdir() . '/' . CreatePackages::getPrefix() . '/modules/' . $this->name . '.so']
+                    [BUILD_MODULES_PATH . '/' . $this->name . '.so' => getModuledir() . '/' . $this->name . '.so']
                     : []
                 ),
             ]
@@ -179,9 +183,31 @@ class extension implements package
         }
         $tempIniPath = TEMP_DIR . '/' . $this->prefix . $this->name . '.ini';
         $iniContent = file_get_contents($iniPath);
+
+        // Get the dynamic prefix for path replacements
+        $prefix = CreatePackages::getPrefix();
+
+        // Replace extension directives and ALL hardcoded php paths with prefix-based paths
         $iniContent = str_replace(
-            [';extension=' . $this->name, ';zend_extension=' . $this->name],
-            ['extension=' . $this->name, 'zend_extension=' . $this->name],
+            [
+                ';extension=' . $this->name,
+                ';zend_extension=' . $this->name,
+            ],
+            [
+                'extension=' . $this->name,
+                'zend_extension=' . $this->name,
+            ],
+            $iniContent
+        );
+        $iniContent = preg_replace(
+            [
+                '#/usr/share/php[^/]*/#',
+                '#/usr/local/share/php[^/]*/#',
+            ],
+            [
+                '/usr/share/' . $prefix . '/',
+                '/usr/local/share/' . $prefix . '/',
+            ],
             $iniContent
         );
         file_put_contents($tempIniPath, $iniContent);
@@ -209,7 +235,7 @@ class extension implements package
         if (!file_exists($src)) {
             return [];
         }
-        $targetSo = getLibdir() . '/' . CreatePackages::getPrefix() . '/modules/' . $this->name . '.so';
+        $targetSo = getModuledir() . '/' . $this->name . '.so';
         $target = '/usr/lib/debug' . $targetSo . '.debug';
         return [
             'depends' => [CreatePackages::getPrefix() . '-' . $this->name],

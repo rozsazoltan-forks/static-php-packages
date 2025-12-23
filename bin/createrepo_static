@@ -20,7 +20,8 @@ def parse_rpm_info(filename):
     basename = os.path.basename(filename)
 
     # Match standard php-zts RPMs
-    match_php = re.match(r'(?P<name>php-zts-[^-]+)-(?P<version>\d+\.\d+\.\d+)-(?P<release>[^.]+)\.(?P<arch>[^.]+)\.rpm', basename)
+    # Format: php-zts-cli-8.5.1-1.el10.x86_64.rpm (with optional .el10/.el9/etc)
+    match_php = re.match(r'(?P<name>php-zts-[^-]+)-(?P<version>\d+\.\d+\.\d+)-(?P<release>[^.]+)(?:\.[^.]+)?\.(?P<arch>x86_64|aarch64|noarch)\.rpm', basename)
     if match_php:
         name = match_php.group("name")
         version = match_php.group("version")
@@ -30,7 +31,8 @@ def parse_rpm_info(filename):
         return name, version, release, arch, stream
 
     # Match extension packages
-    match_ext = re.match(r'(?P<name>php-zts-[^-]+)-(?P<version>\d+\.\d+\.\d+_\d+)-(?P<release>[^.]+)\.(?P<arch>[^.]+)\.rpm', basename)
+    # Format: php-zts-apcu-5.1.28_85-1.el10.x86_64.rpm (with optional .el10/.el9/etc)
+    match_ext = re.match(r'(?P<name>php-zts-[^-]+)-(?P<version>\d+\.\d+\.\d+(?:~[a-z0-9]+)?_\d+)-(?P<release>[^.]+)(?:\.[^.]+)?\.(?P<arch>x86_64|aarch64|noarch)\.rpm', basename)
     if match_ext:
         name = match_ext.group("name")
         version = match_ext.group("version")
@@ -46,7 +48,8 @@ def parse_rpm_info(filename):
         return name, version, release, arch, stream
 
     # Match frankenphp
-    match_franken = re.match(r'(frankenphp)-(?P<version>\d+\.\d+\.\d+_\d+)-(?P<release>\d+)\.(?P<arch>[^.]+)\.rpm', basename)
+    # Format: frankenphp-1.11.0_85-1.el10.x86_64.rpm (with optional .el10/.el9/etc)
+    match_franken = re.match(r'(frankenphp)-(?P<version>\d+\.\d+\.\d+_\d+)-(?P<release>\d+)(?:\.[^.]+)?\.(?P<arch>x86_64|aarch64|noarch)\.rpm', basename)
     if match_franken:
         name = match_franken.group(1)
         version = match_franken.group("version")
@@ -56,14 +59,36 @@ def parse_rpm_info(filename):
         stream = f"8.{php_patch[-1]}"
         return name, version, release, arch, stream
 
+    # Match static-php
+    match_static = re.match(r'(static-php)-(?P<version>\d+)-(?P<release>\d+)\.(?P<arch>[^.]+)\.rpm', basename)
+    if match_static:
+        name = match_static.group(1)
+        version = match_static.group("version")
+        release = match_static.group("release")
+        arch = match_static.group("arch")
+        stream = "common"
+        return name, version, release, arch, stream
+
     return None
 
 def build_module_structure(rpm_map, platform):
     documents = []
     timestamp = int(datetime.now(timezone.utc).strftime('%Y%m%d'))
 
+    # Collect common artifacts (static-php)
+    common_artifacts = []
+    if "common" in rpm_map:
+        for pkg in rpm_map["common"]:
+            info = parse_rpm_info(pkg)
+            if info:
+                name, version, release, arch, _ = info
+                common_artifacts.append(f"{name}-0:{version}-{release}.{arch}")
+
     for stream, pkg_list in sorted(rpm_map.items()):
-        artifacts = []
+        if stream == "common":
+            continue
+
+        artifacts = common_artifacts.copy()
 
         for pkg in sorted(pkg_list):
             info = parse_rpm_info(pkg)
@@ -128,10 +153,12 @@ for rpm in rpm_files:
 # Build modules.yaml
 modules_yaml = build_module_structure(rpm_map, platform)
 
-# Determine highest stream for default
+# Determine highest stream for default (exclude "common")
 if rpm_map:
-    default_stream = sorted(rpm_map.keys())[-1]  # Use highest PHP version
-    modules_yaml.append(build_defaults_document(default_stream))
+    streams = [s for s in rpm_map.keys() if s != "common"]
+    if streams:
+        default_stream = sorted(streams)[-1]
+        modules_yaml.append(build_defaults_document(default_stream))
 
 output_path = os.path.join(os.getcwd(), "modules.yaml")
 with open(output_path, "w") as f:

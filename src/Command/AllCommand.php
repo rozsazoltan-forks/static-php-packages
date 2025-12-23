@@ -19,7 +19,6 @@ class AllCommand extends BaseCommand
     {
         parent::configure();
         $this
-            ->addOption('type', null, InputOption::VALUE_REQUIRED, 'Specify which package types to build (rpm,deb)', 'rpm')
             ->addOption('packages', null, InputOption::VALUE_REQUIRED, 'Specify which packages to build (comma-separated)')
             ->addOption('iteration', null, InputOption::VALUE_REQUIRED, 'Specify iteration number to use for packages (overrides auto-detected)');
     }
@@ -27,16 +26,24 @@ class AllCommand extends BaseCommand
     protected function execute(InputInterface $input, OutputInterface $output): int
     {
         $debug = $input->getOption('debug');
-        $packageNames = $input->getOption('packages');
-        $packageTypes = $input->getOption('type');
-        $phpVersion = $input->getOption('phpv');
+        $packagesOpt = $input->getOption('packages');
         $iteration = $input->getOption('iteration');
+        $phpVersion = SPP_PHP_VERSION; // Get from constant
+
+        // Process packages option
+        $packages = null;
+        if (is_string($packagesOpt) && $packagesOpt !== '') {
+            $packages = array_values(array_filter(array_map('trim', explode(',', $packagesOpt))));
+        }
 
         // Run build step
         $output->writeln("Building PHP with extensions using static-php-cli...");
         $output->writeln("Using PHP version: {$phpVersion}");
+        if ($packages) {
+            $output->writeln("Building packages: " . implode(', ', $packages));
+        }
 
-        $buildResult = RunSPC::run($debug, $phpVersion);
+        $buildResult = RunSPC::run($debug, $phpVersion, $packages);
 
         if (!$buildResult) {
             $output->writeln("Build failed.");
@@ -45,15 +52,14 @@ class AllCommand extends BaseCommand
         }
 
         // Run package step
-        if ($packageNames) {
-            // Split by comma to support multiple packages
-            $packageNames = explode(',', $packageNames);
-            $output->writeln("Creating packages for: " . implode(', ', $packageNames) . "...");
+        if ($packages) {
+            $output->writeln("Creating packages for: " . implode(', ', $packages) . "...");
         } else {
             $output->writeln("Creating packages for all extensions...");
         }
 
-        $packageResult = CreatePackages::run($packageNames, $packageTypes, $phpVersion, $iteration);
+        // All parameters now come from constants set by BaseCommand::initialize()
+        $packageResult = CreatePackages::run($packages, $iteration);
 
         if (!$packageResult) {
             $output->writeln("Package creation failed.");

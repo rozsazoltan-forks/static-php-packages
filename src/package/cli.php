@@ -17,19 +17,24 @@ class cli implements package
     {
         $config = CraftConfig::getInstance();
         $staticExtensions = $config->getStaticExtensions();
+        $prefix = CreatePackages::getPrefix();
 
         $contents = file_get_contents(INI_PATH . '/php.ini');
-        $contents = str_replace('$libdir', getLibdir() . '/' . CreatePackages::getPrefix(), $contents);
+        $contents = str_replace('$libdir', getPhpLibdir(), $contents);
+        // Replace ALL hardcoded /etc/php* paths with prefix-based conf dir
+        $contents = preg_replace('#/etc/php[^/]*#', getConfdir(), $contents);
         file_put_contents(TEMP_DIR . '/php.ini', $contents);
-        $provides = ['php-zts'];
-        $replaces = [];
+        $provides = [$prefix];
+        $versionedConflicts = CreatePackages::getVersionedConflicts('-cli');
+        $replaces = $versionedConflicts;
+        $conflicts = $versionedConflicts;
         $configFiles = [
             getConfdir(),
             getConfdir() . '/php.ini'
         ];
         $files = [
             TEMP_DIR . '/php.ini' => getConfdir() . '/php.ini',
-            BUILD_BIN_PATH . '/php' => '/usr/bin/php-zts',
+            BUILD_BIN_PATH . '/php' => '/usr/bin/php' . getBinarySuffix(),
         ];
 
         foreach ($staticExtensions as $ext) {
@@ -39,7 +44,23 @@ class cli implements package
             // Add .ini files for statically compiled extensions
             $iniFile = INI_PATH . "/extension/{$ext}.ini";
             if (file_exists($iniFile)) {
-                $files[$iniFile] = getConfdir() . "/conf.d/{$ext}.ini";
+                // Process the .ini file to replace ALL hardcoded php paths with prefix-based paths
+                $iniContents = file_get_contents($iniFile);
+                $iniContents = preg_replace(
+                    [
+                        '#/usr/share/php[^/]*/#',
+                        '#/usr/local/share/php[^/]*/#',
+                    ],
+                    [
+                        getSharedir() . '/',
+                        '/usr/local/share/' . $prefix . '/',
+                    ],
+                    $iniContents
+                );
+                $tempIniPath = TEMP_DIR . "/{$ext}.ini";
+                file_put_contents($tempIniPath, $iniContents);
+
+                $files[$tempIniPath] = getConfdir() . "/conf.d/{$ext}.ini";
                 $configFiles[] = getConfdir() . "/conf.d/{$ext}.ini";
             }
         }
@@ -47,39 +68,41 @@ class cli implements package
         if (!file_exists(BUILD_ROOT_PATH . '/license/LICENSE')) {
             copy(BASE_PATH . '/LICENSE', BUILD_ROOT_PATH . '/license/LICENSE');
         }
-        $files[BUILD_ROOT_PATH . '/license'] = '/usr/share/licenses/php-zts/';
+        $files[BUILD_ROOT_PATH . '/license'] = '/usr/share/licenses/' . CreatePackages::getPrefix() . '/';
 
         return [
             'config-files' => $configFiles,
             'empty_directories' => [
-                '/usr/share/php-zts/preload',
-                '/var/lib/php-zts/session',
-                '/var/lib/php-zts/wsdlcache',
-                '/var/lib/php-zts/opcache',
+                getSharedir() . '/preload',
+                getVarLibdir() . '/session',
+                getVarLibdir() . '/wsdlcache',
+                getVarLibdir() . '/opcache',
             ],
             'directories' => [
-                '/usr/share/php-zts/preload',
-                '/var/lib/php-zts/session',
-                '/var/lib/php-zts/wsdlcache',
-                '/var/lib/php-zts/opcache',
+                getSharedir() . '/preload',
+                getVarLibdir() . '/session',
+                getVarLibdir() . '/wsdlcache',
+                getVarLibdir() . '/opcache',
             ],
             'provides' => $provides,
             'replaces' => $replaces,
+            'conflicts' => $conflicts,
             'files' => $files
         ];
     }
 
     public function getFpmExtraArgs(): array
     {
-        $afterInstallScript = <<<'BASH'
-#!/bin/bash
+        $binarySuffix = getBinarySuffix();
+        $afterInstallScript = <<<BASH
+#!/bin/sh
 if [ ! -e /usr/bin/php ]; then
-    ln -sf /usr/bin/php-zts /usr/bin/php
+    ln -sf /usr/bin/php{$binarySuffix} /usr/bin/php
 fi
 BASH;
-        $afterRemoveScript = <<<'BASH'
-#!/bin/bash
-if [ -L /usr/bin/php ] && [ "$(readlink /usr/bin/php)" = "/usr/bin/php-zts" ]; then
+        $afterRemoveScript = <<<BASH
+#!/bin/sh
+if [ -L /usr/bin/php ] && [ "\$(readlink /usr/bin/php)" = "/usr/bin/php{$binarySuffix}" ]; then
     rm -f /usr/bin/php
 fi
 BASH;
@@ -97,11 +120,12 @@ BASH;
 
     public function getDebuginfoFpmConfig(): array
     {
-        $src = BUILD_ROOT_PATH . '/debug/php-zts.debug';
+        $binarySuffix = getBinarySuffix();
+        $src = BUILD_ROOT_PATH . '/debug/php.debug';
         if (!file_exists($src)) {
             return [];
         }
-        $target = '/usr/lib/debug/usr/bin/php-zts.debug';
+        $target = '/usr/lib/debug/usr/bin/php' . $binarySuffix . '.debug';
         return [
             'depends' => [CreatePackages::getPrefix() . '-cli'],
             'files' => [

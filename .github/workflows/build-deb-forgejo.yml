@@ -3,6 +3,18 @@ name: Build and upload Debian packages to Forgejo
 on:
     workflow_dispatch:
         inputs:
+            iteration:
+                description: "Optional: override package iteration (integer). Leave empty for auto"
+                required: false
+                default: ""
+            php_versions:
+                description: "Optional: PHP versions (comma-separated, e.g., 8.2,8.5). Leave empty for all"
+                required: false
+                default: ""
+            architectures:
+                description: "Optional: Architectures (comma-separated, e.g., amd64,arm64). Leave empty for all"
+                required: false
+                default: ""
             debug_tmate:
                 description: "Open tmate session on failure"
                 type: boolean
@@ -15,9 +27,48 @@ permissions:
     contents: read
 
 jobs:
+    setup-matrix:
+        runs-on: ubuntu-24.04
+        permissions:
+            contents: read
+        outputs:
+            matrix: ${{ steps.set-matrix.outputs.matrix }}
+        steps:
+            -   name: Set up matrix
+                id: set-matrix
+                run: |
+                    # Default values
+                    default_php='["8.2","8.3","8.4","8.5"]'
+                    default_arch='["amd64","arm64"]'
+
+                    # Parse inputs or use defaults
+                    if [[ -n "${INPUTS_PHP_VERSIONS}" ]]; then
+                        php_versions=$(echo "${INPUTS_PHP_VERSIONS}" | jq -R 'split(",") | map(gsub("^\\s+|\\s+$";""))')
+                    else
+                        php_versions=$default_php
+                    fi
+
+                    if [[ -n "${INPUTS_ARCHITECTURES}" ]]; then
+                        arch_versions=$(echo "${INPUTS_ARCHITECTURES}" | jq -R 'split(",") | map(gsub("^\\s+|\\s+$";""))')
+                    else
+                        arch_versions=$default_arch
+                    fi
+
+                    # Create matrix JSON (compact, single line)
+                    matrix=$(jq -nc \
+                        --argjson php "$php_versions" \
+                        --argjson arch "$arch_versions" \
+                        '{"php-version":$php,"arch":$arch}')
+
+                    echo "matrix=$matrix" >> $GITHUB_OUTPUT
+                env:
+                    INPUTS_PHP_VERSIONS: ${{ inputs.php_versions }}
+                    INPUTS_ARCHITECTURES: ${{ inputs.architectures }}
+
     build:
-        name: Build Debian packages for PHP ${{ matrix.php_version }} on ${{ matrix.arch }}
-        runs-on: ${{ matrix.arch == 'aarch64' && 'ubuntu-24.04-arm64' || 'ubuntu-24.04' }}
+        needs: setup-matrix
+        name: Build for ${{ matrix.arch }} PHP ${{ matrix.php-version }}
+        runs-on: ubuntu-24.04${{ matrix.arch == 'arm64' && '-arm' || '' }}
         container:
             image: debian:11
         permissions:
@@ -26,13 +77,12 @@ jobs:
             run:
                 shell: bash
         strategy:
-            matrix:
-                php_version: ['8.2', '8.3', '8.4', '8.5']
-                arch: ['x86_64', 'aarch64']
+            fail-fast: false
+            matrix: ${{ fromJson(needs.setup-matrix.outputs.matrix) }}
         env:
             GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
             BASH_ENV: /tmp/gha-bashenv
-            PHP_VERSION: ${{ matrix.php_version }}
+            ITERATION: ${{ inputs.iteration || '' }}
 
         steps:
             -   name: Checkout code
@@ -41,10 +91,18 @@ jobs:
                     ref: versioned
                     persist-credentials: false
 
+            -   name: Set architecture variables
+                run: |
+                    if [[ "${{ matrix.arch }}" == "arm64" ]]; then
+                      echo "RPM_ARCH=aarch64" >> $GITHUB_ENV
+                    else
+                      echo "RPM_ARCH=x86_64" >> $GITHUB_ENV
+                    fi
+
             -   name: Set PHP version short
                 run: |
                     # Convert "8.5" to "85"
-                    PHP_VERSION_SHORT=$(echo "$PHP_VERSION" | tr -d '.')
+                    PHP_VERSION_SHORT=$(echo "${{ matrix.php-version }}" | tr -d '.')
                     echo "PHP_VERSION_SHORT=$PHP_VERSION_SHORT" >> $GITHUB_ENV
 
             -   name: Bootstrap container
@@ -56,13 +114,13 @@ jobs:
 
             -   name: Install cmake
                 run: |
-                    curl -o cmake.tar.gz -fsSL https://github.com/Kitware/CMake/releases/download/v3.31.4/cmake-3.31.4-linux-${{ matrix.arch }}.tar.gz && \
+                    curl -o cmake.tar.gz -fsSL https://github.com/Kitware/CMake/releases/download/v3.31.4/cmake-3.31.4-linux-$(uname -m).tar.gz && \
                     sudo tar -xzf cmake.tar.gz -C /usr/local --strip-components=1 && \
                     rm cmake.tar.gz
 
             -   name: Install composer
                 run: |
-                    sudo curl -L https://files.henderkes.com/${{ matrix.arch }}-linux/php -o /usr/local/bin/php
+                    sudo curl -L https://files.henderkes.com/${RPM_ARCH}-linux/php -o /usr/local/bin/php
                     sudo chmod +x /usr/local/bin/php
                     sudo curl -sS https://raw.githubusercontent.com/composer/getcomposer.org/f3108f64b4e1c1ce6eb462b159956461592b3e3e/web/installer | php -- --quiet
                     sudo mv composer.phar /usr/local/bin/composer
@@ -96,21 +154,40 @@ jobs:
                     rm downloads.tar.gz
 
             -   name: Build PHP packages
-                run: bin/spp all --target=${{ matrix.arch }}-native-gnu --phpv=${{ matrix.php_version }} --prefix="-zts" --type=deb
+                run: |
+                    if [[ -n "${ITERATION}" ]]; then
+                        bin/spp all --target=native-native-gnu --phpv=${{ matrix.php-version }} --prefix="-zts" --type=deb --iteration="${ITERATION}"
+                    else
+                        bin/spp all --target=native-native-gnu --phpv=${{ matrix.php-version }} --prefix="-zts" --type=deb
+                    fi
 
             -   name: Upload to Forgejo
                 working-directory: dist/deb
                 run: |
-                    ../../bin/forgejo-helper upload deb "${{ env.PHP_VERSION_SHORT }}" "${{ secrets.FORGEJO_PASSWORD }}" "*.deb"
+                    ../../bin/forgejo-helper upload debian "${{ env.PHP_VERSION_SHORT }}" "${{ secrets.FORGEJO_PASSWORD }}" "*.deb"
 
             -   name: Upload logs on failure
                 if: ${{ failure() }}
                 uses: actions/upload-artifact@v4
                 with:
-                    name: build-logs-deb-${{ matrix.arch }}-php${{ matrix.php_version }}
+                    name: build-logs-${{ matrix.arch }}-php${{ matrix.php-version }}
                     path: vendor/crazywhalecc/static-php-cli/log
+
+            -   name: Install tmate
+                if: ${{ failure() && inputs.debug_tmate == true }}
+                run: |
+                    case "${RPM_ARCH}" in
+                      x86_64)  arch="amd64" ;;
+                      aarch64) arch="arm64v8" ;;
+                    esac
+                    dir="tmate-2.4.0-static-linux-$arch"
+                    curl -L "https://github.com/tmate-io/tmate/releases/download/2.4.0/$dir.tar.xz" | tar -xJ -O "$dir/tmate" > /usr/bin/tmate
+                    chmod +x /usr/bin/tmate
 
             -   name: Setup tmate session
                 if: ${{ failure() && inputs.debug_tmate == true }}
                 uses: mxschmitt/action-tmate@c0afd6f790e3a5564914980036ebf83216678101 # v3
-                timeout-minutes: 10
+                with:
+                    install-dependencies: false
+                    sudo: false
+                timeout-minutes: 30

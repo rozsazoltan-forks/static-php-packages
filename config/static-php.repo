@@ -4,3 +4,12 @@ baseurl=https://rpm.henderkes.com/\$basearch/el\$releasever
 enabled=1
 gpgcheck=1
 gpgkey=https://key.henderkes.com/static-php.gpg
+excludepkgs=*-debuginfo
+
+[static-php-debuginfo]
+name=Static PHP repository - Debuginfo
+baseurl=https://rpm.henderkes.com/$basearch/el$releasever
+enabled=0
+gpgcheck=1
+gpgkey=https://key.henderkes.com/static-php.asc
+includepkgs=*-debuginfo

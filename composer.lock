@@ -4,7 +4,7 @@
         "Read more about it at https://getcomposer.org/doc/01-basic-usage.md#installing-dependencies",
         "This file is @generated automatically"
     ],
-    "content-hash": "3a028b36b942ff3da62d5e6cc6d84937",
+    "content-hash": "8887f9391893506dae15b45829a13386",
     "packages": [
         {
             "name": "carbonphp/carbon-doctrine-types",
@@ -81,12 +81,12 @@
             "source": {
                 "type": "git",
                 "url": "https://github.com/crazywhalecc/static-php-cli.git",
-                "reference": "53f7cdefe0e791d621d86cc2ce6938d228ec3b19"
+                "reference": "6b5200002e6d744a450038e982c3c88d386ef3e6"
             },
             "dist": {
                 "type": "zip",
-                "url": "https://api.github.com/repos/crazywhalecc/static-php-cli/zipball/53f7cdefe0e791d621d86cc2ce6938d228ec3b19",
-                "reference": "53f7cdefe0e791d621d86cc2ce6938d228ec3b19",
+                "url": "https://api.github.com/repos/crazywhalecc/static-php-cli/zipball/6b5200002e6d744a450038e982c3c88d386ef3e6",
+                "reference": "6b5200002e6d744a450038e982c3c88d386ef3e6",
                 "shasum": ""
             },
             "require": {
@@ -141,7 +141,7 @@
                     "type": "other"
                 }
             ],
-            "time": "2025-12-18T19:12:01+00:00"
+            "time": "2025-12-20T22:29:25+00:00"
         },
         {
             "name": "doctrine/inflector",
@@ -2228,12 +2228,12 @@
             "source": {
                 "type": "git",
                 "url": "https://github.com/Roave/SecurityAdvisories.git",
-                "reference": "f960b7bc5c3bae7e348f7b65736072f74493bc3a"
+                "reference": "a08c38341cd11dc1b1cb4fa87f65913c95908d73"
             },
             "dist": {
                 "type": "zip",
-                "url": "https://api.github.com/repos/Roave/SecurityAdvisories/zipball/f960b7bc5c3bae7e348f7b65736072f74493bc3a",
-                "reference": "f960b7bc5c3bae7e348f7b65736072f74493bc3a",
+                "url": "https://api.github.com/repos/Roave/SecurityAdvisories/zipball/a08c38341cd11dc1b1cb4fa87f65913c95908d73",
+                "reference": "a08c38341cd11dc1b1cb4fa87f65913c95908d73",
                 "shasum": ""
             },
             "conflict": {
@@ -3225,7 +3225,7 @@
                     "type": "tidelift"
                 }
             ],
-            "time": "2025-12-18T19:06:20+00:00"
+            "time": "2025-12-19T16:40:43+00:00"
         }
     ],
     "aliases": [],
@@ -3238,6 +3238,7 @@
     "prefer-lowest": false,
     "platform": {
         "php": ">=8.4",
+        "ext-yaml": "*",
         "ext-zlib": "*"
     },
     "platform-dev": {},

@@ -9,6 +9,26 @@ use Twig\Loader\FilesystemLoader;
 class TwigRenderer
 {
     /**
+     * Renders any Twig template with the given variables
+     *
+     * @param string $templateName Template file name (e.g., 'pie-wrapper.twig')
+     * @param array $variables Variables to pass to the template
+     * @return string The rendered template content
+     * @throws \RuntimeException If there's an error rendering the template
+     */
+    public static function render(string $templateName, array $variables = []): string
+    {
+        $loader = new FilesystemLoader(BASE_PATH . '/config/templates');
+        $twig = new Environment($loader);
+
+        try {
+            return $twig->render($templateName, $variables);
+        } catch (\Exception $e) {
+            throw new \RuntimeException("Error rendering template {$templateName}: " . $e->getMessage());
+        }
+    }
+
+    /**
      * Renders a Twig template with the given variables
      *
      * @param string $phpVersion PHP version to use in the template
@@ -52,13 +72,27 @@ class TwigRenderer
         }
 
         // Prepare template variables
+        // Use SPP_PREFIX and SPP_TYPE constants set by BaseCommand
+        $prefix = 'php' . (defined('SPP_PREFIX') ? SPP_PREFIX : '-zts');
+        $packageType = defined('SPP_TYPE') ? SPP_TYPE : 'rpm';
+        $libdir = $packageType === 'rpm' ? '/usr/lib64' : '/usr/lib';
+
+        // Get the binary suffix (e.g., "-zts", "-nts", "-zts8.5")
+        $binarySuffix = defined('SPP_PREFIX') ? SPP_PREFIX : '-zts';
+        // For the -release flag: remove only the leading dash (keep dots)
+        // e.g., "-zts" -> "zts", "-zts8.5" -> "zts8.5"
+        $releasePrefix = ltrim($binarySuffix, '-');
+
         $templateVars = [
             'php_version' => $phpVersion,
             'php_version_nodot' => str_replace('.', '', $phpVersion),
             'target' => SPP_TARGET,
             'arch' => $arch,
             'os' => $majorOsVersion,
-            'prefix' => CreatePackages::getPrefix(),
+            'prefix' => $prefix,
+            'release_prefix' => $releasePrefix,
+            'confdir' => '/etc/' . $prefix,
+            'moduledir' => $libdir . '/' . $prefix . '/modules',
             // Optional filter: when provided, craft.yml will include only selected packages
             // across extensions/shared-extensions/sapi, while always including cli SAPI.
             'filter_packages' => $packages,
