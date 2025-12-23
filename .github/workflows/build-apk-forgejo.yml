@@ -105,8 +105,14 @@ jobs:
 
             -   name: Install nfpm
                 run: |
-                    curl -sfL https://goreleaser.com/static/run | bash -s -- --version
-                    curl -sfL https://goreleaser.com/static/run | bash -s -- install github.com/goreleaser/nfpm/v2/cmd/nfpm@latest
+                    if [[ "${{ matrix.arch }}" == "aarch64" ]]; then
+                        NFPM_ARCH="arm64"
+                    else
+                        NFPM_ARCH="amd64"
+                    fi
+                    curl -L -o nfpm.deb https://github.com/goreleaser/nfpm/releases/download/v2.44.0/nfpm_2.44.0_${NFPM_ARCH}.deb
+                    sudo dpkg -i nfpm.deb
+                    rm nfpm.deb
 
             -   name: Install composer
                 run: |
