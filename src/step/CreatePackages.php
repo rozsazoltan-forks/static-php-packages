@@ -298,15 +298,30 @@ class CreatePackages
 
         echo "Creating RPM package for {$name}...\n";
 
+        // For RPM packages, append PHP version to package version for extensions
+        // This ensures proper version ordering when the same extension version is built for different PHP versions
+        [$fullPhpVersion] = self::getPhpVersionAndArchitecture();
+        $rpmVersion = $phpVersion;
+
+        // If package version differs from PHP version, it's an extension - append PHP version
+        if ($phpVersion !== $fullPhpVersion) {
+            if (preg_match('/^(\d+)\.(\d+)/', $fullPhpVersion, $phpMatches)) {
+                $phpVersionSuffix = $phpMatches[1] . $phpMatches[2]; // e.g., "85" from "8.5"
+            } else {
+                $phpVersionSuffix = str_replace('.', '', $fullPhpVersion);
+            }
+            $rpmVersion = $phpVersion . '+php' . $phpVersionSuffix;
+        }
+
         // Calculate iteration for RPM (with possible override)
-        $computed = (string)self::getNextIteration($name, $phpVersion, $architecture, 'rpm');
+        $computed = (string)self::getNextIteration($name, $rpmVersion, $architecture, 'rpm');
         $iteration = self::$iterationOverride ?? $computed;
 
         // Generate full package filename with PHP version suffix and distribution version
         $phpSuffix = self::getPhpVersionSuffix();
         $distVersion = self::getDistVersion();
         $distSuffix = $distVersion !== '' ? ".{$distVersion}" : '';
-        $packageFile = DIST_RPM_PATH . "/{$name}-{$phpVersion}-{$iteration}.{$phpSuffix}{$distSuffix}.{$architecture}.rpm";
+        $packageFile = DIST_RPM_PATH . "/{$name}-{$rpmVersion}-{$iteration}.{$phpSuffix}{$distSuffix}.{$architecture}.rpm";
 
         $fpmArgs = [...[
             'fpm',
@@ -315,7 +330,7 @@ class CreatePackages
             '--rpm-compression', 'xz',
             '-p', $packageFile,  // Full path with phpSuffix and distVersion in filename
             '--name', $name,
-            '--version', $phpVersion,
+            '--version', $rpmVersion,
             '--iteration', $iteration,
             '--architecture', $architecture,
             '--description', "Static PHP Package for {$name}",
@@ -345,17 +360,17 @@ class CreatePackages
         if (str_ends_with($name, '-debuginfo')) {
             $base = preg_replace('/-debuginfo$/', '', $name);
             $fpmArgs[] = '--depends';
-            $fpmArgs[] = sprintf('%s = %s-%s', $base, $phpVersion, $iteration);
+            $fpmArgs[] = sprintf('%s = %s-%s', $base, $rpmVersion, $iteration);
         }
 
         if (isset($config['provides']) && is_array($config['provides'])) {
             foreach ($config['provides'] as $provide) {
                 $fpmArgs[] = '--provides';
-                $fpmArgs[] = "$provide = $phpVersion-$iteration";
+                $fpmArgs[] = "$provide = $rpmVersion-$iteration";
                 if (str_ends_with($provide, '.so')) {
                     $provide = str_replace('.so', '.so()(64bit)', $provide);
                     $fpmArgs[] = '--provides';
-                    $fpmArgs[] = "$provide = $phpVersion-$iteration";
+                    $fpmArgs[] = "$provide = $rpmVersion-$iteration";
                 }
             }
         }
@@ -363,7 +378,7 @@ class CreatePackages
         if (isset($config['replaces']) && is_array($config['replaces'])) {
             foreach ($config['replaces'] as $replace) {
                 $fpmArgs[] = '--replaces';
-                $fpmArgs[] = "$replace < {$phpVersion}-{$iteration}";
+                $fpmArgs[] = "$replace < {$rpmVersion}-{$iteration}";
             }
         }
 
@@ -657,16 +672,31 @@ class CreatePackages
 
         echo "Creating APK package for {$name} using nfpm...\n";
 
+        // For APK packages, append PHP version to package version for extensions
+        // This ensures proper version ordering when the same extension version is built for different PHP versions
+        [$fullPhpVersion] = self::getPhpVersionAndArchitecture();
+        $apkVersion = $phpVersion;
+
+        // If package version differs from PHP version, it's an extension - append PHP version
+        if ($phpVersion !== $fullPhpVersion) {
+            if (preg_match('/^(\d+)\.(\d+)/', $fullPhpVersion, $phpMatches)) {
+                $phpVersionSuffix = $phpMatches[1] . $phpMatches[2]; // e.g., "85" from "8.5"
+            } else {
+                $phpVersionSuffix = str_replace('.', '', $fullPhpVersion);
+            }
+            $apkVersion = $phpVersion . '_' . $phpVersionSuffix;
+        }
+
         // Calculate iteration for APK (with possible override)
-        $computed = (string)self::getNextIteration($name, $phpVersion, $architecture, 'apk');
+        $computed = (string)self::getNextIteration($name, $apkVersion, $architecture, 'apk');
         $iteration = self::$iterationOverride ?? $computed;
 
         // APK uses r{iteration} format for revision number
         $apkIteration = $iteration;
-        $fullVersion = "{$phpVersion}-r{$apkIteration}";
+        $fullVersion = "{$apkVersion}-r{$apkIteration}";
 
         // Use nfpm instead of fpm for APK packages
-        self::createApkWithNfpm($package, $name, $phpVersion, $architecture, $apkIteration, $config, $isDebuginfo);
+        self::createApkWithNfpm($package, $name, $apkVersion, $architecture, $apkIteration, $config, $isDebuginfo);
     }
     private static function createApkWithNfpm(\staticphp\package $package, string $name, string $phpVersion, string $architecture, string $iteration, array $config, bool $isDebuginfo): void
     {

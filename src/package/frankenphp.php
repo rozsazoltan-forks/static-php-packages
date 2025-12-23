@@ -398,8 +398,18 @@ class frankenphp implements package
 
         $name = $this->getName();
 
+        // For APK packages, append PHP version to package version for proper sorting
+        // e.g., 1.11.0_85 is higher than 1.11.0_83
+        $phpMajorMinor = SPP_PHP_VERSION;
+        if (preg_match('/^(\d+)\.(\d+)/', $phpMajorMinor, $phpMatches)) {
+            $phpVersionSuffix = $phpMatches[1] . $phpMatches[2]; // e.g., "85" from "8.5"
+        } else {
+            $phpVersionSuffix = str_replace('.', '', $phpMajorMinor);
+        }
+        $apkVersion = $version . '_' . $phpVersionSuffix;
+
         // Calculate iteration for APK (with possible override)
-        $computed = (string)$this->getNextIteration($name, $version, $architecture, 'apk');
+        $computed = (string)$this->getNextIteration($name, $apkVersion, $architecture, 'apk');
         $iteration = $iterationOverride ?? $computed;
 
         $versionedConflicts = $this->getVersionedConflicts();
@@ -409,7 +419,7 @@ class frankenphp implements package
             'name' => $name,
             'arch' => $architecture,
             'platform' => 'linux',
-            'version' => $version,
+            'version' => $apkVersion,
             'release' => $iteration,
             'section' => 'default',
             'priority' => 'optional',
@@ -538,7 +548,7 @@ class frankenphp implements package
         if ($debuginfo) {
             $frankenDbg = BUILD_ROOT_PATH . '/debug/frankenphp.debug';
             if (file_exists($frankenDbg)) {
-                $this->createApkDebuginfo($name, $version, $iteration, $architecture, $frankenDbg, $frankenphpSuffix);
+                $this->createApkDebuginfo($name, $apkVersion, $iteration, $architecture, $frankenDbg, $frankenphpSuffix);
             }
         }
     }
