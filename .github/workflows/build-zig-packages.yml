@@ -126,17 +126,6 @@ jobs:
                     if [[ -n "${{ env.PACKAGES }}" ]]; then
                       PACKAGES_FLAG="--packages=${{ env.PACKAGES }}"
                     fi
-                    php bin/spp build --target=${{ matrix.target }} --phpv=${{ matrix.php-version }} $PACKAGES_FLAG
-
-            -   name: Remove spc build dir to clear up space for gh runners
-                run: sudo rm -rf vendor/crazywhalecc/static-php-cli/source vendor/crazywhalecc/static-php-cli/buildroot
-
-            -   name: Build PHP and packages
-                run: |
-                    PACKAGES_FLAG=""
-                    if [[ -n "${{ env.PACKAGES }}" ]]; then
-                      PACKAGES_FLAG="--packages=${{ env.PACKAGES }}"
-                    fi
                     php bin/spp package --target=${{ matrix.target }} --type=rpm --phpv=${{ matrix.php-version }} --iteration="${{ env.ITERATION }}" $PACKAGES_FLAG
 
             -   name: Prepare rpm signing
