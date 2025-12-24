@@ -232,7 +232,7 @@ jobs:
 
             -   name: Build PHP
                 run: |
-                    TARGET=${{ matrix.alma == 9 && matrix.arch == 'x86_64' && 'native-native-gnu.2.34' || 'native-native-gnu' }}
+                    TARGET=${{ matrix.alma == 9 && matrix.arch == 'x86_64' && matrix.php == '8.5' && 'native-native-gnu.2.34' || 'native-native-gnu' }}
                     PACKAGES_FLAG=""
                     if [[ -n "${PACKAGES}" ]]; then
                       PACKAGES_FLAG="--packages=${PACKAGES}"
