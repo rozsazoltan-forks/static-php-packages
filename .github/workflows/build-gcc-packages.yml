@@ -237,21 +237,7 @@ jobs:
                     if [[ -n "${PACKAGES}" ]]; then
                       PACKAGES_FLAG="--packages=${PACKAGES}"
                     fi
-                    php bin/spp build --target=$TARGET --phpv=${MATRIX_PHP_VERSION} $PACKAGES_FLAG
-                env:
-                    MATRIX_PHP_VERSION: ${{ matrix.php-version }}
-
-            -   name: Remove spc build dir to clear up space for gh runners
-                run: rm -rf vendor/crazywhalecc/static-php-cli/source vendor/crazywhalecc/static-php-cli/buildroot
-
-            -   name: Build rpm packages
-                run: |
-                    TARGET=${{ matrix.alma == 9 && matrix.arch == 'x86_64' && 'native-native-gnu.2.34' || 'native-native-gnu' }}
-                    PACKAGES_FLAG=""
-                    if [[ -n "${PACKAGES}" ]]; then
-                      PACKAGES_FLAG="--packages=${PACKAGES}"
-                    fi
-                    php bin/spp package --target=$TARGET --type=rpm --phpv=${MATRIX_PHP_VERSION} --iteration="${ITERATION}" $PACKAGES_FLAG
+                    php bin/spp all --type=rpm --target=$TARGET --phpv=${MATRIX_PHP_VERSION} $PACKAGES_FLAG
                 env:
                     MATRIX_PHP_VERSION: ${{ matrix.php-version }}
 
