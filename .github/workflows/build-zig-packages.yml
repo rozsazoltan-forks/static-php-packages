@@ -126,7 +126,7 @@ jobs:
                     if [[ -n "${{ env.PACKAGES }}" ]]; then
                       PACKAGES_FLAG="--packages=${{ env.PACKAGES }}"
                     fi
-                    php bin/spp package --target=${{ matrix.target }} --type=rpm --phpv=${{ matrix.php-version }} --iteration="${{ env.ITERATION }}" $PACKAGES_FLAG
+                    php bin/spp all --target=${{ matrix.target }} --type=rpm --phpv=${{ matrix.php-version }} --iteration="${{ env.ITERATION }}" $PACKAGES_FLAG
 
             -   name: Prepare rpm signing
                 run: |
