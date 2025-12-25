@@ -96,6 +96,88 @@ jobs:
             -   name: Build PHP
                 run: php bin/spp all --target=native-native-gnu --phpv=${{ matrix.php-version }} --prefix="-zts" --type=deb
 
+            -   name: Inject deprecation notice into packages
+                run: |
+                    shopt -s nullglob
+                    for deb in dist/deb/*.deb; do
+                        echo "Processing $deb..."
+
+                        # Create a working directory
+                        work_dir=$(mktemp -d)
+                        extract_dir="$work_dir/extracted"
+
+                        # Extract the .deb
+                        dpkg-deb -R "$deb" "$extract_dir"
+
+                        # Create or append to postinst script
+                        postinst="$extract_dir/DEBIAN/postinst"
+
+                        if [ -f "$postinst" ]; then
+                            # If postinst exists, insert deprecation notice after shebang
+                            temp_file=$(mktemp)
+                            head -1 "$postinst" > "$temp_file"
+                            cat >> "$temp_file" <<'EOF'
+
+                    # Display deprecation notice
+                    cat <<'NOTICE'
+
+                    ================================================================================
+                                              ⚠️  DEPRECATION NOTICE
+                    ================================================================================
+
+                    The single-version php-zts repository is deprecated and will no longer receive updates.
+
+                    Please migrate to the new repository with different PHP versions available.
+
+                    More information: https://pkgs.henderkes.com
+
+                    ================================================================================
+
+                    NOTICE
+
+                    EOF
+                            tail -n +2 "$postinst" >> "$temp_file"
+                            mv "$temp_file" "$postinst"
+                        else
+                            # Create new postinst script
+                            cat > "$postinst" <<'EOF'
+                    #!/bin/sh
+                    set -e
+
+                    # Display deprecation notice
+                    cat <<'NOTICE'
+
+                    ================================================================================
+                                              ⚠️  DEPRECATION NOTICE
+                    ================================================================================
+
+                    This repository is deprecated and will no longer receive updates.
+
+                    Please migrate to the new repository with different PHP versions available.
+
+                    More information: https://pkgs.henderkes.com
+
+                    ================================================================================
+
+                    NOTICE
+
+                    #DEBHELPER#
+
+                    exit 0
+                    EOF
+                        fi
+
+                        chmod 755 "$postinst"
+
+                        # Repackage the .deb
+                        dpkg-deb -b "$extract_dir" "$deb"
+
+                        # Cleanup
+                        rm -rf "$work_dir"
+
+                        echo "✓ Injected deprecation notice into $deb"
+                    done
+
             -   name: Stage deb artifacts
                 run: |
                     mkdir -p "artifacts/${{ matrix.arch }}"
@@ -184,7 +266,9 @@ jobs:
                     Architectures: amd64 arm64
                     Origin: ${ORIGIN}
                     Label: ${LABEL}
-                    Description: ${DESC}
+                    Description: ⚠️ DEPRECATED - This repository is deprecated. Please migrate to the new repository with different PHP versions at https://pkgs.henderkes.com.
+                    NotAutomatic: yes
+                    ButAutomaticUpgrades: yes
                     SignWith: ${FPR}
                     EOF
 
