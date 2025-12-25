@@ -1,4 +1,4 @@
-name: Build and upload gcc rpm packages
+name: Build RPM modular packages
 
 on:
     workflow_dispatch:
@@ -232,7 +232,7 @@ jobs:
 
             -   name: Build PHP
                 run: |
-                    TARGET=${{ matrix.alma == 9 && matrix.arch == 'x86_64' && matrix.php == '8.5' && 'native-native-gnu.2.34' || 'native-native-gnu' }}
+                    TARGET=${{ matrix.alma == '9' && matrix.arch == 'x86_64' && matrix.php-version == '8.5' && 'native-native-gnu.2.34' || 'native-native-gnu' }}
                     PACKAGES_FLAG=""
                     if [[ -n "${PACKAGES}" ]]; then
                       PACKAGES_FLAG="--packages=${PACKAGES}"

@@ -56,9 +56,9 @@ jobs:
                     path: downloads.tar.gz
                     retention-days: 2
 
-            -   name: Trigger build-gcc-packages workflow
+            -   name: Trigger build-rpm-modular-packages workflow
                 if: success()
-                run: gh workflow run build-gcc-packages.yml
+                run: gh workflow run build-rpm-modular-packages.yml
                 env:
                     GH_TOKEN: ${{ secrets.GH_PAT }} # use our own user as the triggering user
 
