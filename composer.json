@@ -16,13 +16,13 @@
     },
     "config": {
         "platform": {
-            "php": "8.4.0"
+            "php": "8.5.0"
         },
         "sort-packages": true
     },
     "prefer-stable": true,
     "require": {
-        "php": ">=8.4",
+        "php": ">=8.5",
         "ext-yaml": "*",
         "ext-zlib": "*",
         "crazywhalecc/static-php-cli": "dev-henderkes-patch-1",
