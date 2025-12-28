@@ -5,7 +5,7 @@ php-version: {{ php_version }}
 
 {%- set base_extensions = base_extensions_str|split(',')|map(v => v|trim) -%}
 {%- set base_shared = base_shared_str|split(',')|map(v => v|trim) -%}
-{%- set base_shared = php_version == 8.5 ? base_shared|filter(v => v != 'memcache' and v != 'grpc') : base_shared -%}
+{%- set base_shared = php_version == 8.5 ? base_shared|filter(v => v != 'memcache') : base_shared -%}
 {%- set base_sapi = base_sapi_str|split(',')|map(v => v|trim) -%}
 
 {# Apply optional filtering #}
