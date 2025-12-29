@@ -63,7 +63,7 @@ craft-options:
 {% set arch_flags = arch == 'x86_64' ? ' -mtls-dialect=gnu2 -m64 -fcf-protection' : '' %}
 {% if arch == 'x86_64' and os == '10' %} {% set arch_flags = arch_flags ~ ' -march=x86-64-v3' %} {% endif %}
 {% if arch == 'x86_64' and os == '9'  %} {% set arch_flags = arch_flags ~ ' -march=x86-64-v2' %} {% endif %}
-{% set using_gcc = (target == 'native-native-gnu' or target == 'native-native') %}
+{% set using_gcc = (target == 'native-native-gnu' or target == 'native-native') and php_version < '8.5' %}
 {% set specs_cflags = '-specs=/usr/lib/rpm/redhat/redhat-hardened-cc1' %}
 {% set specs_ldflags = '-specs=/usr/lib/rpm/redhat/redhat-hardened-ld' ~ (os == '10' ? ' -Wl,-z,pack-relative-relocs' : '') %}
 {% set cflags =
