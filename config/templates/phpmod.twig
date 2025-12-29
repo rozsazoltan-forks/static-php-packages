@@ -100,7 +100,7 @@ enmod() {
 
     # Check if it's a static extension
     if is_static_extension "$inifile"; then
-        echo "Module ${modname} is statically compiled and cannot be enabled"
+        echo "Module ${modname} is statically compiled into PHP and always enabled"
         return 0
     fi
 
@@ -132,7 +132,7 @@ dismod() {
     # Check if it's a static extension
     if is_static_extension "$inifile"; then
         if [ "$QUIET" = "no" ]; then
-            echo "Module ${modname} is statically compiled and already disabled"
+            echo "Module ${modname} is statically compiled into PHP and cannot be disabled"
         fi
         return 0
     fi
