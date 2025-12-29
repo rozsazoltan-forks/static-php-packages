@@ -15,6 +15,10 @@ on:
                 description: "Optional: Architectures (comma-separated, e.g., amd64,arm64). Leave empty for all"
                 required: false
                 default: ""
+            packages:
+                description: "Optional: override packages list. Leave empty for default"
+                required: false
+                default: ""
             debug_tmate:
                 description: "Open tmate session on failure"
                 type: boolean
@@ -83,6 +87,7 @@ jobs:
             GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
             BASH_ENV: /tmp/gha-bashenv
             ITERATION: ${{ inputs.iteration || '' }}
+            PACKAGES: ${{ inputs.packages || '' }}
 
         steps:
             -   name: Checkout code
@@ -154,10 +159,14 @@ jobs:
 
             -   name: Build PHP packages
                 run: |
+                    PACKAGES_FLAG=""
+                    if [[ -n "${{ env.PACKAGES }}" ]]; then
+                      PACKAGES_FLAG="--packages=${{ env.PACKAGES }}"
+                    fi
                     if [[ -n "${ITERATION}" ]]; then
-                        bin/spp all --target=native-native-gnu --phpv=${{ matrix.php-version }} --prefix="-zts" --type=deb --iteration="${ITERATION}"
+                        bin/spp all --target=native-native-gnu --phpv=${{ matrix.php-version }} --prefix="-zts" --type=deb --iteration="${ITERATION}" $PACKAGES_FLAG
                     else
-                        bin/spp all --target=native-native-gnu --phpv=${{ matrix.php-version }} --prefix="-zts" --type=deb
+                        bin/spp all --target=native-native-gnu --phpv=${{ matrix.php-version }} --prefix="-zts" --type=deb $PACKAGES_FLAG
                     fi
 
             -   name: Upload to Forgejo
