@@ -232,12 +232,11 @@ jobs:
 
             -   name: Build PHP
                 run: |
-                    TARGET=${{ matrix.alma == '9' && matrix.arch == 'x86_64' && matrix.php-version == '8.5' && 'native-native-gnu.2.34' || 'native-native-gnu' }}
                     PACKAGES_FLAG=""
                     if [[ -n "${PACKAGES}" ]]; then
                       PACKAGES_FLAG="--packages=${PACKAGES}"
                     fi
-                    php bin/spp all --type=rpm --target=$TARGET --phpv=${MATRIX_PHP_VERSION} $PACKAGES_FLAG
+                    php bin/spp all --type=rpm --target=native-native-gnu --phpv=${MATRIX_PHP_VERSION} $PACKAGES_FLAG
                 env:
                     MATRIX_PHP_VERSION: ${{ matrix.php-version }}
 
