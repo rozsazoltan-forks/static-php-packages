@@ -34,8 +34,8 @@ class cli implements package
         ];
         // Generate phpmod script from template (works as both phpenmod and phpdismod)
         $binarySuffix = getBinarySuffix();
-        $phpmodPath = TEMP_DIR . '/phpmod' . $binarySuffix;
-        $phpmodPath2 = TEMP_DIR . '/phpmod' . $binarySuffix;
+        $phpmodPath = TEMP_DIR . '/phpenmod' . $binarySuffix;
+        $phpmodPath2 = TEMP_DIR . '/phpdismod' . $binarySuffix;
 
         $phpmodContents = \staticphp\util\TwigRenderer::render('phpmod.twig', [
             'binary_suffix' => $binarySuffix,
