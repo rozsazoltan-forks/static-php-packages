@@ -153,11 +153,11 @@ jobs:
                     if [[ -n "${{ env.PACKAGES }}" ]]; then
                       PACKAGES_FLAG="--packages=${{ env.PACKAGES }}"
                     fi
+                    ITERATION_FLAG=""
                     if [[ -n "${ITERATION}" ]]; then
-                        php bin/spp all --target="native-native-musl -dynamic" --phpv=${{ matrix.php-version }} --prefix="-zts" --type=apk --iteration="${ITERATION}" $PACKAGES_FLAG
-                    else
-                        php bin/spp all --target="native-native-musl -dynamic" --phpv=${{ matrix.php-version }} --prefix="-zts" --type=apk $PACKAGES_FLAG
+                      ITERATION_FLAG="--iteration=${ITERATION}"
                     fi
+                    php bin/spp all --target="native-native-musl -dynamic" --phpv=${{ matrix.php-version }} --prefix="-zts" --type=apk $ITERATION_FLAG $PACKAGES_FLAG
 
             -   name: Upload to Forgejo
                 working-directory: dist/apk
