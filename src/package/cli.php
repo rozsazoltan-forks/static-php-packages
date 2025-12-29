@@ -84,7 +84,7 @@ class cli implements package
         if (!file_exists(BUILD_ROOT_PATH . '/license/LICENSE')) {
             copy(BASE_PATH . '/LICENSE', BUILD_ROOT_PATH . '/license/LICENSE');
         }
-        $files[BUILD_ROOT_PATH . '/license'] = '/usr/share/licenses/' . CreatePackages::getPrefix() . '/';
+        $files[BUILD_ROOT_PATH . '/license/'] = '/usr/share/licenses/' . CreatePackages::getPrefix() . '/';
 
         return [
             'config-files' => $configFiles,

@@ -428,7 +428,7 @@ class CreatePackages
         }
 
         if (isset($config['empty_directories']) && is_array($config['empty_directories'])) {
-            $emptyDir = TEMP_DIR . '/spp_empty';
+            $emptyDir = TEMP_DIR . '/spp_empty/';
             if (!file_exists($emptyDir) && !mkdir($emptyDir, 0755, true) && !is_dir($emptyDir)) {
                 throw new \RuntimeException(sprintf('Directory "%s" was not created', $emptyDir));
             }
