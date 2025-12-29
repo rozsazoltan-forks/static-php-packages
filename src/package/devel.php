@@ -113,7 +113,7 @@ class devel implements package
                 $modifiedPhpConfigPath => '/usr/bin/php-config' . getBinarySuffix(),
                 $modifiedPhpizePath => '/usr/bin/phpize' . getBinarySuffix(),
                 BUILD_INCLUDE_PATH . '/php/' => '/usr/include/' . \staticphp\step\CreatePackages::getPrefix(),
-                BUILD_LIB_PATH . '/php/build' => getPhpLibdir() . '/build',
+                BUILD_LIB_PATH . '/php/build/' => getPhpLibdir() . '/build',
             ],
             'depends' => $depends,
             'provides' => [
