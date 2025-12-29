@@ -1,0 +1,195 @@
+#!/bin/sh
+#
+# phpmod - a PHP module manager
+#
+# Copyright 2025 Marc Henderkes <pkg@henderkes.com>
+#
+# Permission is hereby granted, free of charge, to any person obtaining a copy of
+# this software and associated documentation files (the "Software"), to deal in
+# the Software without restriction, including without limitation the rights to
+# use, copy, modify, merge, publish, distribute, sublicense, and/or sell copies of
+# the Software, and to permit persons to whom the Software is furnished to do so,
+# subject to the following conditions:
+#
+# The above copyright notice and this permission notice shall be included in all
+# copies or substantial portions of the Software.
+#
+# THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+# IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS
+# FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR
+# COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER
+# IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN
+# CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
+
+set -ue
+
+SCRIPT_NAME=${0##*/}
+QUIET=no
+CONFDIR="{{ confdir }}"
+PHP_BINARY="/usr/bin/php{{ binary_suffix }}"
+
+warning() {
+    if [ "$QUIET" = "no" ]; then
+        echo "$@" >&2
+    fi
+}
+
+usage() {
+    [ -n "$@" ] && warning $@
+    case "$SCRIPT_NAME" in
+        *enmod*)
+            echo "usage: ${SCRIPT_NAME} [-q] module_name [ module_name_2 ]"
+            ;;
+        *dismod*)
+            echo "usage: ${SCRIPT_NAME} [-q] module_name [ module_name_2 ]"
+            ;;
+        *)
+            echo "usage: ${SCRIPT_NAME} [-q] module_name [ module_name_2 ]"
+            ;;
+    esac
+    exit 1
+}
+
+# Find the ini file for a module (could be modname.ini or NN-modname.ini)
+find_ini_file() {
+    local modname=$1
+
+    # Check for numbered file first (dynamic extension)
+    for file in "${CONFDIR}/conf.d/"*"-${modname}.ini"; do
+        if [ -f "$file" ]; then
+            echo "$file"
+            return 0
+        fi
+    done
+
+    # Check for non-numbered file (static extension)
+    if [ -f "${CONFDIR}/conf.d/${modname}.ini" ]; then
+        echo "${CONFDIR}/conf.d/${modname}.ini"
+        return 0
+    fi
+
+    return 1
+}
+
+# Check if extension is statically compiled (no number prefix)
+is_static_extension() {
+    local inifile=$1
+    local basename=$(basename "$inifile")
+
+    # Static extensions have format "modname.ini" (no number prefix)
+    # Dynamic extensions have format "NN-modname.ini" (with number prefix)
+    case "$basename" in
+        [0-9]*-*.ini)
+            return 1  # Dynamic extension
+            ;;
+        *.ini)
+            return 0  # Static extension
+            ;;
+    esac
+    return 1
+}
+
+enmod() {
+    local modname=$1
+    local inifile
+
+    if ! inifile=$(find_ini_file "$modname"); then
+        warning "Module ${modname} ini file not found in ${CONFDIR}/conf.d"
+        return 1
+    fi
+
+    # Check if it's a static extension
+    if is_static_extension "$inifile"; then
+        echo "Module ${modname} is statically compiled and cannot be enabled"
+        return 0
+    fi
+
+    # Check if already enabled (has uncommented extension= or zend_extension= line)
+    if grep -q "^[[:space:]]*\(zend_\)\?extension[[:space:]]*=" "$inifile" 2>/dev/null; then
+        if [ "$QUIET" = "no" ]; then
+            echo "Module ${modname} already enabled"
+        fi
+        return 0
+    fi
+
+    # Uncomment extension= or zend_extension= lines
+    sed -i 's/^[[:space:]]*;[[:space:]]*\(zend_extension[[:space:]]*=\)/\1/' "$inifile"
+    sed -i 's/^[[:space:]]*;[[:space:]]*\(extension[[:space:]]*=\)/\1/' "$inifile"
+
+    echo "Enabled module: ${modname}"
+    return 0
+}
+
+dismod() {
+    local modname=$1
+    local inifile
+
+    if ! inifile=$(find_ini_file "$modname"); then
+        warning "Module ${modname} ini file not found in ${CONFDIR}/conf.d"
+        return 1
+    fi
+
+    # Check if it's a static extension
+    if is_static_extension "$inifile"; then
+        if [ "$QUIET" = "no" ]; then
+            echo "Module ${modname} is statically compiled and already disabled"
+        fi
+        return 0
+    fi
+
+    # Check if already disabled (all extension lines are commented)
+    if ! grep -q "^[[:space:]]*\(zend_\)\?extension[[:space:]]*=" "$inifile" 2>/dev/null; then
+        if [ "$QUIET" = "no" ]; then
+            echo "Module ${modname} already disabled"
+        fi
+        return 0
+    fi
+
+    # Comment out extension= or zend_extension= lines
+    sed -i 's/^[[:space:]]*\(zend_extension[[:space:]]*=\)/; \1/' "$inifile"
+    sed -i 's/^[[:space:]]*\(extension[[:space:]]*=\)/; \1/' "$inifile"
+
+    echo "Disabled module: ${modname}"
+    return 0
+}
+
+# Parse options
+mods=""
+while [ $# -gt 0 ]; do
+    case "$1" in
+        -q)
+            QUIET=yes
+            shift
+            ;;
+        -*)
+            warning "Unknown option: $1"
+            usage
+            ;;
+        *)
+            mods="${mods}${mods:+ }${1%%/*}"
+            shift
+            ;;
+    esac
+done
+
+[ -z "$mods" ] && usage
+
+# Determine action based on script name
+case "$SCRIPT_NAME" in
+    *enmod*)
+        for mod in $mods; do
+            enmod "$mod" || true
+        done
+        ;;
+    *dismod*)
+        for mod in $mods; do
+            dismod "$mod" || true
+        done
+        ;;
+    *)
+        warning "Unknown script name: ${SCRIPT_NAME}"
+        exit 1
+        ;;
+esac
+
+exit 0

@@ -32,9 +32,25 @@ class cli implements package
             getConfdir(),
             getConfdir() . '/php.ini'
         ];
+        // Generate phpmod script from template (works as both phpenmod and phpdismod)
+        $binarySuffix = getBinarySuffix();
+        $phpmodPath = TEMP_DIR . '/phpmod' . $binarySuffix;
+        $phpmodPath2 = TEMP_DIR . '/phpmod' . $binarySuffix;
+
+        $phpmodContents = \staticphp\util\TwigRenderer::render('phpmod.twig', [
+            'binary_suffix' => $binarySuffix,
+            'confdir' => getConfdir(),
+        ]);
+        file_put_contents($phpmodPath, $phpmodContents);
+        file_put_contents($phpmodPath2, $phpmodContents);
+        chmod($phpmodPath, 0755);
+        chmod($phpmodPath2, 0755);
+
         $files = [
             TEMP_DIR . '/php.ini' => getConfdir() . '/php.ini',
             BUILD_BIN_PATH . '/php' => '/usr/bin/php' . getBinarySuffix(),
+            $phpmodPath => '/usr/sbin/phpenmod' . $binarySuffix,
+            $phpmodPath2 => '/usr/sbin/phpdismod' . $binarySuffix,
         ];
 
         foreach ($staticExtensions as $ext) {
