@@ -15,9 +15,6 @@
         "issues": "https://github.com/static-php/spc-packages/issues"
     },
     "config": {
-        "platform": {
-            "php": "8.5.0"
-        },
         "sort-packages": true
     },
     "prefer-stable": true,
