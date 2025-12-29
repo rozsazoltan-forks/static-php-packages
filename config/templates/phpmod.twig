@@ -50,9 +50,10 @@ usage() {
     exit 1
 }
 
-# Find the ini file for a module (could be modname.ini or NN-modname.ini)
+# Find the ini file for a module (could be modname.ini, NN-modname.ini, or .disabled variants)
 find_ini_file() {
     local modname=$1
+    local include_disabled=${2:-no}
 
     # Check for numbered file first (dynamic extension)
     for file in "${CONFDIR}/conf.d/"*"-${modname}.ini"; do
@@ -62,10 +63,28 @@ find_ini_file() {
         fi
     done
 
+    # Check for disabled numbered file if requested
+    if [ "$include_disabled" = "yes" ]; then
+        for file in "${CONFDIR}/conf.d/"*"-${modname}.ini.disabled"; do
+            if [ -f "$file" ]; then
+                echo "$file"
+                return 0
+            fi
+        done
+    fi
+
     # Check for non-numbered file (static extension)
     if [ -f "${CONFDIR}/conf.d/${modname}.ini" ]; then
         echo "${CONFDIR}/conf.d/${modname}.ini"
         return 0
+    fi
+
+    # Check for disabled non-numbered file if requested
+    if [ "$include_disabled" = "yes" ]; then
+        if [ -f "${CONFDIR}/conf.d/${modname}.ini.disabled" ]; then
+            echo "${CONFDIR}/conf.d/${modname}.ini.disabled"
+            return 0
+        fi
     fi
 
     return 1
@@ -93,31 +112,42 @@ enmod() {
     local modname=$1
     local inifile
 
-    if ! inifile=$(find_ini_file "$modname"); then
-        warning "Module ${modname} ini file not found in ${CONFDIR}/conf.d"
-        return 1
-    fi
+    # First check if already enabled
+    if inifile=$(find_ini_file "$modname"); then
+        # Check if it's a static extension
+        if is_static_extension "$inifile"; then
+            echo "Module ${modname} is statically compiled into PHP and always enabled"
+            return 0
+        fi
 
-    # Check if it's a static extension
-    if is_static_extension "$inifile"; then
-        echo "Module ${modname} is statically compiled into PHP and always enabled"
-        return 0
-    fi
-
-    # Check if already enabled (has uncommented extension= or zend_extension= line)
-    if grep -q "^[[:space:]]*\(zend_\)\?extension[[:space:]]*=" "$inifile" 2>/dev/null; then
         if [ "$QUIET" = "no" ]; then
             echo "Module ${modname} already enabled"
         fi
         return 0
     fi
 
-    # Uncomment extension= or zend_extension= lines
-    sed -i 's/^[[:space:]]*;[[:space:]]*\(zend_extension[[:space:]]*=\)/\1/' "$inifile"
-    sed -i 's/^[[:space:]]*;[[:space:]]*\(extension[[:space:]]*=\)/\1/' "$inifile"
+    # Not found as enabled, check for disabled version
+    if ! inifile=$(find_ini_file "$modname" "yes"); then
+        warning "Module ${modname} ini file not found in ${CONFDIR}/conf.d"
+        return 1
+    fi
 
-    echo "Enabled module: ${modname}"
-    return 0
+    # If we found a .disabled file, it must be disabled, so enable it
+    case "$inifile" in
+        *.ini.disabled)
+            local enabled_file="${inifile%.disabled}"
+            mv "$inifile" "$enabled_file"
+            echo "Enabled module: ${modname}"
+            return 0
+            ;;
+        *)
+            # Should not reach here, but handle gracefully
+            if [ "$QUIET" = "no" ]; then
+                echo "Module ${modname} already enabled"
+            fi
+            return 0
+            ;;
+    esac
 }
 
 dismod() {
@@ -125,6 +155,14 @@ dismod() {
     local inifile
 
     if ! inifile=$(find_ini_file "$modname"); then
+        # Not found as enabled, check if already disabled
+        if inifile=$(find_ini_file "$modname" "yes"); then
+            # Found a .disabled file
+            if [ "$QUIET" = "no" ]; then
+                echo "Module ${modname} already disabled"
+            fi
+            return 0
+        fi
         warning "Module ${modname} ini file not found in ${CONFDIR}/conf.d"
         return 1
     fi
@@ -137,18 +175,8 @@ dismod() {
         return 0
     fi
 
-    # Check if already disabled (all extension lines are commented)
-    if ! grep -q "^[[:space:]]*\(zend_\)\?extension[[:space:]]*=" "$inifile" 2>/dev/null; then
-        if [ "$QUIET" = "no" ]; then
-            echo "Module ${modname} already disabled"
-        fi
-        return 0
-    fi
-
-    # Comment out extension= or zend_extension= lines
-    sed -i 's/^[[:space:]]*\(zend_extension[[:space:]]*=\)/; \1/' "$inifile"
-    sed -i 's/^[[:space:]]*\(extension[[:space:]]*=\)/; \1/' "$inifile"
-
+    # Rename .ini to .ini.disabled
+    mv "$inifile" "${inifile}.disabled"
     echo "Disabled module: ${modname}"
     return 0
 }
