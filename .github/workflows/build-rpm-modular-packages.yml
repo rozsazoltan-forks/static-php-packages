@@ -388,4 +388,4 @@ jobs:
 
             -   name: Update repository metadata
                 run: |
-                    ssh github@${{ secrets.DEB_SERVER_IP }} "cd /mnt/data/rpm/${RPM_ARCH}/${TARGET_DIR}/ && createrepo_static && createrepo_c --update ."
+                    ssh github@${{ secrets.DEB_SERVER_IP }} "cd /mnt/data/rpm/${RPM_ARCH}/${TARGET_DIR}/ && createrepo_static && modifyrepo_c --mdtype=modules modules.yaml repodata/ && createrepo_c --update ."
