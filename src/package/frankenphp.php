@@ -112,14 +112,14 @@ class frankenphp implements package
 
         // Calculate iteration for RPM (with possible override)
         $computed = (string)$this->getNextIteration($name, $rpmVersion, $architecture, 'rpm');
-        $iteration = $iterationOverride ?? $computed;
+        $baseIteration = $iterationOverride ?? $computed;
 
         $versionedConflicts = $this->getVersionedConflicts();
 
-        // Generate full package filename with distribution version
+        // Add distribution version to iteration for RPM metadata
         $distVersion = $this->getDistVersion();
-        $distSuffix = $distVersion !== '' ? ".{$distVersion}" : '';
-        $packageFile = DIST_RPM_PATH . "/{$name}-{$rpmVersion}-{$iteration}{$distSuffix}.{$architecture}.rpm";
+        $iteration = $distVersion !== '' ? "{$baseIteration}.{$distVersion}" : $baseIteration;
+        $packageFile = DIST_RPM_PATH . "/{$name}-{$rpmVersion}-{$iteration}.{$architecture}.rpm";
 
         $fpmArgs = [
             'fpm',
@@ -180,7 +180,7 @@ class frankenphp implements package
         // Create FrankenPHP debuginfo package if debug file exists
         $frankenDbg = BUILD_ROOT_PATH . '/debug/frankenphp.debug';
         if (file_exists($frankenDbg)) {
-            $dbgPackageFile = DIST_RPM_PATH . "/{$name}-debuginfo-{$rpmVersion}-{$iteration}{$distSuffix}.{$architecture}.rpm";
+            $dbgPackageFile = DIST_RPM_PATH . "/{$name}-debuginfo-{$rpmVersion}-{$iteration}{$distVersion}.{$architecture}.rpm";
             $dbgArgs = [
                 'fpm',
                 '-s', 'dir',
