@@ -106,7 +106,7 @@ def build_module_structure(rpm_map, platform):
                 'version': timestamp,
                 'context': 'local',
                 'summary': f'PHP {stream} (ZTS) packages',
-                'description': f'PHP {stream} (ZTS) built statically - no further dependencies outside this package',
+                'description': f'PHP {stream} (ZTS) built statically - no further dependencies',
                 'license': {
                     'module': ['MIT']
                 },
