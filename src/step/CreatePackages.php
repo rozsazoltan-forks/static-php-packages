@@ -315,12 +315,13 @@ class CreatePackages
 
         // Calculate iteration for RPM (with possible override)
         $computed = (string)self::getNextIteration($name, $rpmVersion, $architecture, 'rpm');
-        $iteration = self::$iterationOverride ?? $computed;
+        $baseIteration = self::$iterationOverride ?? $computed;
 
-        // Generate full package filename with distribution version
+        // Add distribution version to iteration for RPM metadata
         $distVersion = self::getDistVersion();
+        $iteration = $distVersion !== '' ? "{$baseIteration}.{$distVersion}" : $baseIteration;
         $distSuffix = $distVersion !== '' ? ".{$distVersion}" : '';
-        $packageFile = DIST_RPM_PATH . "/{$name}-{$rpmVersion}-{$iteration}{$distSuffix}.{$architecture}.rpm";
+        $packageFile = DIST_RPM_PATH . "/{$name}-{$rpmVersion}-{$iteration}.{$architecture}.rpm";
 
         $fpmArgs = [...[
             'fpm',

@@ -19,9 +19,9 @@ def detect_platform():
 def parse_rpm_info(filename):
     basename = os.path.basename(filename)
 
-    # Match standard php-zts RPMs
-    # Format: php-zts-cli-8.5.1-1.el10.x86_64.rpm (with optional .el10/.el9/etc)
-    match_php = re.match(r'(?P<name>php-zts-[^-]+)-(?P<version>\d+\.\d+\.\d+)-(?P<release>[^.]+)(?:\.[^.]+)?\.(?P<arch>x86_64|aarch64|noarch)\.rpm', basename)
+    # Match standard php-zts RPMs (including debuginfo)
+    # Format: php-zts-cli-8.5.1-1.el10.x86_64.rpm or php-zts-cli-debuginfo-8.5.1-1.el10.x86_64.rpm
+    match_php = re.match(r'(?P<name>php-zts-[^-]+(?:-debuginfo)?)-(?P<version>\d+\.\d+\.\d+)-(?P<release>[^.]+(?:\.[^.]+)?)\.(?P<arch>x86_64|aarch64|noarch)\.rpm', basename)
     if match_php:
         name = match_php.group("name")
         version = match_php.group("version")
@@ -30,9 +30,9 @@ def parse_rpm_info(filename):
         stream = '.'.join(version.split('.')[:2])
         return name, version, release, arch, stream
 
-    # Match extension packages
-    # Format: php-zts-apcu-5.1.28_85-1.el10.x86_64.rpm (with optional .el10/.el9/etc)
-    match_ext = re.match(r'(?P<name>php-zts-[^-]+)-(?P<version>\d+\.\d+\.\d+(?:~[a-z0-9]+)?_\d+)-(?P<release>[^.]+)(?:\.[^.]+)?\.(?P<arch>x86_64|aarch64|noarch)\.rpm', basename)
+    # Match extension packages (including debuginfo)
+    # Format: php-zts-apcu-5.1.28_85-1.el10.x86_64.rpm or php-zts-apcu-debuginfo-5.1.28_85-1.el10.x86_64.rpm
+    match_ext = re.match(r'(?P<name>php-zts-[^-]+(?:-debuginfo)?)-(?P<version>\d+\.\d+\.\d+(?:~[a-z0-9]+)?_\d+)-(?P<release>[^.]+(?:\.[^.]+)?)\.(?P<arch>x86_64|aarch64|noarch)\.rpm', basename)
     if match_ext:
         name = match_ext.group("name")
         version = match_ext.group("version")
@@ -47,9 +47,9 @@ def parse_rpm_info(filename):
             stream = '.'.join(version.split('_')[0].split('.')[:2])
         return name, version, release, arch, stream
 
-    # Match frankenphp
-    # Format: frankenphp-1.11.0_85-1.el10.x86_64.rpm (with optional .el10/.el9/etc)
-    match_franken = re.match(r'(frankenphp)-(?P<version>\d+\.\d+\.\d+_\d+)-(?P<release>\d+)(?:\.[^.]+)?\.(?P<arch>x86_64|aarch64|noarch)\.rpm', basename)
+    # Match frankenphp (including debuginfo)
+    # Format: frankenphp-1.11.0_85-1.el10.x86_64.rpm or frankenphp-debuginfo-1.11.0_85-1.el10.x86_64.rpm
+    match_franken = re.match(r'(frankenphp(?:-debuginfo)?)-(?P<version>\d+\.\d+\.\d+_\d+)-(?P<release>\d+(?:\.[^.]+)?)\.(?P<arch>x86_64|aarch64|noarch)\.rpm', basename)
     if match_franken:
         name = match_franken.group(1)
         version = match_franken.group("version")
