@@ -40,7 +40,7 @@ class AllCommand extends BaseCommand
         $output->writeln("Building PHP with extensions using static-php-cli...");
         $output->writeln("Using PHP version: {$phpVersion}");
 
-        $buildResult = RunSPC::run($debug, $phpVersion, null);
+        $buildResult = RunSPC::run($debug, $phpVersion, $packages);
 
         if (!$buildResult) {
             $output->writeln("Build failed.");
