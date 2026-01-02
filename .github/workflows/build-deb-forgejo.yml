@@ -167,7 +167,7 @@ jobs:
                     if [[ -n "${ITERATION}" ]]; then
                       ITERATION_FLAG="--iteration=${ITERATION}"
                     fi
-                    bin/spp all --target=native-native-gnu --phpv=${{ matrix.php-version }} --prefix="-zts" --type=deb $ITERATION_FLAG $PACKAGES_FLAG
+                    bin/spp all --phpv=${{ matrix.php-version }} --prefix="-zts" --type=deb $ITERATION_FLAG $PACKAGES_FLAG
 
             -   name: Upload to Forgejo
                 working-directory: dist/deb

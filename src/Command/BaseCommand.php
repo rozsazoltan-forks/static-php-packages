@@ -14,7 +14,7 @@ abstract class BaseCommand extends Command
         $this
             ->addOption('debug', null, InputOption::VALUE_NONE, 'Print debug messages')
             ->addOption('phpv', null, InputOption::VALUE_REQUIRED, 'Specify PHP version to build', '8.4')
-            ->addOption('target', null, InputOption::VALUE_REQUIRED, 'Specify the target triple for Zig (e.g., x86_64-linux-gnu, aarch64-linux-gnu)', 'native-native')
+            ->addOption('target', null, InputOption::VALUE_REQUIRED, 'Specify the target triple for Zig (e.g., x86_64-linux-gnu, aarch64-linux-gnu)')
             ->addOption('prefix', null, InputOption::VALUE_REQUIRED, 'Specify the package prefix (e.g., -zts, -zts8.5, -zts85)', '-zts')
             ->addOption('type', null, InputOption::VALUE_REQUIRED, 'Specify package type: rpm (uses /usr/lib64), deb (uses /usr/lib), or apk (uses /usr/lib). Required.', null);
     }
@@ -23,7 +23,7 @@ abstract class BaseCommand extends Command
     {
         // Define build paths with PHP version
         $phpVersion = $input->getOption('phpv') ?? '8.4';
-        $target = $input->getOption('target') ?? 'native-native';
+        $target = $input->getOption('target');
         $prefix = $input->getOption('prefix') ?? '-zts';
         $type = $input->getOption('type');
 

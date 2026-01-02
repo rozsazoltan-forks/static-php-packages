@@ -94,7 +94,7 @@ jobs:
                     rm downloads.tar.gz
 
             -   name: Build PHP
-                run: php bin/spp all --target=native-native-gnu --phpv=${{ matrix.php-version }} --prefix="-zts" --type=deb
+                run: php bin/spp all --phpv=${{ matrix.php-version }} --prefix="-zts" --type=deb
 
             -   name: Inject deprecation notice into packages
                 run: |

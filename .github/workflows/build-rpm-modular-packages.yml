@@ -232,7 +232,6 @@ jobs:
 
             -   name: Build PHP
                 run: |
-                    TARGET=${{ matrix.alma == '9' && matrix.arch == 'x86_64' && matrix.php-version == '8.5' && 'native-native-gnu.2.34' || 'native-native-gnu' }}
                     PACKAGES_FLAG=""
                     if [[ -n "${PACKAGES}" ]]; then
                       PACKAGES_FLAG="--packages=${PACKAGES}"
@@ -241,7 +240,7 @@ jobs:
                     if [[ -n "${ITERATION}" ]]; then
                       ITERATION_FLAG="--iteration=${ITERATION}"
                     fi
-                    php bin/spp --type=rpm all --target=$TARGET --phpv=${MATRIX_PHP_VERSION} $ITERATION_FLAG $PACKAGES_FLAG
+                    php bin/spp --type=rpm all --phpv=${MATRIX_PHP_VERSION} $ITERATION_FLAG $PACKAGES_FLAG
                 env:
                     MATRIX_PHP_VERSION: ${{ matrix.php-version }}
 
