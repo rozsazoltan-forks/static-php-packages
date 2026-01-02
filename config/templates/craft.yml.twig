@@ -106,5 +106,6 @@ extra-env:
     PHP_BUILD_ARCH: '{{ arch }}'
     {% if is_rhel -%}
     PHP_BUILD_SYSTEM: 'Red Hat Enterprise Linux {{ os }}'
+    OPENSSL_CONF: '/etc/pki/tls/openssl.cnf'
     {% endif -%}
     GOEXPERIMENT: greenteagc
