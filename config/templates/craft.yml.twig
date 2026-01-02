@@ -34,7 +34,7 @@ build-options:
     with-clean: false
     with-suggested-libs: true
     with-suggested-exts: true
-    no-strip: false
+    no-strip: true
     with-added-patch: ['{{ patch_file }}']
     with-config-file-path: '/etc/{{ prefix }}'
     with-config-file-scan-dir: '/etc/{{ prefix }}/conf.d'
@@ -92,6 +92,7 @@ extra-env:
     SPC_LIBC: 'glibc'
     {% else -%}
     SPC_TARGET: '{{ target }}'
+    SPC_EXTRA_PHP_VARS: 'php_cv_preserve_none=yes'
     {% endif -%}
     EXTENSION_DIR: "{{ moduledir }}"
     SPC_CMD_VAR_PHP_EMBED_TYPE: 'shared'
