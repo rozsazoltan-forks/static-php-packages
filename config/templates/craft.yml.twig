@@ -74,7 +74,7 @@ craft-options:
 {% set cflags =
   '-fPIC -O3 -pipe -fno-plt -fno-semantic-interposition -fasynchronous-unwind-tables -fstack-clash-protection -fno-omit-frame-pointer -mno-omit-leaf-frame-pointer -fno-strict-aliasing' ~ arch_flags
 %}
-{% set is_rhel = os in ['7', '8', '9', '10'] and target == 'native-native-gnu' %}
+{% set is_rhel = os in ['7', '8', '9', '10'] and type == 'rpm' %}
 {% if using_gcc and is_rhel %}
     {% if os == '7' or os == '8' %}
         {% set cflags = cflags ~ ' -Wp,-D_FORTIFY_SOURCE=2' ~ ' ' ~ specs_cflags %}

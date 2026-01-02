@@ -40,7 +40,7 @@ class BuildCommand extends BaseCommand
             $output->writeln("  packages: " . implode(', ', $packages));
         }
 
-        $result = RunSPC::run($debug, $phpVersion, $packages);
+        $result = RunSPC::run($debug, $phpVersion, null);
 
         if ($result) {
             $output->writeln("Build completed successfully.");

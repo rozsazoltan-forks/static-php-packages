@@ -92,6 +92,7 @@ class TwigRenderer
             'prefix' => $prefix,
             'release_prefix' => $releasePrefix,
             'confdir' => '/etc/' . $prefix,
+            'type' => $packageType,
             'moduledir' => $libdir . '/' . $prefix . '/modules',
             // Optional filter: when provided, craft.yml will include only selected packages
             // across extensions/shared-extensions/sapi, while always including cli SAPI.
