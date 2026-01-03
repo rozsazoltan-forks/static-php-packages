@@ -5,6 +5,7 @@ namespace staticphp\package;
 use staticphp\package;
 use staticphp\CraftConfig;
 use staticphp\step\CreatePackages;
+use staticphp\util\TwigRenderer;
 
 class cli implements package
 {
@@ -37,7 +38,7 @@ class cli implements package
         $phpmodPath = TEMP_DIR . '/phpenmod' . $binarySuffix;
         $phpmodPath2 = TEMP_DIR . '/phpdismod' . $binarySuffix;
 
-        $phpmodContents = \staticphp\util\TwigRenderer::render('phpmod.twig', [
+        $phpmodContents = TwigRenderer::render('phpmod.twig', [
             'binary_suffix' => $binarySuffix,
             'confdir' => getConfdir(),
         ]);
