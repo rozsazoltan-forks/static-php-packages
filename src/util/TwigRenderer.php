@@ -72,16 +72,12 @@ class TwigRenderer
         }
 
         // Prepare template variables
-        // Use SPP_PREFIX and SPP_TYPE constants set by BaseCommand
-        $prefix = 'php' . (defined('SPP_PREFIX') ? SPP_PREFIX : '-zts');
+        // Get the binary suffix (e.g., "-zts", "-nts", "-zts8.5")
+        $binarySuffix = defined('SPP_PREFIX') ? SPP_PREFIX : '-zts';
+        $prefix = "php$binarySuffix";
         $packageType = defined('SPP_TYPE') ? SPP_TYPE : 'rpm';
         $libdir = $packageType === 'rpm' ? '/usr/lib64' : '/usr/lib';
 
-        // Get the binary suffix (e.g., "-zts", "-nts", "-zts8.5")
-        $binarySuffix = defined('SPP_PREFIX') ? SPP_PREFIX : '-zts';
-        // For the -release flag: remove only the leading dash (keep dots)
-        // e.g., "-zts" -> "zts", "-zts8.5" -> "zts8.5"
-        $releasePrefix = ltrim($binarySuffix, '-');
 
         $templateVars = [
             'php_version' => $phpVersion,
@@ -90,7 +86,7 @@ class TwigRenderer
             'arch' => $arch,
             'os' => $majorOsVersion,
             'prefix' => $prefix,
-            'release_prefix' => $releasePrefix,
+            'release_suffix' => str_replace_first('-', '', $binarySuffix),
             'confdir' => '/etc/' . $prefix,
             'type' => $packageType,
             'moduledir' => $libdir . '/' . $prefix . '/modules',

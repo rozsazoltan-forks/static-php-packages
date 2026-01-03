@@ -1,7 +1,7 @@
 php-version: {{ php_version }}
 {%- set base_sapi_str = 'cli,cgi,fpm,embed,frankenphp' -%}
-{%- set base_extensions_str = 'calendar,ctype,curl,dom,exif,filter,iconv,libxml,mbregex,mbstring,opcache,openssl,password-argon2,pcntl,phar,posix,readline,session,simplexml,sockets,sodium,tokenizer,xml,xmlreader,xmlwriter,zlib' -%}
-{%- set base_shared_str = 'amqp,apcu,ast,bcmath,brotli,bz2,dba,dio,ds,ev,event,ffi,fileinfo,ftp,gd,gettext,gmp,gmssl,grpc,igbinary,imagick,inotify,intl,ldap,lz4,maxminddb,memcache,memcached,mongodb,msgpack,mysqli,mysqlnd,mysqlnd_ed25519,mysqlnd_parsec,odbc,opentelemetry,parallel,pcov,pdo,pdo_mysql,pdo_odbc,pdo_pgsql,pdo_sqlite,pdo_sqlsrv,pgsql,protobuf,rar,redis,rdkafka,shmop,simdjson,snappy,soap,spx,sqlite3,sqlsrv,ssh2,swoole,swoole-hook-mysql,swoole-hook-pgsql,swoole-hook-sqlite,swoole-hook-odbc,sysvmsg,sysvsem,sysvshm,tidy,trader,uuid,uv,xdebug,xhprof,xlswriter,xsl,xz,yac,yaml,zip,zstd' -%}
+{%- set base_extensions_str = 'calendar,ctype,curl,dom,exif,fileinfo,filter,iconv,libxml,mbregex,mbstring,opcache,openssl,password-argon2,pcntl,phar,posix,readline,session,simplexml,sockets,sodium,tokenizer,xml,xmlreader,xmlwriter,zlib' -%}
+{%- set base_shared_str = 'amqp,apcu,ast,bcmath,brotli,bz2,dba,dio,ds,ev,event,ffi,ftp,gd,gettext,gmp,gmssl,grpc,igbinary,imagick,inotify,intl,ldap,lz4,maxminddb,memcache,memcached,mongodb,msgpack,mysqli,mysqlnd,mysqlnd_ed25519,mysqlnd_parsec,odbc,opentelemetry,parallel,pcov,pdo,pdo_mysql,pdo_odbc,pdo_pgsql,pdo_sqlite,pdo_sqlsrv,pgsql,protobuf,rar,redis,rdkafka,shmop,simdjson,snappy,soap,spx,sqlite3,sqlsrv,ssh2,swoole,swoole-hook-mysql,swoole-hook-pgsql,swoole-hook-sqlite,swoole-hook-odbc,sysvmsg,sysvsem,sysvshm,tidy,trader,uuid,uv,xdebug,xhprof,xlswriter,xsl,xz,yac,yaml,zip,zstd' -%}
 
 {%- set base_extensions = base_extensions_str|split(',')|map(v => v|trim) -%}
 {%- set base_shared = base_shared_str|split(',')|map(v => v|trim) -%}
@@ -101,7 +101,7 @@ extra-env:
     SPC_DEFAULT_CXX_FLAGS: "{{ cflags }}"
     SPC_DEFAULT_LD_FLAGS: "-Wl,-z,relro -Wl,--as-needed -Wl,-z,now -Wl,-z,noexecstack {{ using_gcc and is_rhel ? specs_ldflags : '' }}"
     SPC_CMD_VAR_PHP_MAKE_EXTRA_CFLAGS: "{{ cflags }} -g -fPIE{{ using_gcc ? '' : ' -flto'}}"
-    SPC_CMD_VAR_PHP_MAKE_EXTRA_LDFLAGS: "-Wl,--build-id=sha1 -pie -release {{ release_prefix }}-{{ php_version_nodot }}{{ using_gcc ? '' : ' -flto'}}"
+    SPC_CMD_VAR_PHP_MAKE_EXTRA_LDFLAGS: "-Wl,--build-id=sha1 -pie -release {{ release_suffix }}{{ using_gcc ? '' : ' -flto'}}"
     SPC_CMD_PREFIX_PHP_CONFIGURE: "./configure --prefix= --with-valgrind=no --disable-shared --enable-static --disable-all --disable-cgi --disable-phpdbg --disable-debug --with-pic --enable-rtld-now --enable-re2c-cgoto --disable-rpath"
     SPC_CMD_VAR_FRANKENPHP_XCADDY_MODULES: "--with github.com/dunglas/frankenphp/caddy --with github.com/dunglas/mercure/caddy --with github.com/dunglas/vulcain/caddy --with github.com/dunglas/caddy-cbrotli --with github.com/baldinof/caddy-supervisor"
     PHP_BUILD_PROVIDER: "Static PHP <https://static-php.dev> #StandWithUkraine"

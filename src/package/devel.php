@@ -44,12 +44,8 @@ class devel implements package
 
         // Replace all /php paths with versioned paths
         $phpConfigContent = preg_replace('#/php(?!' . preg_quote($binarySuffix, '#') . ')#', '/' . CreatePackages::getPrefix(), $phpConfigContent);
-        $phpVersion = str_replace('.', '', SPP_PHP_VERSION);
-        // Use release prefix format for libphp (leading dash removed, dots kept)
-        $releasePrefix = ltrim($binarySuffix, '-');
-        $libName = $releasePrefix !== ''
-            ? 'libphp-' . $releasePrefix . '-' . $phpVersion . '.so'
-            : 'libphp-' . $phpVersion . '.so';
+        // libphp filename with binary suffix: libphp-zts.so, libphp-nts.so, or libphp.so
+        $libName = 'libphp' . $binarySuffix . '.so';
         $phpConfigContent = str_replace('libphp.so', $libName, $phpConfigContent);
 
         // For APK, sed is in /bin/sed instead of /usr/bin/sed

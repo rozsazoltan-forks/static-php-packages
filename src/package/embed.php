@@ -14,14 +14,8 @@ class embed implements package
 
     public function getFpmConfig(): array
     {
-        $phpVersion = str_replace('.', '', SPP_PHP_VERSION);
-        $prefix = getBinarySuffix(); // e.g., "-zts", "-nts", "-zts8.5", or ""
-        // SPC produces libphp-{prefix}-{version}.so with only leading dash removed from prefix
-        // e.g., "-zts" -> "libphp-zts-85.so", "-zts8.5" -> "libphp-zts8.5-85.so", "" -> "libphp-85.so"
-        $releasePrefix = ltrim($prefix, '-');
-        $libphp = $releasePrefix !== ''
-            ? 'libphp-' . $releasePrefix . '-' . $phpVersion . '.so'
-            : 'libphp-' . $phpVersion . '.so';
+        $binarySuffix = getBinarySuffix(); // e.g., "-zts", "-nts", "-zts8.5", or ""
+        $libphp = 'libphp' . $binarySuffix . '.so';
         $versionedConflicts = CreatePackages::getVersionedConflicts('-embed');
         $provides = [
             $libphp,
@@ -50,13 +44,11 @@ class embed implements package
 
     public function getDebuginfoFpmConfig(): array
     {
-        $phpVersionDigits = str_replace('.', '', SPP_PHP_VERSION);
-        $prefix = getBinarySuffix();
-        // SPC produces libphp-{prefix}-{version}.so with only leading dash removed from prefix
-        $releasePrefix = ltrim($prefix, '-');
-        $libName = $releasePrefix !== ''
-            ? 'libphp-' . $releasePrefix . '-' . $phpVersionDigits . '.so'
-            : 'libphp-' . $phpVersionDigits . '.so';
+        $binarySuffix = getBinarySuffix();
+        // libphp filename with binary suffix: libphp-zts.so, libphp-nts.so, or libphp.so
+        $libName = $binarySuffix !== ''
+            ? 'libphp' . $binarySuffix . '.so'
+            : 'libphp.so';
 
         // Debug file is just libphp.so.debug (without version/prefix)
         $src = BUILD_ROOT_PATH . '/debug/libphp.so.debug';

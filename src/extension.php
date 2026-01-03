@@ -161,7 +161,7 @@ class extension implements package
                     : []
                 ),
                 ...($this->isSharedExtension() ?
-                    [BUILD_MODULES_PATH . '/' . $this->name . '.so' => getModuledir() . '/' . $this->name . '.so']
+                    [BUILD_MODULES_PATH . '/' . $this->name . getBinarySuffix() . '.so' => getModuledir() . '/' . $this->name . getBinarySuffix() . '.so']
                     : []
                 ),
             ]
@@ -188,14 +188,15 @@ class extension implements package
         $prefix = CreatePackages::getPrefix();
 
         // Replace extension directives and ALL hardcoded php paths with prefix-based paths
+        $binarySuffix = getBinarySuffix();
         $iniContent = str_replace(
             [
                 ';extension=' . $this->name,
                 ';zend_extension=' . $this->name,
             ],
             [
-                'extension=' . $this->name,
-                'zend_extension=' . $this->name,
+                'extension=' . $this->name . $binarySuffix,
+                'zend_extension=' . $this->name . $binarySuffix,
             ],
             $iniContent
         );
@@ -231,11 +232,12 @@ class extension implements package
         if (!$this->isSharedExtension()) {
             return [];
         }
-        $src = BUILD_ROOT_PATH . '/debug/' . $this->name . '.so.debug';
+        $binarySuffix = getBinarySuffix();
+        $src = BUILD_ROOT_PATH . '/debug/' . $this->name . $binarySuffix . '.so.debug';
         if (!file_exists($src)) {
             return [];
         }
-        $targetSo = getModuledir() . '/' . $this->name . '.so';
+        $targetSo = getModuledir() . '/' . $this->name . $binarySuffix . '.so';
         $target = '/usr/lib/debug' . $targetSo . '.debug';
         return [
             'depends' => [CreatePackages::getPrefix() . '-' . $this->name],

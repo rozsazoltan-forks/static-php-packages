@@ -47,10 +47,10 @@ def upload_packages(owner, password, pkg_type, pattern, repo="php-zts", branch="
             continue
 
         if pkg_type == 'rpm':
-            match = re.match(r'(.+?)-(\d+[^-]+)-(\d+)\.[^.]+\.(el\d+)\.', pkg_file.name)
+            match = re.match(r'(.+)-([0-9][^-]*)-(\d+)\.(el\d+)\.(x86_64|aarch64)\.rpm', pkg_file.name)
             if not match:
                 continue
-            name, ver, rel, el_version = match.groups()
+            name, ver, rel, arch, el_version = match.groups()
             version = f"{ver}-{rel}"
         elif pkg_type == 'debian':
             match = re.match(r'(.+?)_(\d+[^_]+)_(amd64|arm64)\.deb', pkg_file.name)

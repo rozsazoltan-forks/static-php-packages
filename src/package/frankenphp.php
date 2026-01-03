@@ -83,13 +83,8 @@ class frankenphp implements package
         echo "Creating RPM package for FrankenPHP...\n";
 
         $packageFolder = DIST_PATH . '/frankenphp/package';
-        $phpVersion = str_replace('.', '', SPP_PHP_VERSION);
         $binarySuffix = getBinarySuffix();
-        // SPC produces libphp-{prefix}-{version}.so with only leading dash removed from prefix
-        $releasePrefix = ltrim($binarySuffix, '-');
-        $phpEmbedName = $releasePrefix !== ''
-            ? 'libphp-' . $releasePrefix . '-' . $phpVersion . '.so'
-            : 'libphp-' . $phpVersion . '.so';
+        $phpEmbedName = 'libphp' . $binarySuffix . '.so';
 
         $ldLibraryPath = 'LD_LIBRARY_PATH=' . BUILD_LIB_PATH;
         [, $output] = shell()->execWithResult($ldLibraryPath . ' ' . BUILD_BIN_PATH . '/frankenphp --version');
@@ -216,13 +211,11 @@ class frankenphp implements package
         echo "Creating DEB package for FrankenPHP...\n";
 
         $packageFolder = DIST_PATH . '/frankenphp/package';
-        $phpVersion = str_replace('.', '', SPP_PHP_VERSION);
         $binarySuffix = getBinarySuffix();
-        // SPC produces libphp-{prefix}-{version}.so with only leading dash removed from prefix
-        $releasePrefix = ltrim($binarySuffix, '-');
-        $phpEmbedName = $releasePrefix !== ''
-            ? 'libphp-' . $releasePrefix . '-' . $phpVersion . '.so'
-            : 'libphp-' . $phpVersion . '.so';
+        // libphp filename with binary suffix: libphp-zts.so, libphp-nts.so, or libphp.so
+        $phpEmbedName = $binarySuffix !== ''
+            ? 'libphp' . $binarySuffix . '.so'
+            : 'libphp.so';
 
         $ldLibraryPath = 'LD_LIBRARY_PATH=' . BUILD_LIB_PATH;
         [, $output] = shell()->execWithResult($ldLibraryPath . ' ' . BUILD_BIN_PATH . '/frankenphp --version');
@@ -388,13 +381,11 @@ class frankenphp implements package
         echo "Creating APK package for FrankenPHP using nfpm...\n";
 
         $packageFolder = DIST_PATH . '/frankenphp/package';
-        $phpVersion = str_replace('.', '', SPP_PHP_VERSION);
         $binarySuffix = getBinarySuffix();
-        // SPC produces libphp-{prefix}-{version}.so with only leading dash removed from prefix
-        $releasePrefix = ltrim($binarySuffix, '-');
-        $phpEmbedName = $releasePrefix !== ''
-            ? 'libphp-' . $releasePrefix . '-' . $phpVersion . '.so'
-            : 'libphp-' . $phpVersion . '.so';
+        // libphp filename with binary suffix: libphp-zts.so, libphp-nts.so, or libphp.so
+        $phpEmbedName = $binarySuffix !== ''
+            ? 'libphp' . $binarySuffix . '.so'
+            : 'libphp.so';
 
         $ldLibraryPath = 'LD_LIBRARY_PATH=' . BUILD_LIB_PATH;
         [, $output] = shell()->execWithResult($ldLibraryPath . ' ' . BUILD_BIN_PATH . '/frankenphp --version');
