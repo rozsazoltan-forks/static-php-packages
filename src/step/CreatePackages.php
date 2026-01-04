@@ -723,6 +723,33 @@ class CreatePackages
             ],
         ];
 
+        // Add scripts from getFpmExtraArgs (only for non-debuginfo packages)
+        if (!$isDebuginfo) {
+            $extraArgs = $package->getFpmExtraArgs();
+            $scripts = [];
+
+            // Parse fpm extra args to extract script paths
+            for ($i = 0; $i < count($extraArgs); $i++) {
+                if ($extraArgs[$i] === '--after-install' && isset($extraArgs[$i + 1])) {
+                    $scripts['postinstall'] = $extraArgs[$i + 1];
+                    $i++;
+                } elseif ($extraArgs[$i] === '--after-remove' && isset($extraArgs[$i + 1])) {
+                    $scripts['postremove'] = $extraArgs[$i + 1];
+                    $i++;
+                } elseif ($extraArgs[$i] === '--before-install' && isset($extraArgs[$i + 1])) {
+                    $scripts['preinstall'] = $extraArgs[$i + 1];
+                    $i++;
+                } elseif ($extraArgs[$i] === '--before-remove' && isset($extraArgs[$i + 1])) {
+                    $scripts['preremove'] = $extraArgs[$i + 1];
+                    $i++;
+                }
+            }
+
+            if (!empty($scripts)) {
+                $nfpmConfig['scripts'] = $scripts;
+            }
+        }
+
         // Build dependencies
         $depends = [];
 

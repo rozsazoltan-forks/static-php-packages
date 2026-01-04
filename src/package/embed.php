@@ -39,7 +39,32 @@ class embed implements package
 
     public function getFpmExtraArgs(): array
     {
-        return [];
+        $binarySuffix = getBinarySuffix();
+        $libphp = 'libphp' . $binarySuffix . '.so';
+        $libdir = getLibdir();
+
+        $afterInstallScript = <<<BASH
+#!/bin/sh
+if [ ! -e {$libdir}/libphp.so ]; then
+    ln -sf {$libdir}/{$libphp} {$libdir}/libphp.so
+fi
+BASH;
+        $afterRemoveScript = <<<BASH
+#!/bin/sh
+if [ -L {$libdir}/libphp.so ] && [ "\$(readlink {$libdir}/libphp.so)" = "{$libdir}/{$libphp}" ]; then
+    rm -f {$libdir}/libphp.so
+fi
+BASH;
+
+        file_put_contents(TEMP_DIR . '/embed-after-install.sh', $afterInstallScript);
+        file_put_contents(TEMP_DIR . '/embed-after-remove.sh', $afterRemoveScript);
+        chmod(TEMP_DIR . '/embed-after-install.sh', 0755);
+        chmod(TEMP_DIR . '/embed-after-remove.sh', 0755);
+
+        return [
+            '--after-install', TEMP_DIR . '/embed-after-install.sh',
+            '--after-remove', TEMP_DIR . '/embed-after-remove.sh'
+        ];
     }
 
     public function getDebuginfoFpmConfig(): array
