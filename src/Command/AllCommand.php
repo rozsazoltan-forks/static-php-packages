@@ -28,6 +28,7 @@ class AllCommand extends BaseCommand
         $debug = $input->getOption('debug');
         $packagesOpt = $input->getOption('packages');
         $iteration = $input->getOption('iteration');
+        $debuginfo = $input->getOption('debuginfo');
         $phpVersion = SPP_PHP_VERSION; // Get from constant
 
         // Process packages option
@@ -56,7 +57,7 @@ class AllCommand extends BaseCommand
         }
 
         // All parameters now come from constants set by BaseCommand::initialize()
-        $packageResult = CreatePackages::run($packages, $iteration);
+        $packageResult = CreatePackages::run($packages, $iteration, $debuginfo);
 
         if (!$packageResult) {
             $output->writeln("Package creation failed.");

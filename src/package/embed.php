@@ -71,12 +71,9 @@ BASH;
     {
         $binarySuffix = getBinarySuffix();
         // libphp filename with binary suffix: libphp-zts.so, libphp-nts.so, or libphp.so
-        $libName = $binarySuffix !== ''
-            ? 'libphp' . $binarySuffix . '.so'
-            : 'libphp.so';
+        $libName = 'libphp' . $binarySuffix . '.so';
 
-        // Debug file is just libphp.so.debug (without version/prefix)
-        $src = BUILD_ROOT_PATH . '/debug/libphp.so.debug';
+        $src = BUILD_ROOT_PATH . '/debug/libphp' . $binarySuffix . '.so.debug';
         if (!file_exists($src)) {
             return [];
         }

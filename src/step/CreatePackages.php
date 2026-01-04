@@ -109,7 +109,7 @@ class CreatePackages
         // Create debuginfo packages: always for RPM, only if --debuginfo flag set for others
         $dbgConfig = $package->getDebuginfoFpmConfig();
         if (is_array($dbgConfig) && !empty($dbgConfig['files'])) {
-            if (self::$packageType === 'rpm' || self::$debuginfo) {
+            if (self::$debuginfo) {
                 self::createPackageWithFpm($package, $pkgVersion, $architecture, true);
             }
         }
@@ -165,7 +165,7 @@ class CreatePackages
         // Create debuginfo packages: always for RPM, only if --debuginfo flag set for others
         $dbgConfig = $package->getDebuginfoFpmConfig();
         if (is_array($dbgConfig) && !empty($dbgConfig['files'])) {
-            if (self::$packageType === 'rpm' || self::$debuginfo) {
+            if (self::$debuginfo) {
                 self::createPackageWithFpm($package, $phpVersion, $architecture, true);
             }
         }
@@ -204,7 +204,7 @@ class CreatePackages
         // Create debuginfo packages: always for RPM, only if --debuginfo flag set for others
         $dbgConfig = $package->getDebuginfoFpmConfig();
         if (is_array($dbgConfig) && !empty($dbgConfig['files'])) {
-            if (self::$packageType === 'rpm' || self::$debuginfo) {
+            if (self::$debuginfo) {
                 self::createPackageWithFpm($package, $extensionVersion, $architecture, true);
             }
         }

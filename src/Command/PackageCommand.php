@@ -26,6 +26,7 @@ class PackageCommand extends BaseCommand
     {
         $packageNames = $input->getOption('packages');
         $iteration = $input->getOption('iteration');
+        $debuginfo = $input->getOption('debuginfo');
 
         if ($packageNames) {
             $packageNames = explode(',', $packageNames);
@@ -35,7 +36,7 @@ class PackageCommand extends BaseCommand
         }
 
         // All parameters now come from constants set by BaseCommand::initialize()
-        $result = CreatePackages::run($packageNames, $iteration);
+        $result = CreatePackages::run($packageNames, $iteration, $debuginfo);
 
         if ($result) {
             $output->writeln("Package creation completed successfully.");

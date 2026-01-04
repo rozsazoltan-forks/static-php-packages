@@ -16,7 +16,8 @@ abstract class BaseCommand extends Command
             ->addOption('phpv', null, InputOption::VALUE_REQUIRED, 'Specify PHP version to build', '8.4')
             ->addOption('target', null, InputOption::VALUE_REQUIRED, 'Specify the target triple for Zig (e.g., x86_64-linux-gnu, aarch64-linux-gnu)')
             ->addOption('prefix', null, InputOption::VALUE_REQUIRED, 'Specify the package prefix (e.g., -zts, -zts8.5, -zts85)', '-zts')
-            ->addOption('type', null, InputOption::VALUE_REQUIRED, 'Specify package type: rpm (uses /usr/lib64), deb (uses /usr/lib), or apk (uses /usr/lib). Required.', null);
+            ->addOption('type', null, InputOption::VALUE_REQUIRED, 'Specify package type: rpm (uses /usr/lib64), deb (uses /usr/lib), or apk (uses /usr/lib). Required.', null)
+            ->addOption('debuginfo', null, InputOption::VALUE_NONE, 'Create debuginfo packages for APK (RPM and DEB always create debuginfo)');
     }
 
     protected function initialize(InputInterface $input, OutputInterface $output)

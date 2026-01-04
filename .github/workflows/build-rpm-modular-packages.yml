@@ -242,7 +242,7 @@ jobs:
                     if [[ -n "${ITERATION}" ]]; then
                       ITERATION_FLAG="--iteration=${ITERATION}"
                     fi
-                    php bin/spp --type=rpm all --phpv=${MATRIX_PHP_VERSION} $ITERATION_FLAG $PACKAGES_FLAG
+                    php bin/spp all --type=rpm --debuginfo --phpv=${MATRIX_PHP_VERSION} $ITERATION_FLAG $PACKAGES_FLAG
                 env:
                     MATRIX_PHP_VERSION: ${{ matrix.php-version }}
 
