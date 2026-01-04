@@ -143,8 +143,8 @@ jobs:
 
             -   name: Extract with permissions
                 run: |
-                    mkdir -p vendor/crazywhalecc/static-php-cli/downloads
-                    tar -xzf downloads.tar.gz -C vendor/crazywhalecc/static-php-cli/downloads
+                    mkdir -p downloads
+                    tar -xzf downloads.tar.gz -C downloads
                     rm downloads.tar.gz
 
             -   name: Build PHP packages
@@ -169,7 +169,7 @@ jobs:
                 uses: actions/upload-artifact@v4
                 with:
                     name: build-logs-${{ matrix.arch }}-php${{ matrix.php-version }}
-                    path: vendor/crazywhalecc/static-php-cli/log
+                    path: log
 
             -   name: Setup tmate session
                 if: ${{ failure() && inputs.debug_tmate == true }}

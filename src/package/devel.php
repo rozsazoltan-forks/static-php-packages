@@ -19,7 +19,7 @@ class devel implements package
         $phpConfigContent = file_get_contents($phpConfigPath);
 
         // Replace buildroot paths with BUILD_ROOT_PATH
-        $builtDir = BASE_PATH . '/vendor/crazywhalecc/static-php-cli/buildroot';
+        $builtDir = BASE_PATH . '/buildroot';
         $phpConfigContent = str_replace($builtDir, BUILD_ROOT_PATH, $phpConfigContent);
         $phpConfigContent = str_replace('/app/buildroot', BUILD_ROOT_PATH, $phpConfigContent);
 

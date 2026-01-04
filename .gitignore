@@ -1,5 +1,10 @@
 /build/
-/download/
+/downloads/
+/buildroot/
+/pkgroot/
+/source/
+/log/
 /vendor/
 /.idea
 /dist
+craft.yml

@@ -10,7 +10,7 @@ class RunSPC
 {
     public static function run(bool $debug = false, string $phpVersion = '8.4', ?array $packages = null): bool
     {
-        $craftYmlDest = BASE_PATH . '/vendor/crazywhalecc/static-php-cli/craft.yml';
+        $craftYmlDest = BASE_PATH . '/craft.yml';
 
         // Render the template using the TwigRenderer
         try {
@@ -18,7 +18,7 @@ class RunSPC
 
             // Write the rendered craft.yml to the destination
             if (!file_put_contents($craftYmlDest, $craftYml)) {
-                echo "Failed to write updated craft.yml to static-php-cli vendor directory.\n";
+                echo "Failed to write updated craft.yml to project root.\n";
                 return false;
             }
         } catch (\Exception $e) {
@@ -27,12 +27,12 @@ class RunSPC
         }
 
         // Build the command arguments
-        $args = ['bin/spc', 'craft'];
+        $args = ['vendor/bin/spc', 'craft'];
         if ($debug) {
             $args[] = '--debug';
         }
 
-        $process = new Process($args, BASE_PATH . '/vendor/crazywhalecc/static-php-cli', env: ['CI' => true]);
+        $process = new Process($args, BASE_PATH, env: ['CI' => true]);
         $process->setTimeout(null);
         if (Process::isTtySupported()) {
             $process->setTty(true); // Interactive mode
@@ -59,7 +59,7 @@ class RunSPC
     private static function copyBuiltFiles(string $phpVersion): void
     {
         // Copy the built PHP binaries to our build directory
-        $sourceDir = BASE_PATH . '/vendor/crazywhalecc/static-php-cli/buildroot';
+        $sourceDir = BASE_PATH . '/buildroot';
         $buildDir = BUILD_ROOT_PATH;
         $baseBuildDir = BASE_PATH . '/build';
 
