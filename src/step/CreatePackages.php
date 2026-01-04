@@ -34,6 +34,15 @@ class CreatePackages
         self::$packageType = defined('SPP_TYPE') ? SPP_TYPE : 'rpm';
         self::$iterationOverride = $iteration !== null && $iteration !== '' ? $iteration : null;
 
+        // Verify that we're not trying to package a glibc binary as APK
+        if (self::$packageType === 'apk' && file_exists($phpBinary) && self::isGlibcBinary($phpBinary)) {
+            throw new \RuntimeException(
+                "Error: Cannot create APK packages with glibc binary. APK packages require musl libc.\n" .
+                "The binary at {$phpBinary} is linked against glibc, but APK is the Alpine Linux package format which uses musl.\n" .
+                "Please rebuild with musl libc or use a different package type (rpm/deb)."
+            );
+        }
+
         // Set debuginfo flag from parameter
         if ($debuginfo !== null) {
             self::$debuginfo = $debuginfo;
@@ -930,6 +939,22 @@ class CreatePackages
 
         self::$versionArch = [$fullPhpVersion, $architecture];
         return [$fullPhpVersion, $architecture];
+    }
+
+    /**
+     * Check if a binary is linked against glibc
+     */
+    public static function isGlibcBinary(string $binaryPath): bool
+    {
+        $fileProcess = new Process(['file', $binaryPath]);
+        $fileProcess->run();
+        $fileOutput = $fileProcess->getOutput();
+
+        // If it's not musl and not statically linked, it's glibc
+        $isMusl = str_contains($fileOutput, 'musl');
+        $isStatic = str_contains($fileOutput, 'statically linked');
+
+        return !$isMusl && !$isStatic;
     }
 
     private static function getBinaryDependencies(string $binaryPath): array
