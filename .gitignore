@@ -4,6 +4,7 @@
 /pkgroot/
 /source/
 /log/
+/locale/
 /vendor/
 /.idea
 /dist
