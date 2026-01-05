@@ -66,9 +66,9 @@ craft-options:
 {% if arch == 'x86_64' and os == '9'  %} {% set arch_flags = arch_flags ~ ' -march=x86-64-v2' %} {% endif %}
 {% if arch == 'x86_64' and os != '10' and os != '9' %} {% set arch_flags = arch_flags ~ ' ' %} {% endif %}
 {% set using_gcc = not target and php_version < '8.5' %}
-{% if not using_gcc and not target %}{% set target = 'native-native-gnu' %}{% endif %}
 {% if not using_gcc and not target and os == 8 %}{% set target = 'native-native-gnu.2.28' %}{% endif %}
 {% if not using_gcc and not target and os == 9 %}{% set target = 'native-native-gnu.2.34' %}{% endif %}
+{% if not using_gcc and not target %}{% set target = 'native-native-gnu' %}{% endif %}
 {% set target = target|replace({'native-native': arch ~ '-linux'}) %}
 {% set specs_cflags = '-specs=/usr/lib/rpm/redhat/redhat-hardened-cc1' %}
 {% set specs_ldflags = '-specs=/usr/lib/rpm/redhat/redhat-hardened-ld' ~ (os == '10' ? ' -Wl,-z,pack-relative-relocs' : '') %}
