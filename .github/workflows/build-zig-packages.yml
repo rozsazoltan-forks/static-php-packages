@@ -128,7 +128,7 @@ jobs:
                     fi
                     ITERATION_FLAG=""
                     if [[ -n "${{ env.ITERATION }}" ]]; then
-                      ITERATION_FLAG="--iteration=${{ env.ITERATION }}
+                      ITERATION_FLAG="--iteration=${{ env.ITERATION }}"
                     fi
                     php bin/spp all --type=rpm --debuginfo --target=${{ matrix.target }} --phpv=${{ matrix.php-version }} $ITERATION_FLAG $PACKAGES_FLAG
 
