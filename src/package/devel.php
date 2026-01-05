@@ -72,7 +72,7 @@ class devel implements package
             ],
             [
                 'prefix="/usr"',
-                'datarootdir="/' . \staticphp\step\CreatePackages::getPrefix() . '"',
+                'datarootdir="/' . CreatePackages::getPrefix() . '"',
             ],
             $phpizeContent
         );
@@ -83,7 +83,7 @@ class devel implements package
             ],
             [
                 str_replace('/usr/', '', getPhpLibdir()) . '`',
-                '"`eval echo ${prefix}/include`/' . \staticphp\step\CreatePackages::getPrefix() . '"'
+                '"`eval echo ${prefix}/include`/' . CreatePackages::getPrefix() . '"'
             ],
             $phpizeContent
         );
@@ -108,7 +108,7 @@ class devel implements package
             'files' => [
                 $modifiedPhpConfigPath => '/usr/bin/php-config' . getBinarySuffix(),
                 $modifiedPhpizePath => '/usr/bin/phpize' . getBinarySuffix(),
-                BUILD_INCLUDE_PATH . '/php/' => '/usr/include/' . \staticphp\step\CreatePackages::getPrefix(),
+                BUILD_INCLUDE_PATH . '/php/' => '/usr/include/' . CreatePackages::getPrefix(),
                 BUILD_LIB_PATH . '/php/build/' => getPhpLibdir() . '/build',
             ],
             'depends' => $depends,

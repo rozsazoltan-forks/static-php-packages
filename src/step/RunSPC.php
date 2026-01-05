@@ -21,7 +21,7 @@ class RunSPC
                 echo "Failed to write updated craft.yml to project root.\n";
                 return false;
             }
-        } catch (\Exception $e) {
+        } catch (Exception $e) {
             echo "Error rendering craft.yml template: " . $e->getMessage() . "\n";
             return false;
         }
