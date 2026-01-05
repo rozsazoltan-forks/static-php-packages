@@ -108,14 +108,14 @@ class frankenphp implements package
 
         // Calculate iteration for RPM (with possible override)
         $computed = (string)$this->getNextIteration($name, $rpmVersion, $architecture, 'rpm');
-        $baseIteration = $iterationOverride ?? $computed;
+        $iteration = $iterationOverride ?? $computed;
 
         $versionedConflicts = $this->getVersionedConflicts();
 
-        // Add distribution version to iteration for RPM metadata
+        // Add distribution version to filename only
         $distVersion = $this->getDistVersion();
-        $iteration = $distVersion !== '' ? "{$baseIteration}.{$distVersion}" : $baseIteration;
-        $packageFile = DIST_RPM_PATH . "/{$name}-{$rpmVersion}-{$iteration}.{$architecture}.rpm";
+        $rpmRelease = $distVersion !== '' ? "{$iteration}.{$distVersion}" : $iteration;
+        $packageFile = DIST_RPM_PATH . "/{$name}-{$rpmVersion}-{$rpmRelease}.{$architecture}.rpm";
 
         $fpmArgs = [
             'fpm',
@@ -176,7 +176,7 @@ class frankenphp implements package
         // Create FrankenPHP debuginfo package if debug file exists
         $frankenDbg = BUILD_ROOT_PATH . '/debug/frankenphp.debug';
         if (file_exists($frankenDbg)) {
-            $dbgPackageFile = DIST_RPM_PATH . "/{$name}-debuginfo-{$rpmVersion}-{$iteration}{$distVersion}.{$architecture}.rpm";
+            $dbgPackageFile = DIST_RPM_PATH . "/{$name}-debuginfo-{$rpmVersion}-{$rpmRelease}.{$architecture}.rpm";
             $dbgArgs = [
                 'fpm',
                 '-s', 'dir',
@@ -188,7 +188,7 @@ class frankenphp implements package
                 '--iteration', $iteration,
                 '--architecture', $architecture,
                 '--license', $this->getLicense(),
-                '--depends', sprintf('%s = %s-%s', $name, $rpmVersion, $iteration),
+                '--depends', sprintf('%s = %s-%s', $name, $rpmVersion, $rpmRelease),
                 $frankenDbg . '=/usr/lib/debug/usr/bin/frankenphp.debug',
             ];
             $dbgProcess = new Process($dbgArgs);
