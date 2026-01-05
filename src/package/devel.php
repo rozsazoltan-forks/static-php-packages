@@ -24,6 +24,7 @@ class devel implements package
         $phpConfigContent = str_replace('/app/buildroot', BUILD_ROOT_PATH, $phpConfigContent);
 
         $binarySuffix = getBinarySuffix();
+        $sharedLibrarySuffix = getSharedLibrarySuffix();
         $phpConfigContent = preg_replace(
             [
                 '/^prefix=.*$/m',
@@ -44,8 +45,8 @@ class devel implements package
 
         // Replace all /php paths with versioned paths
         $phpConfigContent = preg_replace('#/php(?!' . preg_quote($binarySuffix, '#') . ')#', '/' . CreatePackages::getPrefix(), $phpConfigContent);
-        // libphp filename with binary suffix: libphp-zts.so, libphp-nts.so, or libphp.so
-        $libName = 'libphp' . $binarySuffix . '.so';
+        // libphp filename with shared library suffix: libphp-zts-85.so, libphp-nts-84.so
+        $libName = 'libphp' . $sharedLibrarySuffix . '.so';
         $phpConfigContent = str_replace('libphp.so', $libName, $phpConfigContent);
 
         // For APK, sed is in /bin/sed instead of /usr/bin/sed
@@ -124,19 +125,31 @@ class devel implements package
     public function getFpmExtraArgs(): array
     {
         $binarySuffix = getBinarySuffix();
-        $libphp = 'libphp' . $binarySuffix . '.so';
+        $sharedLibrarySuffix = getSharedLibrarySuffix();
+        $libphpVersioned = 'libphp' . $sharedLibrarySuffix . '.so';  // libphp-zts-85.so
+        $libphpWithBinarySuffix = 'libphp' . $binarySuffix . '.so';   // libphp-zts.so
         $libdir = getLibdir();
 
+        // Create TWO symlinks:
+        // 1. libphp.so -> libphp-zts-85.so
+        // 2. libphp-zts.so -> libphp-zts-85.so
         $afterInstallScript = <<<BASH
 #!/bin/sh
+# Create libphp.so symlink
 if [ ! -e {$libdir}/libphp.so ]; then
-    ln -sf {$libdir}/{$libphp} {$libdir}/libphp.so
+    ln -sf {$libdir}/{$libphpVersioned} {$libdir}/libphp.so
+fi
+if [ ! -e {$libdir}/{$libphpWithBinarySuffix} ]; then
+    ln -sf {$libdir}/{$libphpVersioned} {$libdir}/{$libphpWithBinarySuffix}
 fi
 BASH;
         $afterRemoveScript = <<<BASH
 #!/bin/sh
-if [ -L {$libdir}/libphp.so ] && [ "\$(readlink {$libdir}/libphp.so)" = "{$libdir}/{$libphp}" ]; then
+if [ -L {$libdir}/libphp.so ] && [ "\$(readlink {$libdir}/libphp.so)" = "{$libdir}/{$libphpVersioned}" ]; then
     rm -f {$libdir}/libphp.so
+fi
+if [ -L {$libdir}/{$libphpWithBinarySuffix} ] && [ "\$(readlink {$libdir}/{$libphpWithBinarySuffix})" = "{$libdir}/{$libphpVersioned}" ]; then
+    rm -f {$libdir}/{$libphpWithBinarySuffix}
 fi
 BASH;
 

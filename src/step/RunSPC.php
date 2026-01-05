@@ -12,7 +12,6 @@ class RunSPC
     {
         $craftYmlDest = BASE_PATH . '/craft.yml';
 
-        // Render the template using the TwigRenderer
         try {
             $craftYml = TwigRenderer::renderCraftTemplate($phpVersion, null, $packages);
 

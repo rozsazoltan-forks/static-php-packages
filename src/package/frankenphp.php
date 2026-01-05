@@ -2,6 +2,7 @@
 
 namespace staticphp\package;
 
+use RuntimeException;
 use staticphp\package;
 use staticphp\step\CreatePackages;
 use Symfony\Component\Process\Process;
@@ -83,14 +84,14 @@ class frankenphp implements package
         echo "Creating RPM package for FrankenPHP...\n";
 
         $packageFolder = DIST_PATH . '/frankenphp/package';
-        $binarySuffix = getBinarySuffix();
-        $phpEmbedName = 'libphp' . $binarySuffix . '.so';
+        $sharedLibrarySuffix = getSharedLibrarySuffix();
+        $phpEmbedName = 'libphp' . $sharedLibrarySuffix . '.so';
 
         $ldLibraryPath = 'LD_LIBRARY_PATH=' . BUILD_LIB_PATH;
         [, $output] = shell()->execWithResult($ldLibraryPath . ' ' . BUILD_BIN_PATH . '/frankenphp --version');
         $output = implode("\n", $output);
         if (!preg_match('/FrankenPHP v(\d+\.\d+\.\d+)/', $output, $matches)) {
-            throw new \RuntimeException("Unable to detect FrankenPHP version from output: " . $output);
+            throw new RuntimeException("Unable to detect FrankenPHP version from output: " . $output);
         }
         $version = $matches[1];
 
@@ -142,7 +143,7 @@ class frankenphp implements package
         }
 
         if (!is_dir("{$packageFolder}/empty/") && !mkdir("{$packageFolder}/empty/", 0755, true) && !is_dir("{$packageFolder}/empty/")) {
-            throw new \RuntimeException(sprintf('Directory "%s" was not created', "{$packageFolder}/empty/"));
+            throw new RuntimeException(sprintf('Directory "%s" was not created', "{$packageFolder}/empty/"));
         }
 
         $fpmArgs = [...$fpmArgs, ...[
@@ -196,7 +197,7 @@ class frankenphp implements package
                 echo $buffer;
             });
             if (!$dbgProcess->isSuccessful()) {
-                throw new \RuntimeException("RPM debuginfo package creation failed: " . $dbgProcess->getErrorOutput());
+                throw new RuntimeException("RPM debuginfo package creation failed: " . $dbgProcess->getErrorOutput());
             }
 
             echo "RPM debuginfo package created: {$dbgPackageFile}\n";
@@ -211,17 +212,15 @@ class frankenphp implements package
         echo "Creating DEB package for FrankenPHP...\n";
 
         $packageFolder = DIST_PATH . '/frankenphp/package';
-        $binarySuffix = getBinarySuffix();
-        // libphp filename with binary suffix: libphp-zts.so, libphp-nts.so, or libphp.so
-        $phpEmbedName = $binarySuffix !== ''
-            ? 'libphp' . $binarySuffix . '.so'
-            : 'libphp.so';
+        $sharedLibrarySuffix = getSharedLibrarySuffix();
+        // libphp filename with shared library suffix: libphp-zts-85.so, libphp-nts-84.so
+        $phpEmbedName = 'libphp' . $sharedLibrarySuffix . '.so';
 
         $ldLibraryPath = 'LD_LIBRARY_PATH=' . BUILD_LIB_PATH;
         [, $output] = shell()->execWithResult($ldLibraryPath . ' ' . BUILD_BIN_PATH . '/frankenphp --version');
         $output = implode("\n", $output);
         if (!preg_match('/FrankenPHP v(\d+\.\d+\.\d+)/', $output, $matches)) {
-            throw new \RuntimeException("Unable to detect FrankenPHP version from output: " . $output);
+            throw new RuntimeException("Unable to detect FrankenPHP version from output: " . $output);
         }
         $version = $matches[1];
 
@@ -304,7 +303,7 @@ class frankenphp implements package
         }
 
         if (!is_dir("{$packageFolder}/empty/") && !mkdir("{$packageFolder}/empty/", 0755, true) && !is_dir("{$packageFolder}/empty/")) {
-            throw new \RuntimeException(sprintf('Directory "%s" was not created', "{$packageFolder}/empty/"));
+            throw new RuntimeException(sprintf('Directory "%s" was not created', "{$packageFolder}/empty/"));
         }
 
         // Determine the FrankenPHP suffix (just version, not prefix)
@@ -365,7 +364,7 @@ class frankenphp implements package
                     echo $buffer;
                 });
                 if (!$dbgProcess->isSuccessful()) {
-                    throw new \RuntimeException("DEB debuginfo package creation failed: " . $dbgProcess->getErrorOutput());
+                    throw new RuntimeException("DEB debuginfo package creation failed: " . $dbgProcess->getErrorOutput());
                 }
 
                 echo "DEB debuginfo package created: {$dbgPackageFile}\n";
@@ -381,17 +380,15 @@ class frankenphp implements package
         echo "Creating APK package for FrankenPHP using nfpm...\n";
 
         $packageFolder = DIST_PATH . '/frankenphp/package';
-        $binarySuffix = getBinarySuffix();
-        // libphp filename with binary suffix: libphp-zts.so, libphp-nts.so, or libphp.so
-        $phpEmbedName = $binarySuffix !== ''
-            ? 'libphp' . $binarySuffix . '.so'
-            : 'libphp.so';
+        $sharedLibrarySuffix = getSharedLibrarySuffix();
+        // libphp filename with shared library suffix: libphp-zts-85.so, libphp-nts-84.so
+        $phpEmbedName = 'libphp' . $sharedLibrarySuffix . '.so';
 
         $ldLibraryPath = 'LD_LIBRARY_PATH=' . BUILD_LIB_PATH;
         [, $output] = shell()->execWithResult($ldLibraryPath . ' ' . BUILD_BIN_PATH . '/frankenphp --version');
         $output = implode("\n", $output);
         if (!preg_match('/FrankenPHP v(\d+\.\d+\.\d+)/', $output, $matches)) {
-            throw new \RuntimeException("Unable to detect FrankenPHP version from output: " . $output);
+            throw new RuntimeException("Unable to detect FrankenPHP version from output: " . $output);
         }
         $version = $matches[1];
 
@@ -514,7 +511,7 @@ class frankenphp implements package
         // Write nfpm config
         $nfpmConfigFile = TEMP_DIR . "/nfpm-{$name}.yaml";
         if (!yaml_emit_file($nfpmConfigFile, $nfpmConfig, YAML_UTF8_ENCODING)) {
-            throw new \RuntimeException("Failed to write YAML file: {$nfpmConfigFile}");
+            throw new RuntimeException("Failed to write YAML file: {$nfpmConfigFile}");
         }
 
         echo "nfpm config written to: {$nfpmConfigFile}\n";
@@ -536,7 +533,7 @@ class frankenphp implements package
         if (!$nfpmProcess->isSuccessful()) {
             echo "nfpm config file contents:\n";
             echo file_get_contents($nfpmConfigFile);
-            throw new \RuntimeException("nfpm package creation failed: " . $nfpmProcess->getErrorOutput());
+            throw new RuntimeException("nfpm package creation failed: " . $nfpmProcess->getErrorOutput());
         }
 
         @unlink($nfpmConfigFile);
@@ -580,7 +577,7 @@ class frankenphp implements package
 
         $nfpmConfigFile = TEMP_DIR . "/nfpm-{$dbgName}.yaml";
         if (!yaml_emit_file($nfpmConfigFile, $nfpmConfig, YAML_UTF8_ENCODING)) {
-            throw new \RuntimeException("Failed to write YAML file: {$nfpmConfigFile}");
+            throw new RuntimeException("Failed to write YAML file: {$nfpmConfigFile}");
         }
 
         $phpSuffix = $this->getPhpVersionSuffix();
@@ -597,7 +594,7 @@ class frankenphp implements package
         });
 
         if (!$dbgProcess->isSuccessful()) {
-            throw new \RuntimeException("nfpm debuginfo package creation failed: " . $dbgProcess->getErrorOutput());
+            throw new RuntimeException("nfpm debuginfo package creation failed: " . $dbgProcess->getErrorOutput());
         }
 
         @unlink($nfpmConfigFile);
@@ -619,7 +616,7 @@ class frankenphp implements package
         ]);
         $tagProcess->run();
         if (!$tagProcess->isSuccessful()) {
-            throw new \RuntimeException("Failed to fetch tags: " . $tagProcess->getErrorOutput());
+            throw new RuntimeException("Failed to fetch tags: " . $tagProcess->getErrorOutput());
         }
         $latestTag = trim($tagProcess->getOutput());
 
@@ -628,7 +625,7 @@ class frankenphp implements package
             $clone = new Process(['git', 'clone', $repoUrl, $targetPath]);
             $clone->run();
             if (!$clone->isSuccessful()) {
-                throw new \RuntimeException("Git clone failed: " . $clone->getErrorOutput());
+                throw new RuntimeException("Git clone failed: " . $clone->getErrorOutput());
             }
         }
         else {
@@ -636,14 +633,14 @@ class frankenphp implements package
             $fetch = new Process(['git', 'fetch', '--tags'], cwd: $targetPath);
             $fetch->run();
             if (!$fetch->isSuccessful()) {
-                throw new \RuntimeException("Git fetch failed: " . $fetch->getErrorOutput());
+                throw new RuntimeException("Git fetch failed: " . $fetch->getErrorOutput());
             }
         }
 
         $checkout = new Process(['git', 'checkout', $latestTag], cwd: $targetPath);
         $checkout->run();
         if (!$checkout->isSuccessful()) {
-            throw new \RuntimeException("Git checkout failed: " . $checkout->getErrorOutput());
+            throw new RuntimeException("Git checkout failed: " . $checkout->getErrorOutput());
         }
 
         return $latestTag;
@@ -658,7 +655,7 @@ class frankenphp implements package
         $phpBinary = BUILD_BIN_PATH . '/php';
 
         if (!file_exists($phpBinary)) {
-            throw new \RuntimeException("Warning: PHP binary not found at {$phpBinary}, using base PHP version: {$basePhpVersion}");
+            throw new RuntimeException("Warning: PHP binary not found at {$phpBinary}, using base PHP version: {$basePhpVersion}");
         }
         $versionProcess = new Process([$phpBinary, '-r', 'echo PHP_VERSION;']);
         $versionProcess->run();
@@ -669,7 +666,7 @@ class frankenphp implements package
             echo "Detected full PHP version from binary: {$fullPhpVersion}\n";
         }
         else {
-            throw new \RuntimeException("Warning: Could not detect PHP version from binary using base version: {$basePhpVersion}");
+            throw new RuntimeException("Warning: Could not detect PHP version from binary using base version: {$basePhpVersion}");
         }
 
         $archProcess = new Process(['uname', '-m']);

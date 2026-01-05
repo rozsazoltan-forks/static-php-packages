@@ -2,6 +2,8 @@
 
 namespace staticphp;
 
+use Exception;
+use RuntimeException;
 use Symfony\Component\Yaml\Yaml;
 use staticphp\util\TwigRenderer;
 
@@ -34,8 +36,8 @@ class CraftConfig
             $craftYml = TwigRenderer::renderCraftTemplate($phpVersion);
 
             $this->craftConfig = Yaml::parse($craftYml);
-        } catch (\Exception $e) {
-            throw new \RuntimeException("Error rendering or parsing craft.yml template: " . $e->getMessage());
+        } catch (Exception $e) {
+            throw new RuntimeException("Error rendering or parsing craft.yml template: " . $e->getMessage());
         }
 
         if (isset($this->craftConfig['extensions'])) {

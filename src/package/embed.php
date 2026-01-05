@@ -14,8 +14,8 @@ class embed implements package
 
     public function getFpmConfig(): array
     {
-        $binarySuffix = getBinarySuffix(); // e.g., "-zts", "-nts", "-zts8.5", or ""
-        $libphp = 'libphp' . $binarySuffix . '.so';
+        $sharedLibrarySuffix = getSharedLibrarySuffix(); // e.g., "-zts-85", "-nts-84"
+        $libphp = 'libphp' . $sharedLibrarySuffix . '.so';
         $versionedConflicts = CreatePackages::getVersionedConflicts('-embed');
         $provides = [
             $libphp,
@@ -44,11 +44,11 @@ class embed implements package
 
     public function getDebuginfoFpmConfig(): array
     {
-        $binarySuffix = getBinarySuffix();
-        // libphp filename with binary suffix: libphp-zts.so, libphp-nts.so, or libphp.so
-        $libName = 'libphp' . $binarySuffix . '.so';
+        $sharedLibrarySuffix = getSharedLibrarySuffix();
+        // libphp filename with shared library suffix: libphp-zts-85.so, libphp-nts-84.so
+        $libName = 'libphp' . $sharedLibrarySuffix . '.so';
 
-        $src = BUILD_ROOT_PATH . '/debug/libphp' . $binarySuffix . '.so.debug';
+        $src = BUILD_ROOT_PATH . '/debug/libphp' . $sharedLibrarySuffix . '.so.debug';
         if (!file_exists($src)) {
             return [];
         }

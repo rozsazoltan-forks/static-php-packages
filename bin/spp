@@ -15,6 +15,7 @@ define('TEMP_DIR', sys_get_temp_dir() . '/spc-packages');
 require_once BASE_PATH . '/vendor/autoload.php';
 
 use SPC\builder\linux\SystemUtil;
+use staticphp\step\CreatePackages;
 use Symfony\Component\Console\Application;
 use staticphp\Command\BuildCommand;
 use staticphp\Command\PackageCommand;
@@ -75,21 +76,21 @@ function getLibdir(): string
 function getConfdir(): string
 {
     // Get the prefix from user-provided parameter (e.g., php-zts, php-zts8.5, php-zts85)
-    $prefix = \staticphp\step\CreatePackages::getPrefix();
+    $prefix = CreatePackages::getPrefix();
     return '/etc/' . $prefix;
 }
 
 function getModuledir(): string
 {
     // Get the prefix from user-provided parameter
-    $prefix = \staticphp\step\CreatePackages::getPrefix();
+    $prefix = CreatePackages::getPrefix();
     return getLibdir() . '/' . $prefix . '/modules';
 }
 
 function getPhpLibdir(): string
 {
     // Get the prefix from user-provided parameter
-    $prefix = \staticphp\step\CreatePackages::getPrefix();
+    $prefix = CreatePackages::getPrefix();
     return getLibdir() . '/' . $prefix;
 }
 
@@ -101,16 +102,27 @@ function getBinarySuffix(): string
     return defined('SPP_PREFIX') ? SPP_PREFIX : '-zts';
 }
 
+function getSharedLibrarySuffix(): string
+{
+    // Get the suffix for shared libraries (.so files)
+    // Combines binary suffix with PHP version: e.g., "-zts-85" for PHP 8.5
+    $binarySuffix = getBinarySuffix();
+
+    $phpVersion = SPP_PHP_VERSION;
+    $versionNoDot = str_replace('.', '', $phpVersion);
+    return $binarySuffix . '-' . $versionNoDot;
+}
+
 function getVarLibdir(): string
 {
     // Get /var/lib/{prefix} path
-    $prefix = \staticphp\step\CreatePackages::getPrefix();
+    $prefix = CreatePackages::getPrefix();
     return '/var/lib/' . $prefix;
 }
 
 function getSharedir(): string
 {
     // Get /usr/share/{prefix} path
-    $prefix = \staticphp\step\CreatePackages::getPrefix();
+    $prefix = CreatePackages::getPrefix();
     return '/usr/share/' . $prefix;
 }

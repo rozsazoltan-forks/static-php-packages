@@ -2,6 +2,7 @@
 
 namespace staticphp\Command;
 
+use InvalidArgumentException;
 use Symfony\Component\Console\Command\Command;
 use Symfony\Component\Console\Input\InputInterface;
 use Symfony\Component\Console\Input\InputOption;
@@ -30,13 +31,13 @@ abstract class BaseCommand extends Command
 
         // Validate that --type is provided
         if ($type === null) {
-            throw new \InvalidArgumentException('The --type option is required. Specify: rpm, deb, or apk');
+            throw new InvalidArgumentException('The --type option is required. Specify: rpm, deb, or apk');
         }
 
         // Validate type value
         $validTypes = ['rpm', 'deb', 'apk'];
         if (!in_array($type, $validTypes, true)) {
-            throw new \InvalidArgumentException('Invalid --type value. Must be one of: ' . implode(', ', $validTypes));
+            throw new InvalidArgumentException('Invalid --type value. Must be one of: ' . implode(', ', $validTypes));
         }
 
         // Check if constants are already defined

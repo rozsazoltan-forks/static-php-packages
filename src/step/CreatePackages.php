@@ -2,8 +2,10 @@
 
 namespace staticphp\step;
 
+use RuntimeException;
 use SPC\store\Config;
 use staticphp\extension;
+use staticphp\package;
 use Symfony\Component\Process\Process;
 use staticphp\CraftConfig;
 
@@ -36,7 +38,7 @@ class CreatePackages
 
         // Verify that we're not trying to package a glibc binary as APK
         if (self::$packageType === 'apk' && file_exists($phpBinary) && self::isGlibcBinary($phpBinary)) {
-            throw new \RuntimeException(
+            throw new RuntimeException(
                 "Error: Cannot create APK packages with glibc binary. APK packages require musl libc.\n" .
                 "The binary at {$phpBinary} is linked against glibc, but APK is the Alpine Linux package format which uses musl.\n" .
                 "Please rebuild with musl libc or use a different package type (rpm/deb)."
@@ -224,7 +226,7 @@ class CreatePackages
         $phpBinary = BUILD_BIN_PATH . '/php';
 
         if (!file_exists($phpBinary)) {
-            throw new \RuntimeException("Warning: PHP binary not found at {$phpBinary}, using PHP version for extension {$extension}: {$phpVersion}");
+            throw new RuntimeException("Warning: PHP binary not found at {$phpBinary}, using PHP version for extension {$extension}: {$phpVersion}");
         }
 
         $extensionClass = "\\staticphp\\package\\extension\\$extension";
@@ -276,7 +278,7 @@ class CreatePackages
         }
 
         if (empty($extensionVersion)) {
-            throw new \RuntimeException("Warning: Could not detect version for extension {$extension}");
+            throw new RuntimeException("Warning: Could not detect version for extension {$extension}");
         }
 
         echo "Detected version for extension {$extension}: {$extensionVersion}\n";
@@ -284,7 +286,7 @@ class CreatePackages
         return $extensionVersion;
     }
 
-    private static function createPackageWithFpm(\staticphp\package $package, string $phpVersion, string $architecture, bool $isDebuginfo = false): void
+    private static function createPackageWithFpm(package $package, string $phpVersion, string $architecture, bool $isDebuginfo = false): void
     {
         if (self::$packageType === 'rpm') {
             self::createRpmPackage($package, $phpVersion, $architecture, $isDebuginfo);
@@ -299,7 +301,7 @@ class CreatePackages
         }
     }
 
-    private static function createRpmPackage(\staticphp\package $package, string $phpVersion, string $architecture, bool $isDebuginfo = false): void
+    private static function createRpmPackage(package $package, string $phpVersion, string $architecture, bool $isDebuginfo = false): void
     {
         $name = $isDebuginfo ? $package->getName() . '-debuginfo' : $package->getName();
         $config = $isDebuginfo ? $package->getDebuginfoFpmConfig() : $package->getFpmConfig();
@@ -440,7 +442,7 @@ class CreatePackages
         if (isset($config['empty_directories']) && is_array($config['empty_directories'])) {
             $emptyDir = TEMP_DIR . '/spp_empty/';
             if (!file_exists($emptyDir) && !mkdir($emptyDir, 0755, true) && !is_dir($emptyDir)) {
-                throw new \RuntimeException(sprintf('Directory "%s" was not created', $emptyDir));
+                throw new RuntimeException(sprintf('Directory "%s" was not created', $emptyDir));
             }
             if (is_dir($emptyDir)) {
                 $files = array_diff(scandir($emptyDir), ['.', '..']);
@@ -459,14 +461,14 @@ class CreatePackages
             echo $buffer;
         });
         if (!$rpmProcess->isSuccessful()) {
-            throw new \RuntimeException("RPM package creation failed: " . $rpmProcess->getErrorOutput());
+            throw new RuntimeException("RPM package creation failed: " . $rpmProcess->getErrorOutput());
         }
 
         echo "RPM package created: {$packageFile}\n";
     }
 
     private static function createDebPackage(
-        \staticphp\package $package,
+        package $package,
         string $phpVersion,
         string $architecture,
         bool $isDebuginfo = false,
@@ -648,7 +650,7 @@ class CreatePackages
         if (isset($config['empty_directories']) && is_array($config['empty_directories'])) {
             $emptyDir = TEMP_DIR . '/spp_empty';
             if (!file_exists($emptyDir) && !mkdir($emptyDir, 0755, true) && !is_dir($emptyDir)) {
-                throw new \RuntimeException(sprintf('Directory "%s" was not created', $emptyDir));
+                throw new RuntimeException(sprintf('Directory "%s" was not created', $emptyDir));
             }
             if (is_dir($emptyDir)) {
                 $files = array_diff((array)scandir($emptyDir), ['.', '..']);
@@ -667,13 +669,13 @@ class CreatePackages
             echo $buffer;
         });
         if (!$debProcess->isSuccessful()) {
-            throw new \RuntimeException("DEB package creation failed: " . $debProcess->getErrorOutput());
+            throw new RuntimeException("DEB package creation failed: " . $debProcess->getErrorOutput());
         }
 
         echo "DEB package created: {$packageFile}\n";
     }
 
-    private static function createApkPackage(\staticphp\package $package, string $phpVersion, string $architecture, bool $isDebuginfo = false): void
+    private static function createApkPackage(package $package, string $phpVersion, string $architecture, bool $isDebuginfo = false): void
     {
         $name = $isDebuginfo ? $package->getName() . '-debuginfo' : $package->getName();
         $config = $isDebuginfo ? $package->getDebuginfoFpmConfig() : $package->getFpmConfig();
@@ -707,7 +709,7 @@ class CreatePackages
         // Use nfpm instead of fpm for APK packages
         self::createApkWithNfpm($package, $name, $apkVersion, $architecture, $apkIteration, $config, $isDebuginfo);
     }
-    private static function createApkWithNfpm(\staticphp\package $package, string $name, string $phpVersion, string $architecture, string $iteration, array $config, bool $isDebuginfo): void
+    private static function createApkWithNfpm(package $package, string $name, string $phpVersion, string $architecture, string $iteration, array $config, bool $isDebuginfo): void
     {
         $fullVersion = "{$phpVersion}-r{$iteration}";
 
@@ -868,7 +870,7 @@ class CreatePackages
         // Write nfpm config to YAML file
         $nfpmConfigFile = TEMP_DIR . "/nfpm-{$name}.yaml";
         if (!yaml_emit_file($nfpmConfigFile, $nfpmConfig, YAML_UTF8_ENCODING)) {
-            throw new \RuntimeException("Failed to write YAML file: {$nfpmConfigFile}");
+            throw new RuntimeException("Failed to write YAML file: {$nfpmConfigFile}");
         }
 
         echo "nfpm config written to: {$nfpmConfigFile}\n";
@@ -890,7 +892,7 @@ class CreatePackages
         if (!$nfpmProcess->isSuccessful()) {
             echo "nfpm config file contents:\n";
             echo file_get_contents($nfpmConfigFile);
-            throw new \RuntimeException("nfpm package creation failed: " . $nfpmProcess->getErrorOutput());
+            throw new RuntimeException("nfpm package creation failed: " . $nfpmProcess->getErrorOutput());
         }
 
         // Clean up config file
@@ -908,7 +910,7 @@ class CreatePackages
         $phpBinary = BUILD_BIN_PATH . '/php';
 
         if (!file_exists($phpBinary)) {
-            throw new \RuntimeException("Warning: PHP binary not found at {$phpBinary}, using base PHP version: {$basePhpVersion}");
+            throw new RuntimeException("Warning: PHP binary not found at {$phpBinary}, using base PHP version: {$basePhpVersion}");
         }
         $versionProcess = new Process([$phpBinary, '-r', 'echo PHP_VERSION;']);
         $versionProcess->run();
@@ -919,7 +921,7 @@ class CreatePackages
             echo "Detected full PHP version from binary: {$fullPhpVersion}\n";
         }
         else {
-            throw new \RuntimeException("Warning: Could not detect PHP version from binary using base version: {$basePhpVersion}");
+            throw new RuntimeException("Warning: Could not detect PHP version from binary using base version: {$basePhpVersion}");
         }
 
         $archProcess = new Process(['uname', '-m']);
@@ -973,7 +975,7 @@ class CreatePackages
             $process->run();
 
             if (!$process->isSuccessful()) {
-                throw new \RuntimeException("ldd failed: " . $process->getErrorOutput());
+                throw new RuntimeException("ldd failed: " . $process->getErrorOutput());
             }
 
             $output = $process->getOutput();
@@ -1050,7 +1052,7 @@ class CreatePackages
         }
 
         if ($muslLoader === null) {
-            throw new \RuntimeException("Could not find musl dynamic linker for architecture {$arch} (tried: " . implode(', ', $muslLoaders) . ")");
+            throw new RuntimeException("Could not find musl dynamic linker for architecture {$arch} (tried: " . implode(', ', $muslLoaders) . ")");
         }
 
         echo "Using musl dynamic linker: {$muslLoader}\n";
@@ -1068,7 +1070,7 @@ class CreatePackages
                 echo "Binary {$binaryPath} appears to be statically linked (no dynamic dependencies)\n";
                 return '';
             }
-            throw new \RuntimeException("Musl ldd failed: " . $process->getErrorOutput());
+            throw new RuntimeException("Musl ldd failed: " . $process->getErrorOutput());
         }
 
         return $process->getOutput();

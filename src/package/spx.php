@@ -21,7 +21,7 @@ class spx extends extension
             'replaces' => $versionedConflicts,
             'conflicts' => $versionedConflicts,
             'files' => [
-                BUILD_MODULES_PATH . '/spx' . getBinarySuffix() . '.so' => getModuledir() . '/spx' . getBinarySuffix() . '.so',
+                BUILD_MODULES_PATH . '/spx' . getSharedLibrarySuffix() . '.so' => getModuledir() . '/spx' . getSharedLibrarySuffix() . '.so',
                 $this->getIniPath() => getConfdir() . '/conf.d/20-spx.ini',
                 BUILD_ROOT_PATH . '/share/misc/php-spx/assets/web-ui' => '/usr/share/' . CreatePackages::getPrefix() . '/misc/php-spx/assets/web-ui',
             ]

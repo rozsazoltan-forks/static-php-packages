@@ -2,6 +2,8 @@
 
 namespace staticphp\util;
 
+use Exception;
+use RuntimeException;
 use staticphp\step\CreatePackages;
 use Twig\Environment;
 use Twig\Loader\FilesystemLoader;
@@ -14,7 +16,7 @@ class TwigRenderer
      * @param string $templateName Template file name (e.g., 'pie-wrapper.twig')
      * @param array $variables Variables to pass to the template
      * @return string The rendered template content
-     * @throws \RuntimeException If there's an error rendering the template
+     * @throws RuntimeException If there's an error rendering the template
      */
     public static function render(string $templateName, array $variables = []): string
     {
@@ -23,8 +25,8 @@ class TwigRenderer
 
         try {
             return $twig->render($templateName, $variables);
-        } catch (\Exception $e) {
-            throw new \RuntimeException("Error rendering template {$templateName}: " . $e->getMessage());
+        } catch (Exception $e) {
+            throw new RuntimeException("Error rendering template {$templateName}: " . $e->getMessage());
         }
     }
 
@@ -34,7 +36,7 @@ class TwigRenderer
      * @param string $phpVersion PHP version to use in the template
      * @param string|null $arch Architecture to use in the template (defaults to detected architecture)
      * @return string The rendered template content
-     * @throws \RuntimeException If there's an error rendering the template
+     * @throws RuntimeException If there's an error rendering the template
      */
     public static function renderCraftTemplate(string $phpVersion = '8.4', ?string $arch = null, ?array $packages = null): string
     {
@@ -79,6 +81,7 @@ class TwigRenderer
         $libdir = $packageType === 'rpm' ? '/usr/lib64' : '/usr/lib';
 
 
+        $sharedLibrarySuffix = getSharedLibrarySuffix();
         $templateVars = [
             'php_version' => $phpVersion,
             'php_version_nodot' => str_replace('.', '', $phpVersion),
@@ -86,7 +89,7 @@ class TwigRenderer
             'arch' => $arch,
             'os' => $majorOsVersion,
             'prefix' => $prefix,
-            'release_suffix' => str_replace_first('-', '', $binarySuffix),
+            'release_suffix' => str_replace_first('-', '', $sharedLibrarySuffix),
             'confdir' => '/etc/' . $prefix,
             'type' => $packageType,
             'moduledir' => $libdir . '/' . $prefix . '/modules',
@@ -99,8 +102,8 @@ class TwigRenderer
 
         try {
             return $twig->render('craft.yml.twig', $templateVars);
-        } catch (\Exception $e) {
-            throw new \RuntimeException("Error rendering craft.yml template: " . $e->getMessage());
+        } catch (Exception $e) {
+            throw new RuntimeException("Error rendering craft.yml template: " . $e->getMessage());
         }
     }
 }

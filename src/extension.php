@@ -2,6 +2,7 @@
 
 namespace staticphp;
 
+use Exception;
 use SPC\store\Config;
 use staticphp\step\CreatePackages;
 
@@ -102,7 +103,7 @@ class extension implements package
     {
         $config = Config::getExt($this->name);
         if (!$config) {
-            throw new \Exception("Extension configuration for '{$this->name}' not found.");
+            throw new Exception("Extension configuration for '{$this->name}' not found.");
         }
         $prefix = CreatePackages::getPrefix();
         $depends = [$prefix . '-cli'];
@@ -161,7 +162,7 @@ class extension implements package
                     : []
                 ),
                 ...($this->isSharedExtension() ?
-                    [BUILD_MODULES_PATH . '/' . $this->name . getBinarySuffix() . '.so' => getModuledir() . '/' . $this->name . getBinarySuffix() . '.so']
+                    [BUILD_MODULES_PATH . '/' . $this->name . getSharedLibrarySuffix() . '.so' => getModuledir() . '/' . $this->name . getSharedLibrarySuffix() . '.so']
                     : []
                 ),
             ]
@@ -188,15 +189,15 @@ class extension implements package
         $prefix = CreatePackages::getPrefix();
 
         // Replace extension directives and ALL hardcoded php paths with prefix-based paths
-        $binarySuffix = getBinarySuffix();
+        $sharedLibrarySuffix = getSharedLibrarySuffix();
         $iniContent = str_replace(
             [
                 ';extension=' . $this->name,
                 ';zend_extension=' . $this->name,
             ],
             [
-                'extension=' . $this->name . $binarySuffix,
-                'zend_extension=' . $this->name . $binarySuffix,
+                'extension=' . $this->name . $sharedLibrarySuffix,
+                'zend_extension=' . $this->name . $sharedLibrarySuffix,
             ],
             $iniContent
         );
@@ -232,12 +233,12 @@ class extension implements package
         if (!$this->isSharedExtension()) {
             return [];
         }
-        $binarySuffix = getBinarySuffix();
-        $src = BUILD_ROOT_PATH . '/debug/' . $this->name . $binarySuffix . '.so.debug';
+        $sharedLibrarySuffix = getSharedLibrarySuffix();
+        $src = BUILD_ROOT_PATH . '/debug/' . $this->name . $sharedLibrarySuffix . '.so.debug';
         if (!file_exists($src)) {
             return [];
         }
-        $targetSo = getModuledir() . '/' . $this->name . $binarySuffix . '.so';
+        $targetSo = getModuledir() . '/' . $this->name . $sharedLibrarySuffix . '.so';
         $target = '/usr/lib/debug' . $targetSo . '.debug';
         return [
             'depends' => [CreatePackages::getPrefix() . '-' . $this->name],

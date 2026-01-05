@@ -2,10 +2,12 @@
 
 namespace staticphp\package;
 
+use RuntimeException;
 use SPC\store\CurlHook;
 use SPC\store\Downloader;
 use staticphp\package;
 use staticphp\step\CreatePackages;
+use staticphp\util\TwigRenderer;
 use Symfony\Component\Process\Process;
 
 class pie implements package
@@ -43,7 +45,7 @@ class pie implements package
             return $m[1];
         }
 
-        throw new \RuntimeException('Unable to detect PIE version from output: ' . trim($output));
+        throw new RuntimeException('Unable to detect PIE version from output: ' . trim($output));
     }
     public function getFpmConfig(): array
     {
@@ -118,7 +120,7 @@ class pie implements package
         $binarySuffix = getBinarySuffix();
         $wrapperPath = TEMP_DIR . '/pie' . $binarySuffix;
 
-        $wrapperContents = \staticphp\util\TwigRenderer::render('pie-wrapper.twig', [
+        $wrapperContents = TwigRenderer::render('pie-wrapper.twig', [
             'binary_suffix' => $binarySuffix,
             'sharedir' => getSharedir(),
         ]);
@@ -149,11 +151,11 @@ class pie implements package
 
         $downloaded = DOWNLOAD_PATH . '/' . $filename;
         if (!file_exists($downloaded)) {
-            throw new \RuntimeException('PIE download did not produce expected file: ' . $downloaded);
+            throw new RuntimeException('PIE download did not produce expected file: ' . $downloaded);
         }
 
         if ($downloaded !== $targetPath && !@copy($downloaded, $targetPath)) {
-            throw new \RuntimeException('Failed to stage pie.phar to build directory.');
+            throw new RuntimeException('Failed to stage pie.phar to build directory.');
         }
     }
 }
