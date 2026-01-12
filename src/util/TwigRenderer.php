@@ -31,6 +31,29 @@ class TwigRenderer
     }
 
     /**
+     * Renders any Twig template file with the given variables
+     *
+     * @param string $filePath Full path to the template file
+     * @param array $variables Variables to pass to the template
+     * @return string The rendered template content
+     * @throws RuntimeException If there's an error rendering the template
+     */
+    public static function renderFile(string $filePath, array $variables = []): string
+    {
+        $directory = dirname($filePath);
+        $fileName = basename($filePath);
+
+        $loader = new FilesystemLoader($directory);
+        $twig = new Environment($loader);
+
+        try {
+            return $twig->render($fileName, $variables);
+        } catch (Exception $e) {
+            throw new RuntimeException("Error rendering template file {$filePath}: " . $e->getMessage());
+        }
+    }
+
+    /**
      * Renders a Twig template with the given variables
      *
      * @param string $phpVersion PHP version to use in the template

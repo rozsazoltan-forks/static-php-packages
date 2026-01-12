@@ -5,6 +5,7 @@ namespace staticphp;
 use Exception;
 use SPC\store\Config;
 use staticphp\step\CreatePackages;
+use staticphp\util\TwigRenderer;
 
 class extension implements package
 {
@@ -171,36 +172,23 @@ class extension implements package
 
     protected function getIniPath(): ?string
     {
-        $craftConfig = CraftConfig::getInstance();
-        $sharedExtensions = $craftConfig->getSharedExtensions();
-
         $iniPath = INI_PATH . '/extension/' . $this->name . '.ini';
         if (!file_exists($iniPath)) {
             return null;
         }
 
-        if (!in_array($this->name, $sharedExtensions)) {
-            return $iniPath;
-        }
         $tempIniPath = TEMP_DIR . '/' . $this->prefix . $this->name . '.ini';
-        $iniContent = file_get_contents($iniPath);
 
         // Get the dynamic prefix for path replacements
         $prefix = CreatePackages::getPrefix();
 
-        // Replace extension directives and ALL hardcoded php paths with prefix-based paths
-        $sharedLibrarySuffix = getSharedLibrarySuffix();
-        $iniContent = str_replace(
-            [
-                ';extension=' . $this->name,
-                ';zend_extension=' . $this->name,
-            ],
-            [
-                'extension=' . $this->name . $sharedLibrarySuffix,
-                'zend_extension=' . $this->name . $sharedLibrarySuffix,
-            ],
-            $iniContent
-        );
+        $iniContent = TwigRenderer::renderFile($iniPath, [
+            'type' => defined('SPP_TYPE') ? SPP_TYPE : 'rpm',
+            'binary_suffix' => getBinarySuffix(),
+            'shared_library_suffix' => getSharedLibrarySuffix(),
+            'is_shared' => $this->isSharedExtension(),
+        ]);
+
         $iniContent = preg_replace(
             [
                 '#/usr/share/php[^/]*/#',

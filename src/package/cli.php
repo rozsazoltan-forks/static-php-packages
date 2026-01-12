@@ -62,7 +62,13 @@ class cli implements package
             $iniFile = INI_PATH . "/extension/{$ext}.ini";
             if (file_exists($iniFile)) {
                 // Process the .ini file to replace ALL hardcoded php paths with prefix-based paths
-                $iniContents = file_get_contents($iniFile);
+                $iniContents = TwigRenderer::renderFile($iniFile, [
+                    'type' => defined('SPP_TYPE') ? SPP_TYPE : 'rpm',
+                    'binary_suffix' => getBinarySuffix(),
+                    'shared_library_suffix' => getSharedLibrarySuffix(),
+                    'is_shared' => false, // These are static extensions
+                ]);
+
                 $iniContents = preg_replace(
                     [
                         '#/usr/share/php[^/]*/#',
