@@ -315,9 +315,11 @@ class frankenphp implements package
             $frankenphpSuffix = $matches[1];
         }
 
+        $patchPackageFolder = BASE_PATH . '/src/package/frankenphp';
+
         $fpmArgs = [...$fpmArgs, ...[
             '--depends', $phpEmbedName,
-            '--after-install', "{$packageFolder}/debian/postinst.sh",
+            '--after-install', "{$patchPackageFolder}/debian/postinst.sh",
             '--before-remove', "{$packageFolder}/debian/prerm.sh",
             '--after-remove', "{$packageFolder}/debian/postrm.sh",
             '--iteration', $debIteration,
