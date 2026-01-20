@@ -11,13 +11,13 @@ php-version: {{ php_version }}
 {# Apply optional filtering #}
 {%- if filter_packages is defined and filter_packages -%}
 {%-   set sapi_list = base_sapi|filter(v => v in filter_packages) -%}
-{%-   set sapi_empty = sapi_list|length == 0 -%}
+{%-   set sapi_empty_or_frankenphp = sapi_list|length == 0 or sapi_list == ['frankenphp'] -%}
 {%-   if 'cli' not in sapi_list -%}
 {%-     set sapi_list = ['cli']|merge(sapi_list) -%}
 {%-   endif -%}
-{%-   set extensions = sapi_empty ? base_extensions|filter(v => v in filter_packages) : base_extensions -%}
+{%-   set extensions = sapi_empty_or_frankenphp ? base_extensions|filter(v => v in filter_packages) : base_extensions -%}
 {%-   set extensions = extensions|length ? extensions : ['opcache'] -%}
-{%-   set shared_ext = sapi_empty ? base_shared|filter(v => v in filter_packages) : base_shared -%}
+{%-   set shared_ext = sapi_empty_or_frankenphp ? base_shared|filter(v => v in filter_packages) : base_shared -%}
 {%- else -%}
 {%-   set extensions = base_extensions -%}
 {%-   set shared_ext = base_shared -%}
