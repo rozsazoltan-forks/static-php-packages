@@ -4,7 +4,7 @@
         "Read more about it at https://getcomposer.org/doc/01-basic-usage.md#installing-dependencies",
         "This file is @generated automatically"
     ],
-    "content-hash": "361a062c5be25845cceeeb154a44ba53",
+    "content-hash": "acdd275c35cf9cc42289150864e3d2b5",
     "packages": [
         {
             "name": "carbonphp/carbon-doctrine-types",
@@ -77,16 +77,16 @@
         },
         {
             "name": "crazywhalecc/static-php-cli",
-            "version": "dev-henderkes-patch-1",
+            "version": "dev-main",
             "source": {
                 "type": "git",
                 "url": "https://github.com/crazywhalecc/static-php-cli.git",
-                "reference": "6cf4c40cd2120a59186d2cd842d12d8315e8552d"
+                "reference": "1c28f0f455393a588de502e5a05de5e74dac8fa5"
             },
             "dist": {
                 "type": "zip",
-                "url": "https://api.github.com/repos/crazywhalecc/static-php-cli/zipball/6cf4c40cd2120a59186d2cd842d12d8315e8552d",
-                "reference": "6cf4c40cd2120a59186d2cd842d12d8315e8552d",
+                "url": "https://api.github.com/repos/crazywhalecc/static-php-cli/zipball/1c28f0f455393a588de502e5a05de5e74dac8fa5",
+                "reference": "1c28f0f455393a588de502e5a05de5e74dac8fa5",
                 "shasum": ""
             },
             "require": {
@@ -107,6 +107,7 @@
                 "phpstan/phpstan": "^1.10",
                 "phpunit/phpunit": "^10.3 || ^9.5"
             },
+            "default-branch": true,
             "bin": [
                 "bin/spc"
             ],
@@ -133,7 +134,7 @@
             "description": "Build single static PHP binary, with PHP project together, with popular extensions included.",
             "support": {
                 "issues": "https://github.com/crazywhalecc/static-php-cli/issues",
-                "source": "https://github.com/crazywhalecc/static-php-cli/tree/henderkes-patch-1"
+                "source": "https://github.com/crazywhalecc/static-php-cli/tree/main"
             },
             "funding": [
                 {
@@ -141,7 +142,7 @@
                     "type": "other"
                 }
             ],
-            "time": "2026-01-19T10:22:03+00:00"
+            "time": "2026-01-19T11:46:24+00:00"
         },
         {
             "name": "doctrine/inflector",
@@ -2228,12 +2229,12 @@
             "source": {
                 "type": "git",
                 "url": "https://github.com/Roave/SecurityAdvisories.git",
-                "reference": "57ac71b06405e32e77d960bb8490683138573f04"
+                "reference": "94f51c6b1469e53404da12bfb11f86ec39ad5de4"
             },
             "dist": {
                 "type": "zip",
-                "url": "https://api.github.com/repos/Roave/SecurityAdvisories/zipball/57ac71b06405e32e77d960bb8490683138573f04",
-                "reference": "57ac71b06405e32e77d960bb8490683138573f04",
+                "url": "https://api.github.com/repos/Roave/SecurityAdvisories/zipball/94f51c6b1469e53404da12bfb11f86ec39ad5de4",
+                "reference": "94f51c6b1469e53404da12bfb11f86ec39ad5de4",
                 "shasum": ""
             },
             "conflict": {
@@ -2625,7 +2626,7 @@
                 "kelvinmo/simplexrd": "<3.1.1",
                 "kevinpapst/kimai2": "<1.16.7",
                 "khodakhah/nodcms": "<=3",
-                "kimai/kimai": "<=2.20.1",
+                "kimai/kimai": "<2.46",
                 "kitodo/presentation": "<3.2.3|>=3.3,<3.3.4",
                 "klaviyo/magento2-extension": ">=1,<3",
                 "knplabs/knp-snappy": "<=1.4.2",
@@ -3232,7 +3233,7 @@
                     "type": "tidelift"
                 }
             ],
-            "time": "2026-01-16T21:05:58+00:00"
+            "time": "2026-01-20T17:10:55+00:00"
         }
     ],
     "aliases": [],
