@@ -1,4 +1,30 @@
-php-version: {{ php_version }}
+{# compile flags #}
+{%- set arch_flags = arch == 'x86_64' ? ' -mtls-dialect=gnu2 -m64 -fcf-protection' : '' -%}
+{%- if arch == 'x86_64' and os == '10' %} {% set arch_flags = arch_flags ~ ' -march=x86-64-v3' -%} {%- endif -%}
+{%- if arch == 'x86_64' and os == '9'  %} {% set arch_flags = arch_flags ~ ' -march=x86-64-v2' -%} {%- endif -%}
+{%- if arch == 'x86_64' and os != '10' and os != '9' -%} {%- set arch_flags = arch_flags ~ ' ' -%} {%- endif -%}
+{%- set using_gcc = not target and php_version < '8.5' -%}
+{%- if not using_gcc and not target and os == 8 %}{% set target = 'native-native-gnu.2.28' -%}{%- endif -%}
+{%-if not using_gcc and not target and os == 9 %}{% set target = 'native-native-gnu.2.34' -%}{%- endif -%}
+{%- if not using_gcc and not target %}{% set target = 'native-native-gnu' -%}{% endif -%}
+{%- set target = target|replace({'native-native': arch ~ '-linux'}) -%}
+{%- set specs_cflags = '-specs=/usr/lib/rpm/redhat/redhat-hardened-cc1' -%}
+{%- set specs_ldflags = '-specs=/usr/lib/rpm/redhat/redhat-hardened-ld' ~ (os == '10' ? ' -Wl,-z,pack-relative-relocs' : '') -%}
+{%- set cflags =
+  '-fPIC -O3 -pipe -fno-plt -fno-semantic-interposition -fasynchronous-unwind-tables -fstack-clash-protection -fno-omit-frame-pointer -mno-omit-leaf-frame-pointer -fno-strict-aliasing' ~ arch_flags
+-%}
+{%- set is_rhel = os in ['7', '8', '9', '10'] and type == 'rpm' -%}
+{%- if using_gcc and is_rhel -%}
+    {%- if os == '7' or os == '8' -%}
+        {%- set cflags = cflags ~ ' -Wp,-D_FORTIFY_SOURCE=2' ~ ' ' ~ specs_cflags -%}
+    {%- else -%}
+        {%- set cflags = cflags ~ ' -Wp,-U_FORTIFY_SOURCE,-D_FORTIY_SOURCE=3' ~ ' ' ~ specs_cflags -%}
+    {%- endif -%}
+{%- else %}
+    {%- set cflags = cflags ~ ' -D_FORTIY_SOURCE=3' -%}
+{%- endif -%}
+
+{# extensions #}
 {%- set base_sapi_str = 'cli,cgi,fpm,embed,frankenphp' -%}
 {%- set base_extensions_str = 'calendar,ctype,curl,dom,exif,fileinfo,filter,iconv,libxml,mbregex,mbstring,opcache,openssl,password-argon2,pcntl,phar,posix,readline,session,simplexml,sockets,sodium,tokenizer,xml,xmlreader,xmlwriter,zlib' -%}
 {%- set base_shared_str = 'amqp,apcu,ast,bcmath,brotli,bz2,dba,dio,ds,ev,event,excimer,ffi,ftp,gd,gettext,gmp,gmssl,grpc,igbinary,imagick,inotify,intl,ldap,lz4,maxminddb,memcache,memcached,mongodb,msgpack,mysqli,mysqlnd,mysqlnd_ed25519,mysqlnd_parsec,odbc,opentelemetry,parallel,pcov,pdo,pdo_mysql,pdo_odbc,pdo_pgsql,pdo_sqlite,pdo_sqlsrv,pgsql,protobuf,rar,redis,rdkafka,shmop,simdjson,snappy,soap,spx,sqlite3,sqlsrv,ssh2,swoole,swoole-hook-mysql,swoole-hook-pgsql,swoole-hook-sqlite,swoole-hook-odbc,sysvmsg,sysvsem,sysvshm,tidy,trader,uuid,uv,xdebug,xhprof,xlswriter,xsl,xz,yac,yaml,zip,zstd' -%}
@@ -22,8 +48,14 @@ php-version: {{ php_version }}
 {%-   set extensions = base_extensions -%}
 {%-   set shared_ext = base_shared -%}
 {%-   set sapi_list = base_sapi -%}
-{%- endif %}
+{%- endif -%}
 
+{# excimer bug when compiling with zig on old OS #}
+{%- if (os == '8' or type == 'deb') and not using_gcc -%}
+{%-   set shared_ext = shared_ext|filter(v => v != 'excimer') -%}
+{%- endif -%}
+
+php-version: {{ php_version }}
 extensions: {{ extensions|join(',') }}
 shared-extensions: {{ shared_ext|join(',') }}
 libs: []
@@ -60,31 +92,6 @@ craft-options:
     download: true
     build: true
 
-{% set arch_flags = arch == 'x86_64' ? ' -mtls-dialect=gnu2 -m64 -fcf-protection' : '' %}
-{% if arch == 'x86_64' and os == '10' %} {% set arch_flags = arch_flags ~ ' -march=x86-64-v3' %} {% endif %}
-{% if arch == 'x86_64' and os == '9'  %} {% set arch_flags = arch_flags ~ ' -march=x86-64-v2' %} {% endif %}
-{% if arch == 'x86_64' and os != '10' and os != '9' %} {% set arch_flags = arch_flags ~ ' ' %} {% endif %}
-{% set using_gcc = not target and php_version < '8.5' %}
-{% if not using_gcc and not target and os == 8 %}{% set target = 'native-native-gnu.2.28' %}{% endif %}
-{% if not using_gcc and not target and os == 9 %}{% set target = 'native-native-gnu.2.34' %}{% endif %}
-{% if not using_gcc and not target %}{% set target = 'native-native-gnu' %}{% endif %}
-{% set target = target|replace({'native-native': arch ~ '-linux'}) %}
-{% set specs_cflags = '-specs=/usr/lib/rpm/redhat/redhat-hardened-cc1' %}
-{% set specs_ldflags = '-specs=/usr/lib/rpm/redhat/redhat-hardened-ld' ~ (os == '10' ? ' -Wl,-z,pack-relative-relocs' : '') %}
-{% set cflags =
-  '-fPIC -O3 -pipe -fno-plt -fno-semantic-interposition -fasynchronous-unwind-tables -fstack-clash-protection -fno-omit-frame-pointer -mno-omit-leaf-frame-pointer -fno-strict-aliasing' ~ arch_flags
-%}
-{% set is_rhel = os in ['7', '8', '9', '10'] and type == 'rpm' %}
-{% if using_gcc and is_rhel %}
-    {% if os == '7' or os == '8' %}
-        {% set cflags = cflags ~ ' -Wp,-D_FORTIFY_SOURCE=2' ~ ' ' ~ specs_cflags %}
-    {% else %}
-        {% set cflags = cflags ~ ' -Wp,-U_FORTIFY_SOURCE,-D_FORTIY_SOURCE=3' ~ ' ' ~ specs_cflags %}
-    {% endif %}
-{% else %}
-    {% set cflags = cflags ~ ' -D_FORTIY_SOURCE=3' %}
-{% endif %}
-
 extra-env:
     {% if using_gcc -%}
     SPC_TOOLCHAIN: 'SPC\toolchain\GccNativeToolchain'
@@ -107,6 +114,6 @@ extra-env:
     PHP_BUILD_ARCH: '{{ arch }}'
     {% if is_rhel -%}
     PHP_BUILD_SYSTEM: 'Red Hat Enterprise Linux {{ os }}'
-    OPENSSL_CONF: '/etc/pki/tls'
+    OPENSSLDIR: '/etc/pki/tls'
     {% endif -%}
     GOEXPERIMENT: greenteagc
