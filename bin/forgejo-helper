@@ -8,7 +8,7 @@ from fnmatch import fnmatch
 
 def get_remote_packages(owner, password, pkg_type):
     url = f"https://git.henderkes.com/api/v1/packages/{owner}"
-    params = {"type": pkg_type, "limit": 100}
+    params = {"type": pkg_type, "limit": 1000}
     response = requests.get(url, params=params, auth=(owner, password))
     response.raise_for_status()
     return response.json()
