@@ -695,7 +695,7 @@ class CreatePackages
             } else {
                 $phpVersionSuffix = str_replace('.', '', $fullPhpVersion);
             }
-            $apkVersion = $phpVersion . '_' . $phpVersionSuffix;
+            $apkVersion = $phpVersion . 'p' . $phpVersionSuffix;
         }
 
         // Calculate iteration for APK (with possible override)

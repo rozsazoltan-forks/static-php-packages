@@ -397,14 +397,14 @@ class frankenphp implements package
         $name = $this->getName();
 
         // For APK packages, append PHP version to package version for proper sorting
-        // e.g., 1.11.0_85 is higher than 1.11.0_83
+        // e.g., 1.11.0p85 is higher than 1.11.0p83
         $phpMajorMinor = SPP_PHP_VERSION;
         if (preg_match('/^(\d+)\.(\d+)/', $phpMajorMinor, $phpMatches)) {
             $phpVersionSuffix = $phpMatches[1] . $phpMatches[2]; // e.g., "85" from "8.5"
         } else {
             $phpVersionSuffix = str_replace('.', '', $phpMajorMinor);
         }
-        $apkVersion = $version . '_' . $phpVersionSuffix;
+        $apkVersion = $version . 'p' . $phpVersionSuffix;
 
         // Calculate iteration for APK (with possible override)
         $computed = (string)$this->getNextIteration($name, $apkVersion, $architecture, 'apk');
