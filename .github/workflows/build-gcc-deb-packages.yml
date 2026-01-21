@@ -34,7 +34,7 @@ jobs:
 
         steps:
             -   name: Checkout code
-                uses: actions/checkout@v4
+                uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
                 with:
                     persist-credentials: false
 
@@ -71,7 +71,7 @@ jobs:
                     composer config -g cache-dir
 
             -   name: Cache Composer downloads
-                uses: actions/cache@v4
+                uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
                 with:
                     path: ~/.cache/composer
                     key: composer-${{ hashFiles('**/composer.lock') }}
@@ -185,7 +185,7 @@ jobs:
                     mv dist/deb/*.deb "artifacts/${{ matrix.arch }}/"
 
             -   name: Upload debs
-                uses: actions/upload-artifact@v4
+                uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
                 with:
                     name: "debs-${{ matrix.arch }}"
                     path: artifacts/**
@@ -194,7 +194,7 @@ jobs:
 
             -   name: Upload logs
                 if: ${{ failure() }}
-                uses: actions/upload-artifact@v4
+                uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
                 with:
                     name: build-logs-${{ matrix.arch }}-php${{ matrix.php-version }}
                     path: log
@@ -213,7 +213,7 @@ jobs:
             DEB_GPG_PRIVATE_KEY: ${{ secrets.DEB_GPG_PRIVATE_KEY }}
             DEB_GPG_PASSWORD: ${{ secrets.DEB_GPG_PASSWORD }}
         steps:
-            -   uses: actions/checkout@v4
+            -   uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
                 with:
                     persist-credentials: false
 
@@ -223,7 +223,7 @@ jobs:
                     sudo apt-get install -y reprepro gnupg rsync
 
             -   name: Download all debs
-                uses: actions/download-artifact@v4
+                uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
                 with:
                     pattern: debs-*
                     merge-multiple: true

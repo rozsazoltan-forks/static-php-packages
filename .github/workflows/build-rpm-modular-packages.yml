@@ -99,7 +99,7 @@ jobs:
             matrix: ${{ fromJson(needs.setup-matrix.outputs.matrix) }}
         steps:
             -   name: Checkout code
-                uses: actions/checkout@v4
+                uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
                 with:
                     persist-credentials: false
 
@@ -130,7 +130,7 @@ jobs:
                     mkdir -p /var/cache/dnf
 
             -   name: Restore composer cache
-                uses: actions/cache@v4
+                uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
                 with:
                     path: ~/.cache/composer
                     key: composer-${{ hashFiles('**/composer.lock') }}
@@ -139,7 +139,7 @@ jobs:
 
             -   name: Restore DNF cache
                 id: dnf-restore
-                uses: actions/cache@v4
+                uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
                 with:
                     path: /var/cache/dnf
                     key: dnf-${{ matrix.alma }}-${{ matrix.arch }}
@@ -296,7 +296,7 @@ jobs:
 
             -   name: Upload logs
                 if: ${{ failure() }}
-                uses: actions/upload-artifact@v4
+                uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
                 with:
                     name: build-logs-${{ matrix.arch }}-el${{ matrix.alma }}-php${{ matrix.php-version }}
                     path: log
