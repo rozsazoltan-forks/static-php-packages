@@ -26,8 +26,9 @@ class CreatePackages
         self::loadConfig();
 
         define('DOWNLOAD_PATH', BUILD_ROOT_PATH . '/download');
-        @mkdir(DOWNLOAD_PATH, 0755, true);
-
+        if (!is_dir(DOWNLOAD_PATH)) {
+            @mkdir(DOWNLOAD_PATH, 0755, true);
+        }
         $phpBinary = BUILD_BIN_PATH . '/php';
         self::$binaryDependencies = self::getBinaryDependencies($phpBinary);
 
@@ -37,13 +38,13 @@ class CreatePackages
         self::$iterationOverride = $iteration !== null && $iteration !== '' ? $iteration : null;
 
         // Verify that we're not trying to package a glibc binary as APK
-        if (self::$packageType === 'apk' && file_exists($phpBinary) && self::isGlibcBinary($phpBinary)) {
-            throw new RuntimeException(
-                "Error: Cannot create APK packages with glibc binary. APK packages require musl libc.\n" .
-                "The binary at {$phpBinary} is linked against glibc, but APK is the Alpine Linux package format which uses musl.\n" .
-                "Please rebuild with musl libc or use a different package type (rpm/deb)."
-            );
-        }
+        //if (self::$packageType === 'apk' && file_exists($phpBinary) && self::isGlibcBinary($phpBinary)) {
+        //    throw new RuntimeException(
+        //        "Error: Cannot create APK packages with glibc binary. APK packages require musl libc.\n" .
+        //        "The binary at {$phpBinary} is linked against glibc, but APK is the Alpine Linux package format which uses musl.\n" .
+        //        "Please rebuild with musl libc or use a different package type (rpm/deb)."
+        //    );
+        //}
 
         // Set debuginfo flag from parameter
         if ($debuginfo !== null) {
@@ -704,7 +705,6 @@ class CreatePackages
 
         // APK uses r{iteration} format for revision number
         $apkIteration = $iteration;
-        $fullVersion = "{$apkVersion}-r{$apkIteration}";
 
         // Use nfpm instead of fpm for APK packages
         self::createApkWithNfpm($package, $name, $apkVersion, $architecture, $apkIteration, $config, $isDebuginfo);
@@ -876,8 +876,7 @@ class CreatePackages
         echo "nfpm config written to: {$nfpmConfigFile}\n";
 
         // Run nfpm to create the package with full filename including PHP version suffix
-        $phpSuffix = self::getPhpVersionSuffix();
-        $outputFile = DIST_APK_PATH . "/{$name}-{$phpVersion}-r{$iteration}.{$phpSuffix}.{$architecture}.apk";
+        $outputFile = DIST_APK_PATH . "/{$name}-{$phpVersion}-r{$iteration}.{$architecture}.apk";
         $nfpmProcess = new Process([
             'nfpm', 'package',
             '--config', $nfpmConfigFile,
@@ -897,8 +896,6 @@ class CreatePackages
 
         // Clean up config file
         @unlink($nfpmConfigFile);
-
-        echo "APK package created: {$outputFile}\n";
     }
 
     private static function getPhpVersionAndArchitecture(): array

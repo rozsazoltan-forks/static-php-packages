@@ -519,8 +519,11 @@ class frankenphp implements package
         echo "nfpm config written to: {$nfpmConfigFile}\n";
 
         // Run nfpm with full filename including PHP version suffix
-        $phpSuffix = $this->getPhpVersionSuffix();
-        $outputFile = DIST_APK_PATH . "/{$name}-{$version}-r{$iteration}.{$phpSuffix}.{$architecture}.apk";
+        $phpSuffix = '';
+        if ($version !== self::getPhpVersionAndArchitecture()[0]) {
+            $phpSuffix = str_replace('static-', 'p', $this->getPhpVersionSuffix());
+        }
+        $outputFile = DIST_APK_PATH . "/{$name}-{$version}{$phpSuffix}-r{$iteration}.{$architecture}.apk";
         $nfpmProcess = new Process([
             'nfpm', 'package',
             '--config', $nfpmConfigFile,
@@ -539,8 +542,6 @@ class frankenphp implements package
         }
 
         @unlink($nfpmConfigFile);
-
-        echo "APK package created: {$outputFile}\n";
 
         // Create FrankenPHP debuginfo package if debug file exists (only if --debuginfo flag set for APK)
         if ($debuginfo) {
