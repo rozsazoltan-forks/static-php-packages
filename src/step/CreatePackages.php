@@ -1153,7 +1153,7 @@ class CreatePackages
 
     private static function getNextIteration(string $name, string $phpVersion, string $architecture, string $packageType): int
     {
-        $maxIteration = 0;
+        $maxIteration = ($packageType === 'apk') ? -1 : 0;
 
         if ($packageType === 'rpm') {
             // RPM: {name}-{version}-{iteration}.{distVersion}.{arch}.rpm
