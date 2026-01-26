@@ -57,6 +57,7 @@ class cli implements package
         foreach ($staticExtensions as $ext) {
             $provides[] = CreatePackages::getPrefix() . "-{$ext}";
             $replaces[] = CreatePackages::getPrefix() . "-{$ext}";
+            $conflicts[] = CreatePackages::getPrefix() . "-{$ext}";
 
             // Add .ini files for statically compiled extensions
             $iniFile = INI_PATH . "/extension/{$ext}.ini";
