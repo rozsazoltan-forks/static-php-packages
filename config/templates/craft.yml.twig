@@ -5,7 +5,7 @@
 {%- if arch == 'x86_64' and os != '10' and os != '9' -%} {%- set arch_flags = arch_flags ~ ' ' -%} {%- endif -%}
 {%- set using_gcc = not target and (php_version < '8.5' or arch == 'aarch64' ) -%}{# bug with tailcall vm on aarch64 atm, see https://github.com/php/php-src/issues/21029 #}
 {%- if not using_gcc and not target and os == 8 %}{% set target = 'native-native-gnu.2.28' -%}{%- endif -%}
-{%-if not using_gcc and not target and os == 9 %}{% set target = 'native-native-gnu.2.34' -%}{%- endif -%}
+{%- if not using_gcc and not target and os == 9 %}{% set target = 'native-native-gnu.2.34' -%}{%- endif -%}
 {%- if not using_gcc and not target %}{% set target = 'native-native-gnu' -%}{% endif -%}
 {%- set target = target|replace({'native-native': arch ~ '-linux'}) -%}
 {%- set specs_cflags = '-specs=/usr/lib/rpm/redhat/redhat-hardened-cc1' -%}
@@ -97,7 +97,7 @@ craft-options:
 extra-env:
     {% if using_gcc -%}
     SPC_TOOLCHAIN: 'SPC\toolchain\GccNativeToolchain'
-    SPC_LIBC: 'glibc'
+    SPC_LIBC: '{{ type == 'apk' ? 'musl' : 'glibc' }}'
     {% else -%}
     SPC_TARGET: '{{ target }}'
     SPC_EXTRA_PHP_VARS: 'php_cv_preserve_none=yes'
