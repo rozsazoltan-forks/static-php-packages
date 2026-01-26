@@ -43,7 +43,7 @@
 {%-   endif -%}
 {%-   set extensions = sapi_empty_or_frankenphp ? base_extensions|filter(v => v in filter_packages) : base_extensions -%}
 {%-   set extensions = extensions|length ? extensions : ['opcache'] -%}
-{%-   set shared_ext = sapi_empty_or_frankenphp ? base_shared|filter(v => v in filter_packages) : base_shared -%}
+{%-   set shared_ext = base_shared|filter(v => v in filter_packages) -%}
 {%- else -%}
 {%-   set extensions = base_extensions -%}
 {%-   set shared_ext = base_shared -%}
