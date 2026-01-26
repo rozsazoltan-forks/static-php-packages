@@ -100,7 +100,7 @@ extra-env:
     SPC_LIBC: '{{ type == 'apk' ? 'musl' : 'glibc' }}'
     {% else -%}
     SPC_TARGET: '{{ target }}'
-    SPC_EXTRA_PHP_VARS: 'php_cv_preserve_none=yes'
+    SPC_EXTRA_PHP_VARS: 'php_cv_preserve_none={{ arch == 'aarch64' ? 'no' : 'yes' }}'
     {% endif -%}
     EXTENSION_DIR: "{{ moduledir }}"
     SPC_CMD_VAR_PHP_EMBED_TYPE: 'shared'
