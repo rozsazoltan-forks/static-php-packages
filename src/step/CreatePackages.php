@@ -401,7 +401,14 @@ class CreatePackages
             }
         }
 
+        $consolidatedDeps = [];
         foreach (self::$binaryDependencies as $lib => $version) {
+            if (!isset($consolidatedDeps[$lib]) || version_compare($version, $consolidatedDeps[$lib], '>')) {
+                $consolidatedDeps[$lib] = $version;
+            }
+        }
+
+        foreach ($consolidatedDeps as $lib => $version) {
             $fpmArgs[] = '--depends';
             $fpmArgs[] = "{$lib}({$version})(64bit)";
         }
@@ -593,6 +600,8 @@ class CreatePackages
             'libgcc_s.so.1' => 'libgcc-s1',
             'libstdc++.so.6' => 'libstdc++6',
         ];
+
+        $consolidatedDeps = [];
         foreach (self::$binaryDependencies as $lib => $version) {
             if (isset($systemLibraryMap[$lib])) {
                 // Use mapped name for system libraries
@@ -604,6 +613,12 @@ class CreatePackages
             }
 
             $numericVersion = preg_replace('/[^0-9.]/', '', $version);
+            if (!isset($consolidatedDeps[$packageName]) || version_compare($numericVersion, $consolidatedDeps[$packageName], '>')) {
+                $consolidatedDeps[$packageName] = $numericVersion;
+            }
+        }
+
+        foreach ($consolidatedDeps as $packageName => $numericVersion) {
             $fpmArgs[] = '--depends';
             $fpmArgs[] = "{$packageName} (>= {$numericVersion})";
         }
@@ -798,12 +813,19 @@ class CreatePackages
             'libgcc_s' => 'libgcc',
         ];
 
+        $consolidatedDeps = [];
         foreach (self::$binaryDependencies as $lib => $version) {
             $packageName = preg_replace('/\.so(\.\d+)*$/', '', $lib);
             if (isset($alpineLibMap[$packageName])) {
                 $packageName = $alpineLibMap[$packageName];
             }
             $numericVersion = preg_replace('/[^0-9.]/', '', $version);
+            if (!isset($consolidatedDeps[$packageName]) || version_compare($numericVersion, $consolidatedDeps[$packageName], '>')) {
+                $consolidatedDeps[$packageName] = $numericVersion;
+            }
+        }
+
+        foreach ($consolidatedDeps as $packageName => $numericVersion) {
             $depends[] = "{$packageName}>={$numericVersion}";
         }
 

@@ -137,7 +137,14 @@ class frankenphp implements package
             $fpmArgs[] = $conflict;
         }
 
+        $consolidatedDeps = [];
         foreach ($binaryDependencies as $lib => $dependencyVersion) {
+            if (!isset($consolidatedDeps[$lib]) || version_compare($dependencyVersion, $consolidatedDeps[$lib], '>')) {
+                $consolidatedDeps[$lib] = $dependencyVersion;
+            }
+        }
+
+        foreach ($consolidatedDeps as $lib => $dependencyVersion) {
             $fpmArgs[] = '--depends';
             $fpmArgs[] = "$lib({$dependencyVersion})(64bit)";
         }
@@ -287,6 +294,8 @@ class frankenphp implements package
             'libgcc_s.so.1' => 'libgcc-s1',
             'libstdc++.so.6' => 'libstdc++6',
         ];
+
+        $consolidatedDeps = [];
         foreach ($binaryDependencies as $lib => $ver) {
             if (isset($systemLibraryMap[$lib])) {
                 // Use mapped name for system libraries
@@ -298,6 +307,12 @@ class frankenphp implements package
             }
 
             $numericVersion = preg_replace('/[^0-9.]/', '', $ver);
+            if (!isset($consolidatedDeps[$packageName]) || version_compare($numericVersion, $consolidatedDeps[$packageName], '>')) {
+                $consolidatedDeps[$packageName] = $numericVersion;
+            }
+        }
+
+        foreach ($consolidatedDeps as $packageName => $numericVersion) {
             $fpmArgs[] = '--depends';
             $fpmArgs[] = "{$packageName} (>= {$numericVersion})";
         }
@@ -448,6 +463,7 @@ class frankenphp implements package
             'libstdc++.so.6' => 'libstdc++',
         ];
 
+        $consolidatedDeps = [];
         foreach ($binaryDependencies as $lib => $ver) {
             if (isset($alpineLibMap[$lib])) {
                 $packageName = $alpineLibMap[$lib];
@@ -455,6 +471,12 @@ class frankenphp implements package
                 $packageName = preg_replace('/\.so(\.\d+)*$/', '', $lib);
             }
             $numericVersion = preg_replace('/[^0-9.]/', '', $ver);
+            if (!isset($consolidatedDeps[$packageName]) || version_compare($numericVersion, $consolidatedDeps[$packageName], '>')) {
+                $consolidatedDeps[$packageName] = $numericVersion;
+            }
+        }
+
+        foreach ($consolidatedDeps as $packageName => $numericVersion) {
             $depends[] = "{$packageName}>={$numericVersion}";
         }
 
