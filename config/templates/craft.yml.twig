@@ -98,6 +98,7 @@ extra-env:
     {% if using_gcc -%}
     SPC_TOOLCHAIN: 'SPC\toolchain\GccNativeToolchain'
     SPC_LIBC: '{{ type == 'apk' ? 'musl' : 'glibc' }}'
+    SPC_MUSL_DYNAMIC: 'true'
     {% else -%}
     SPC_TARGET: '{{ target }}'
     SPC_EXTRA_PHP_VARS: 'php_cv_preserve_none={{ arch == 'aarch64' ? 'no' : 'yes' }}'
