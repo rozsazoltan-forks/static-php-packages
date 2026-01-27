@@ -6,42 +6,45 @@ import re
 from pathlib import Path
 from fnmatch import fnmatch
 
-def get_remote_packages(owner, password, pkg_type):
-    url = f"https://git.henderkes.com/api/v1/packages/{owner}"
+host1 = "https://git.henderkes.com"
+host2 = "https://git.static-php.dev"
+
+def get_remote_packages(host, owner, password, pkg_type):
+    url = f"{host}/api/v1/packages/{owner}"
     params = {"type": pkg_type, "limit": 1000}
     response = requests.get(url, params=params, auth=(owner, password))
     response.raise_for_status()
     return response.json()
 
-def list_packages(owner, password, pkg_type, pattern=None):
-    packages = get_remote_packages(owner, password, pkg_type)
+def list_packages(host, owner, password, pkg_type, pattern=None):
+    packages = get_remote_packages(host, owner, password, pkg_type)
     for pkg in packages:
         full_name = f"{pkg['name']}-{pkg['version']}"
         if pattern and not fnmatch(full_name, pattern):
             continue
         print(full_name)
 
-def delete_packages(owner, password, pkg_type, pattern):
-    packages = get_remote_packages(owner, password, pkg_type)
+def delete_packages(host, owner, password, pkg_type, pattern):
+    packages = get_remote_packages(host, owner, password, pkg_type)
     for pkg in packages:
         full_name = f"{pkg['name']}-{pkg['version']}"
         if fnmatch(full_name, pattern):
             print(f"Deleting: {pkg['name']} {pkg['version']}")
             if pkg_type == 'debian':
                 for arch in ['amd64', 'arm64']:
-                    url = f"https://git.henderkes.com/api/packages/{owner}/debian/pool/php-zts/main/{pkg['name']}/{pkg['version']}/{arch}"
+                    url = f"{host}/api/packages/{owner}/debian/pool/php-zts/main/{pkg['name']}/{pkg['version']}/{arch}"
                     resp = requests.delete(url, auth=(owner, password))
                     print(f"Delete {arch} response: {resp.status_code}")
                     if resp.status_code not in [200, 204, 404]:
                         print(f"Error: {resp.text}")
             else:
-                url = f"https://git.henderkes.com/api/v1/packages/{owner}/{pkg_type}/{pkg['name']}/{pkg['version']}"
+                url = f"{host}/api/v1/packages/{owner}/{pkg_type}/{pkg['name']}/{pkg['version']}"
                 resp = requests.delete(url, auth=(owner, password))
                 print(f"Delete response: {resp.status_code}")
                 if resp.status_code not in [200, 204]:
                     print(f"Error: {resp.text}")
 
-def upload_packages(owner, password, pkg_type, pattern, repo="php-zts", branch="main"):
+def upload_packages(host, owner, password, pkg_type, pattern, repo="php-zts", branch="main"):
     for pkg_file in Path(".").glob(pattern):
         if not pkg_file.is_file():
             continue
@@ -65,11 +68,11 @@ def upload_packages(owner, password, pkg_type, pattern, repo="php-zts", branch="
 
         print(f"Uploading: {pkg_file.name}")
         if pkg_type == 'rpm':
-            url = f"https://git.henderkes.com/api/packages/{owner}/rpm/{el_version}/upload?sign=true"
+            url = f"{host}/api/packages/{owner}/rpm/{el_version}/upload?sign=true"
         elif pkg_type == 'debian':
-            url = f"https://git.henderkes.com/api/packages/{owner}/debian/pool/php-zts/main/upload"
+            url = f"{host}/api/packages/{owner}/debian/pool/php-zts/main/upload"
         else:
-            url = f"https://git.henderkes.com/api/packages/{owner}/{pkg_type}/{branch}/{repo}"
+            url = f"{host}/api/packages/{owner}/{pkg_type}/{branch}/{repo}"
         with open(pkg_file, 'rb') as f:
             resp = requests.put(url, files={'file': f}, auth=(owner, password))
             if resp.status_code == 201:
@@ -84,44 +87,47 @@ def upload_packages(owner, password, pkg_type, pattern, repo="php-zts", branch="
 
             link_name = name.replace('_', '-') if pkg_type == 'debian' else name
             print(f"Linking: {link_name} to {repo}")
-            url = f"https://git.henderkes.com/api/v1/packages/{owner}/{pkg_type}/{link_name}/-/link/{repo}"
+            url = f"{host}/api/v1/packages/{owner}/{pkg_type}/{link_name}/-/link/{repo}"
             resp = requests.post(url, auth=(owner, password))
             print(f"Link response: {resp.status_code}")
             if resp.status_code != 201:
                 print(f"Error: {resp.text}")
 
 if __name__ == "__main__":
-    if len(sys.argv) < 5:
-        print("Usage: script.py <upload|list|delete> <alpine|arch|debian|rpm> <owner> <password> [pattern]")
+    args = sys.argv[1:]
+    host = host1
+    if "--host=2" in args:
+        host = host2
+        args.remove("--host=2")
+
+    if len(args) < 4:
+        print("Usage: script.py [--host=2] <upload|list|delete> <alpine|arch|debian|rpm> <owner> <password> [pattern]")
         print("Examples:")
         print("  script.py upload alpine 85 pass '*.apk'")
-        print("  script.py upload rpm 85 pass '*.rpm'")
-        print("  script.py upload debian 85 pass '*.deb'")
+        print("  script.py --host=2 upload rpm 85 pass '*.rpm'")
         print("  script.py list alpine 85 pass")
-        print("  script.py list alpine 85 pass '*8.3.29*'")
-        print("  script.py delete alpine 85 pass '*cli*'")
         sys.exit(1)
 
-    action = sys.argv[1]
-    pkg_type = sys.argv[2]
-    owner = sys.argv[3]
-    password = sys.argv[4]
+    action = args[0]
+    pkg_type = args[1]
+    owner = args[2]
+    password = args[3]
 
     if pkg_type not in ['alpine', 'arch', 'debian', 'rpm']:
         print(f"Error: Invalid package type. Must be alpine, arch, debian, or rpm")
         sys.exit(1)
 
     if action == "upload":
-        pattern = sys.argv[5] if len(sys.argv) > 5 else "*.apk"
-        upload_packages(owner, password, pkg_type, pattern)
+        pattern = args[4] if len(args) > 4 else "*.apk"
+        upload_packages(host, owner, password, pkg_type, pattern)
     elif action == "list":
-        pattern = sys.argv[5] if len(sys.argv) > 5 else None
-        list_packages(owner, password, pkg_type, pattern)
+        pattern = args[4] if len(args) > 4 else None
+        list_packages(host, owner, password, pkg_type, pattern)
     elif action == "delete":
-        if len(sys.argv) < 6:
+        if len(args) < 5:
             print("Error: delete requires a pattern")
             sys.exit(1)
-        delete_packages(owner, password, pkg_type, sys.argv[5])
+        delete_packages(host, owner, password, pkg_type, args[4])
     else:
         print(f"Unknown action: {action}")
         sys.exit(1)

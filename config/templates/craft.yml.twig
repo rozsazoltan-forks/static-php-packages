@@ -3,7 +3,7 @@
 {%- if arch == 'x86_64' and os == '10' %} {% set arch_flags = arch_flags ~ ' -march=x86-64-v3' -%} {%- endif -%}
 {%- if arch == 'x86_64' and os == '9'  %} {% set arch_flags = arch_flags ~ ' -march=x86-64-v2' -%} {%- endif -%}
 {%- if arch == 'x86_64' and os != '10' and os != '9' -%} {%- set arch_flags = arch_flags ~ ' ' -%} {%- endif -%}
-{%- set using_gcc = not target and (php_version < '8.5' or (arch == 'aarch64' and type != 'apk')) -%}{# bug with tailcall vm on aarch64 atm, see https://github.com/php/php-src/issues/21029 #}
+{%- set using_gcc = not target and php_version < '8.5' -%}
 {%- if not using_gcc and not target and os == 8 %}{% set target = 'native-native-gnu.2.28' -%}{%- endif -%}
 {%- if not using_gcc and not target and os == 9 %}{% set target = 'native-native-gnu.2.34' -%}{%- endif -%}
 {%- if not using_gcc and not target %}{% set target = 'native-native-gnu' -%}{% endif -%}
@@ -101,7 +101,7 @@ extra-env:
     SPC_MUSL_DYNAMIC: 'true'
     {% else -%}
     SPC_TARGET: '{{ target }}'
-    SPC_EXTRA_PHP_VARS: 'php_cv_preserve_none={{ arch == 'aarch64' ? 'no' : 'yes' }}'
+    SPC_EXTRA_PHP_VARS: 'php_cv_preserve_none=yes'
     {% endif -%}
     EXTENSION_DIR: "{{ moduledir }}"
     SPC_CMD_VAR_PHP_EMBED_TYPE: 'shared'
@@ -109,8 +109,8 @@ extra-env:
     SPC_DEFAULT_C_FLAGS: "{{ cflags }}"
     SPC_DEFAULT_CXX_FLAGS: "{{ cflags }}"
     SPC_DEFAULT_LD_FLAGS: "-Wl,-z,relro -Wl,--as-needed -Wl,-z,now -Wl,-z,noexecstack {{ using_gcc and is_rhel ? specs_ldflags : '' }}"
-    SPC_CMD_VAR_PHP_MAKE_EXTRA_CFLAGS: "{{ cflags }} -g -fPIE{{ using_gcc ? '' : ' -flto'}}"
-    SPC_CMD_VAR_PHP_MAKE_EXTRA_LDFLAGS: "-Wl,--build-id=sha1 -pie -release {{ release_suffix }}{{ using_gcc ? '' : ' -flto'}}"
+    SPC_CMD_VAR_PHP_MAKE_EXTRA_CFLAGS: "{{ cflags }} -g -fPIE{{ using_gcc or arch == 'aarch64' ? '' : ' -flto'}}"
+    SPC_CMD_VAR_PHP_MAKE_EXTRA_LDFLAGS: "-Wl,--build-id=sha1 -pie -release {{ release_suffix }}{{ using_gcc or arch == 'aarch64' ? '' : ' -flto'}}"
     SPC_CMD_PREFIX_PHP_CONFIGURE: "./configure --prefix= --with-valgrind=no --disable-shared --enable-static --disable-all --disable-cgi --disable-phpdbg --disable-debug --with-pic --enable-rtld-now --enable-re2c-cgoto --disable-rpath"
     SPC_CMD_VAR_FRANKENPHP_XCADDY_MODULES: "--with github.com/dunglas/frankenphp/caddy --with github.com/dunglas/mercure/caddy --with github.com/dunglas/vulcain/caddy --with github.com/dunglas/caddy-cbrotli --with github.com/baldinof/caddy-supervisor"
     PHP_BUILD_PROVIDER: "Static PHP <https://static-php.dev> #StandWithUkraine"

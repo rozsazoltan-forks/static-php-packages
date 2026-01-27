@@ -163,6 +163,7 @@ jobs:
                 working-directory: dist/apk
                 run: |
                     ../../bin/forgejo-helper upload alpine "${{ env.PHP_VERSION_SHORT }}" "${{ secrets.FORGEJO_PASSWORD }}" "*.apk"
+                    ../../bin/forgejo-helper --host=2 upload alpine "${{ env.PHP_VERSION_SHORT }}" "${{ secrets.FORGEJO_PASSWORD }}" "*.apk"
 
             -   name: Upload logs on failure
                 if: ${{ failure() }}
