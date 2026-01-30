@@ -27,7 +27,7 @@ if [ "$1" = "configure" ]; then
 		HOME=/var/lib/frankenphp /usr/bin/frankenphp trust || true
 		kill "$FRANKENPHP_PID" || true
 		wait "$FRANKENPHP_PID" 2>/dev/null || true
-	
+
 		chown -R frankenphp:frankenphp /var/lib/frankenphp
 	fi
 
@@ -72,9 +72,4 @@ fi
 
 if command -v setcap >/dev/null 2>&1; then
 	setcap cap_net_bind_service=+ep /usr/bin/frankenphp || true
-fi
-
-if [ -x /usr/bin/frankenphp ]; then
-	mkdir -p /usr/share/bash-completion/completions/
-	/usr/bin/frankenphp completion bash | sed 's/caddy/frankenphp/g' >/usr/share/bash-completion/completions/frankenphp
 fi

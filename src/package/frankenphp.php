@@ -153,6 +153,11 @@ class frankenphp implements package
             throw new RuntimeException(sprintf('Directory "%s" was not created', "{$packageFolder}/empty/"));
         }
 
+        // Generate autocompletion
+        $completionFile = TEMP_DIR . '/frankenphp.bash';
+        $ldLibraryPath = 'LD_LIBRARY_PATH=' . BUILD_LIB_PATH;
+        shell()->exec($ldLibraryPath . ' ' . BUILD_BIN_PATH . '/frankenphp completion bash | sed "s/caddy/frankenphp/g" > ' . $completionFile);
+
         $fpmArgs = [...$fpmArgs, ...[
             '--depends', "$phpEmbedName",
             '--before-install', "{$packageFolder}/rhel/preinstall.sh",
@@ -165,6 +170,7 @@ class frankenphp implements package
             '--config-files', '/etc/frankenphp/Caddyfile',
             '--config-files', '/etc/frankenphp/Caddyfile.d',
             BUILD_BIN_PATH . '/frankenphp=/usr/bin/frankenphp',
+            $completionFile . '=/usr/share/bash-completion/completions/frankenphp',
             "{$packageFolder}/rhel/frankenphp.service=/usr/lib/systemd/system/frankenphp.service",
             "{$packageFolder}/Caddyfile=/etc/frankenphp/Caddyfile",
             "{$packageFolder}/content/=/usr/share/frankenphp",
@@ -331,6 +337,9 @@ class frankenphp implements package
         }
 
         $patchPackageFolder = BASE_PATH . '/src/package/frankenphp';
+        $completionFile = TEMP_DIR . '/frankenphp' . $frankenphpSuffix . '.bash';
+        $ldLibraryPath = 'LD_LIBRARY_PATH=' . BUILD_LIB_PATH;
+        shell()->exec($ldLibraryPath . ' ' . BUILD_BIN_PATH . '/frankenphp completion bash | sed "s/caddy/frankenphp/g" > ' . $completionFile);
 
         $fpmArgs = [...$fpmArgs, ...[
             '--depends', $phpEmbedName,
@@ -341,6 +350,7 @@ class frankenphp implements package
             '--rpm-user', 'frankenphp',
             '--rpm-group', 'frankenphp',
             BUILD_BIN_PATH . '/frankenphp=/usr/bin/frankenphp' . $frankenphpSuffix,
+            $completionFile . '=/usr/share/bash-completion/completions/frankenphp' . $frankenphpSuffix,
             "{$packageFolder}/debian/frankenphp.service=/usr/lib/systemd/system/frankenphp{$frankenphpSuffix}.service",
             "{$packageFolder}/Caddyfile=/etc/frankenphp/Caddyfile",
             "{$packageFolder}/content/=/usr/share/frankenphp",
@@ -494,11 +504,19 @@ class frankenphp implements package
 
         $alpineFolder = BASE_PATH . '/src/package/frankenphp';
 
+        $completionFile = TEMP_DIR . '/frankenphp' . $frankenphpSuffix . '.bash';
+        $ldLibraryPath = 'LD_LIBRARY_PATH=' . BUILD_LIB_PATH;
+        shell()->exec($ldLibraryPath . ' ' . BUILD_BIN_PATH . '/frankenphp completion bash | sed "s/caddy/frankenphp/g" > ' . $completionFile);
+
         // Build contents
         $contents = [
             [
                 'src' => BUILD_BIN_PATH . '/frankenphp',
                 'dst' => '/usr/bin/frankenphp' . $frankenphpSuffix,
+            ],
+            [
+                'src' => $completionFile,
+                'dst' => '/usr/share/bash-completion/completions/frankenphp' . $frankenphpSuffix,
             ],
             [
                 'src' => "{$alpineFolder}/alpine/frankenphp.openrc",
