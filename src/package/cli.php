@@ -21,7 +21,8 @@ class cli implements package
         $prefix = CreatePackages::getPrefix();
 
         $contents = file_get_contents(INI_PATH . '/php.ini');
-        $contents = str_replace('$libdir', getPhpLibdir(), $contents);
+        $contents = str_replace('@libdir@', getPhpLibdir(), $contents);
+        $contents = str_replace('@varlib@', getVarLibdir(), $contents);
         // Replace ALL hardcoded /etc/php* paths with prefix-based conf dir
         $contents = preg_replace('#/etc/php[^/]*#', getConfdir(), $contents);
         file_put_contents(TEMP_DIR . '/php.ini', $contents);
@@ -70,6 +71,7 @@ class cli implements package
                     'is_shared' => false, // These are static extensions
                 ]);
 
+                $iniContents = str_replace('@varlibdir@', getVarLibdir(), $iniContents);
                 $iniContents = preg_replace(
                     [
                         '#/usr/share/php[^/]*/#',

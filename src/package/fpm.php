@@ -16,7 +16,8 @@ class fpm implements package
     {
         $prefix = CreatePackages::getPrefix();
         $contents = file_get_contents(INI_PATH . '/php-fpm.conf');
-        $contents = str_replace('$confdir', getConfdir(), $contents);
+        $contents = str_replace('@confdir@', getConfdir(), $contents);
+        $contents = str_replace('@varlibdir@', getVarLibdir(), $contents);
         // Replace ALL hardcoded /var/log/php* paths with prefix-based paths
         $contents = preg_replace('#/var/log/php[^/]*/#', '/var/log/' . $prefix . '/', $contents);
         // Also replace /var/log/php-fpm.log with prefix-based path
@@ -45,6 +46,7 @@ class fpm implements package
 
         // Process www.conf to replace ALL hardcoded paths
         $wwwContents = file_get_contents(INI_PATH . '/www.conf');
+        $wwwContents = str_replace('@varlibdir@', getVarLibdir(), $wwwContents);
         $wwwContents = preg_replace(
             [
                 '#/var/lib/php[^/]*/#',
