@@ -45,6 +45,11 @@ class frankenphp implements package
         return 'MIT';
     }
 
+    public function getDescription(): string
+    {
+        return 'FrankenPHP - The Modern PHP Webserver';
+    }
+
     /**
      * Get list of versioned frankenphp packages to conflict/replace with
      * Returns empty array - versioned FrankenPHP packages can coexist
@@ -125,6 +130,7 @@ class frankenphp implements package
             '-p', $packageFile,  // Full path with distVersion in filename
             '-n', $name,
             '-v', $rpmVersion,
+            '--description', "FrankenPHP - The Modern PHP Webserver",
             '--license', $this->getLicense(),
             '--config-files', '/etc/frankenphp/Caddyfile',
             '--provides', 'frankenphp',

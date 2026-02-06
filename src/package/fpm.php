@@ -114,4 +114,9 @@ class fpm implements package
     {
         return 'PHP-3.01';
     }
+
+    public function getDescription(): string
+    {
+        return 'FPM SAPI for PHP';
+    }
 }

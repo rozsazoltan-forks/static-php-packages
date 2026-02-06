@@ -173,4 +173,9 @@ BASH;
     {
         return 'PHP-3.01';
     }
+
+    public function getDescription(): string
+    {
+        return 'Development files and tools for PHP (phpize, php-config)';
+    }
 }

@@ -166,4 +166,9 @@ BASH;
     {
         return 'PHP-3.01';
     }
+
+    public function getDescription(): string
+    {
+        return 'CLI SAPI for PHP';
+    }
 }

@@ -52,4 +52,9 @@ class cgi implements package
     {
         return 'PHP-3.01';
     }
+
+    public function getDescription(): string
+    {
+        return 'CGI SAPI for PHP';
+    }
 }

@@ -65,4 +65,9 @@ class embed implements package
     {
         return 'PHP-3.01';
     }
+
+    public function getDescription(): string
+    {
+        return 'Embed SAPI library for PHP';
+    }
 }

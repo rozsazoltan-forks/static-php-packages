@@ -248,4 +248,9 @@ class extension implements package
         }
         return 'PHP-3.01';
     }
+
+    public function getDescription(): string
+    {
+        return ucfirst($this->name) . ' extension for PHP';
+    }
 }

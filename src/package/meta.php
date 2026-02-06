@@ -44,4 +44,9 @@ class meta implements package
     {
         return 'PHP-3.01';
     }
+
+    public function getDescription(): string
+    {
+        return 'Meta package for PHP';
+    }
 }

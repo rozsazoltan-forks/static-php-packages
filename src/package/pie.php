@@ -92,6 +92,11 @@ class pie implements package
         return 'BSD-3-Clause';
     }
 
+    public function getDescription(): string
+    {
+        return 'PHP Installer for Extensions (PIE)';
+    }
+
     /**
      * Get environment without Xdebug variables that would cause connection attempts
      */

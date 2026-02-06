@@ -13,4 +13,5 @@ interface package
     public function getFpmExtraArgs(): array;
 
     public function getLicense(): string;
+    public function getDescription(): string;
 }
