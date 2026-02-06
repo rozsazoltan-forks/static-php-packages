@@ -74,10 +74,12 @@ class cli implements package
                     [
                         '#/usr/share/php[^/]*/#',
                         '#/usr/local/share/php[^/]*/#',
+                        '#/var/lib/php[^/]*/#',
                     ],
                     [
                         getSharedir() . '/',
                         '/usr/local/share/' . $prefix . '/',
+                        getVarLibdir() . '/',
                     ],
                     $iniContents
                 );

@@ -19,6 +19,10 @@ class fpm implements package
         $contents = str_replace('$confdir', getConfdir(), $contents);
         // Replace ALL hardcoded /var/log/php* paths with prefix-based paths
         $contents = preg_replace('#/var/log/php[^/]*/#', '/var/log/' . $prefix . '/', $contents);
+        // Also replace /var/log/php-fpm.log with prefix-based path
+        $contents = str_replace('/var/log/php-fpm.log', '/var/log/' . $prefix . '/php-fpm.log', $contents);
+        // Replace ALL hardcoded /var/lib/php* paths with prefix-based paths
+        $contents = preg_replace('#/var/lib/php[^/]*/#', getVarLibdir() . '/', $contents);
         // Replace ALL hardcoded /run/php-fpm* paths with prefix-based paths
         $contents = preg_replace('#/run/php-fpm[^/]*/#', '/run/php-fpm' . getBinarySuffix() . '/', $contents);
         file_put_contents(TEMP_DIR . '/php-fpm.conf', $contents);
@@ -45,10 +49,12 @@ class fpm implements package
             [
                 '#/var/lib/php[^/]*/#',
                 '#/var/log/php[^/]*/#',
+                '#/var/log/php-fpm/#',
                 '#/run/php-fpm[^/]*/#',
             ],
             [
                 getVarLibdir() . '/',
+                '/var/log/' . $prefix . '/',
                 '/var/log/' . $prefix . '/',
                 '/run/php-fpm' . $binarySuffix . '/',
             ],
