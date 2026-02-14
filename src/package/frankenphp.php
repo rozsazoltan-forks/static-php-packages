@@ -164,10 +164,25 @@ class frankenphp implements package
         $ldLibraryPath = 'LD_LIBRARY_PATH=' . BUILD_LIB_PATH;
         shell()->exec($ldLibraryPath . ' ' . BUILD_BIN_PATH . '/frankenphp completion bash | sed "s/caddy/frankenphp/g" > ' . $completionFile);
 
+        // append ownership taking to postinstall script
+        $originalPostInstall = "{$packageFolder}/rhel/postinstall.sh";
+        $combinedPostInstall = TEMP_DIR . '/frankenphp-rhel-combined-postinstall.sh';
+        $sessionDir = getVarLibdir() . '/session';
+        $combinedScript = file_get_contents($originalPostInstall) . "\n" .
+            "if [ \"$1\" -eq 1 ]; then\n" .
+            "    SESSION_DIR=\"{$sessionDir}\"\n" .
+            "    if [ -d \"\$SESSION_DIR\" ]; then\n" .
+            "        chgrp frankenphp \"\$SESSION_DIR\"\n" .
+            "        chmod 770 \"\$SESSION_DIR\"\n" .
+            "    fi\n" .
+            "fi\n";
+        file_put_contents($combinedPostInstall, $combinedScript);
+        chmod($combinedPostInstall, 0755);
+
         $fpmArgs = [...$fpmArgs, ...[
             '--depends', "$phpEmbedName",
             '--before-install', "{$packageFolder}/rhel/preinstall.sh",
-            '--after-install', "{$packageFolder}/rhel/postinstall.sh",
+            '--after-install', $combinedPostInstall,
             '--before-remove', "{$packageFolder}/rhel/preuninstall.sh",
             '--after-remove', "{$packageFolder}/rhel/postuninstall.sh",
             '--iteration', $rpmRelease,
@@ -189,6 +204,8 @@ class frankenphp implements package
         $rpmProcess->run(function ($type, $buffer) {
             echo $buffer;
         });
+
+        @unlink($combinedPostInstall);
 
         echo "RPM package created: {$packageFile}\n";
 
@@ -347,9 +364,24 @@ class frankenphp implements package
         $ldLibraryPath = 'LD_LIBRARY_PATH=' . BUILD_LIB_PATH;
         shell()->exec($ldLibraryPath . ' ' . BUILD_BIN_PATH . '/frankenphp completion bash | sed "s/caddy/frankenphp/g" > ' . $completionFile);
 
+        // append ownership taking to postinstall script
+        $originalPostInstall = "{$patchPackageFolder}/debian/postinst.sh";
+        $combinedPostInstall = TEMP_DIR . '/frankenphp-debian-combined-postinstall.sh';
+        $sessionDir = getVarLibdir() . '/session';
+        $combinedScript = file_get_contents($originalPostInstall) . "\n" .
+            "if [ \"$1\" = \"configure\" ] && [ -z \"$2\" ]; then\n" .
+            "    SESSION_DIR=\"{$sessionDir}\"\n" .
+            "    if [ -d \"\$SESSION_DIR\" ]; then\n" .
+            "        chgrp frankenphp \"\$SESSION_DIR\"\n" .
+            "        chmod 770 \"\$SESSION_DIR\"\n" .
+            "    fi\n" .
+            "fi\n";
+        file_put_contents($combinedPostInstall, $combinedScript);
+        chmod($combinedPostInstall, 0755);
+
         $fpmArgs = [...$fpmArgs, ...[
             '--depends', $phpEmbedName,
-            '--after-install', "{$patchPackageFolder}/debian/postinst.sh",
+            '--after-install', $combinedPostInstall,
             '--before-remove', "{$packageFolder}/debian/prerm.sh",
             '--after-remove', "{$packageFolder}/debian/postrm.sh",
             '--iteration', $debIteration,
@@ -368,6 +400,8 @@ class frankenphp implements package
         $rpmProcess->run(function ($type, $buffer) {
             echo $buffer;
         });
+
+        @unlink($combinedPostInstall);
 
         echo "DEB package created: {$packageFile}\n";
 
@@ -549,9 +583,21 @@ class frankenphp implements package
 
         $nfpmConfig['contents'] = $contents;
 
-        // Add scripts
+        // append ownership taking to postinstall script
+        $originalPostInstall = "{$alpineFolder}/alpine/post-install.sh";
+        $combinedPostInstall = TEMP_DIR . '/frankenphp-alpine-combined-postinstall.sh';
+        $sessionDir = getVarLibdir() . '/session';
+        $combinedScript = file_get_contents($originalPostInstall) . "\n" .
+            "SESSION_DIR=\"{$sessionDir}\"\n" .
+            "if [ -d \"\$SESSION_DIR\" ]; then\n" .
+            "    chgrp frankenphp \"\$SESSION_DIR\"\n" .
+            "    chmod 770 \"\$SESSION_DIR\"\n" .
+            "fi\n";
+        file_put_contents($combinedPostInstall, $combinedScript);
+        chmod($combinedPostInstall, 0755);
+
         $nfpmConfig['scripts'] = [
-            'postinstall' => "{$alpineFolder}/alpine/post-install.sh",
+            'postinstall' => $combinedPostInstall,
             'preremove' => "{$alpineFolder}/alpine/pre-deinstall.sh",
             'postremove' => "{$alpineFolder}/alpine/post-deinstall.sh",
         ];
@@ -580,6 +626,8 @@ class frankenphp implements package
         $nfpmProcess->run(function ($type, $buffer) {
             echo $buffer;
         });
+
+        @unlink($combinedPostInstall);
 
         if (!$nfpmProcess->isSuccessful()) {
             echo "nfpm config file contents:\n";
