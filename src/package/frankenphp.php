@@ -170,10 +170,9 @@ class frankenphp implements package
         $sessionDir = getVarLibdir() . '/session';
         $combinedScript = file_get_contents($originalPostInstall) . "\n" .
             "if [ \"$1\" -eq 1 ]; then\n" .
-            "    SESSION_DIR=\"{$sessionDir}\"\n" .
-            "    if [ -d \"\$SESSION_DIR\" ]; then\n" .
-            "        chgrp frankenphp \"\$SESSION_DIR\"\n" .
-            "        chmod 770 \"\$SESSION_DIR\"\n" .
+            "    if [ -d \"{$sessionDir}\" ]; then\n" .
+            "        chgrp frankenphp \"{$sessionDir}\"\n" .
+            "        chmod 770 \"{$sessionDir}\"\n" .
             "    fi\n" .
             "fi\n";
         file_put_contents($combinedPostInstall, $combinedScript);
@@ -370,10 +369,9 @@ class frankenphp implements package
         $sessionDir = getVarLibdir() . '/session';
         $combinedScript = file_get_contents($originalPostInstall) . "\n" .
             "if [ \"$1\" = \"configure\" ] && [ -z \"$2\" ]; then\n" .
-            "    SESSION_DIR=\"{$sessionDir}\"\n" .
-            "    if [ -d \"\$SESSION_DIR\" ]; then\n" .
-            "        chgrp frankenphp \"\$SESSION_DIR\"\n" .
-            "        chmod 770 \"\$SESSION_DIR\"\n" .
+            "    if [ -d \"{$sessionDir}\" ]; then\n" .
+            "        chgrp frankenphp \"{$sessionDir}\"\n" .
+            "        chmod 770 \"{$sessionDir}\"\n" .
             "    fi\n" .
             "fi\n";
         file_put_contents($combinedPostInstall, $combinedScript);
@@ -588,10 +586,9 @@ class frankenphp implements package
         $combinedPostInstall = TEMP_DIR . '/frankenphp-alpine-combined-postinstall.sh';
         $sessionDir = getVarLibdir() . '/session';
         $combinedScript = file_get_contents($originalPostInstall) . "\n" .
-            "SESSION_DIR=\"{$sessionDir}\"\n" .
-            "if [ -d \"\$SESSION_DIR\" ]; then\n" .
-            "    chgrp frankenphp \"\$SESSION_DIR\"\n" .
-            "    chmod 770 \"\$SESSION_DIR\"\n" .
+            "if [ -d \"{$sessionDir}\" ]; then\n" .
+            "    chgrp frankenphp \"{$sessionDir}\"\n" .
+            "    chmod 770 \"{$sessionDir}\"\n" .
             "fi\n";
         file_put_contents($combinedPostInstall, $combinedScript);
         chmod($combinedPostInstall, 0755);
