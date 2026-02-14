@@ -170,7 +170,7 @@ class frankenphp implements package
             '--after-install', "{$packageFolder}/rhel/postinstall.sh",
             '--before-remove', "{$packageFolder}/rhel/preuninstall.sh",
             '--after-remove', "{$packageFolder}/rhel/postuninstall.sh",
-            '--iteration', $iteration,
+            '--iteration', $rpmRelease,
             '--rpm-user', 'frankenphp',
             '--rpm-group', 'frankenphp',
             '--config-files', '/etc/frankenphp/Caddyfile',
