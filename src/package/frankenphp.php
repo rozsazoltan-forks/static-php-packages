@@ -208,34 +208,35 @@ class frankenphp implements package
 
         echo "RPM package created: {$packageFile}\n";
 
-        // Create FrankenPHP debuginfo package if debug file exists
-        $frankenDbg = BUILD_ROOT_PATH . '/debug/frankenphp.debug';
-        if (file_exists($frankenDbg)) {
-            $dbgPackageFile = DIST_RPM_PATH . "/{$name}-debuginfo-{$rpmVersion}-{$rpmRelease}.{$architecture}.rpm";
-            $dbgArgs = [
-                'fpm',
-                '-s', 'dir',
-                '-t', 'rpm',
-                '--rpm-compression', 'xz',
-                '-p', $dbgPackageFile,
-                '-n', $name . '-debuginfo',
-                '-v', $rpmVersion,
-                '--iteration', $iteration,
-                '--architecture', $architecture,
-                '--license', $this->getLicense(),
-                '--depends', sprintf('%s = %s-%s', $name, $rpmVersion, $rpmRelease),
-                $frankenDbg . '=/usr/lib/debug/usr/bin/frankenphp.debug',
-            ];
-            $dbgProcess = new Process($dbgArgs);
-            $dbgProcess->setTimeout(null);
-            $dbgProcess->run(function ($type, $buffer) {
-                echo $buffer;
-            });
-            if (!$dbgProcess->isSuccessful()) {
-                throw new RuntimeException("RPM debuginfo package creation failed: " . $dbgProcess->getErrorOutput());
-            }
+        if ($debuginfo) {
+            $frankenDbg = BUILD_ROOT_PATH . '/debug/frankenphp.debug';
+            if (file_exists($frankenDbg)) {
+                $dbgPackageFile = DIST_RPM_PATH . "/{$name}-debuginfo-{$rpmVersion}-{$rpmRelease}.{$architecture}.rpm";
+                $dbgArgs = [
+                    'fpm',
+                    '-s', 'dir',
+                    '-t', 'rpm',
+                    '--rpm-compression', 'xz',
+                    '-p', $dbgPackageFile,
+                    '-n', $name . '-debuginfo',
+                    '-v', $rpmVersion,
+                    '--iteration', $iteration,
+                    '--architecture', $architecture,
+                    '--license', $this->getLicense(),
+                    '--depends', sprintf('%s = %s-%s', $name, $rpmVersion, $rpmRelease),
+                    $frankenDbg . '=/usr/lib/debug/usr/bin/frankenphp.debug',
+                ];
+                $dbgProcess = new Process($dbgArgs);
+                $dbgProcess->setTimeout(null);
+                $dbgProcess->run(function ($type, $buffer) {
+                    echo $buffer;
+                });
+                if (!$dbgProcess->isSuccessful()) {
+                    throw new RuntimeException("RPM debuginfo package creation failed: " . $dbgProcess->getErrorOutput());
+                }
 
-            echo "RPM debuginfo package created: {$dbgPackageFile}\n";
+                echo "RPM debuginfo package created: {$dbgPackageFile}\n";
+            }
         }
     }
 
