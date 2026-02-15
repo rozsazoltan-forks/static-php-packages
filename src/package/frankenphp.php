@@ -541,7 +541,7 @@ class frankenphp implements package
             $frankenphpSuffix = $matches[1];
         }
 
-        $alpineFolder = BASE_PATH . '/src/package/frankenphp';
+        $alpineFolder = DIST_PATH . '/frankenphp/package/alpine';
 
         $completionFile = TEMP_DIR . '/frankenphp' . $frankenphpSuffix . '.bash';
         $ldLibraryPath = 'LD_LIBRARY_PATH=' . BUILD_LIB_PATH;
