@@ -541,8 +541,6 @@ class frankenphp implements package
             $frankenphpSuffix = $matches[1];
         }
 
-        $alpineFolder = DIST_PATH . '/frankenphp/package/alpine';
-
         $completionFile = TEMP_DIR . '/frankenphp' . $frankenphpSuffix . '.bash';
         $ldLibraryPath = 'LD_LIBRARY_PATH=' . BUILD_LIB_PATH;
         shell()->exec($ldLibraryPath . ' ' . BUILD_BIN_PATH . '/frankenphp completion bash | sed "s/caddy/frankenphp/g" > ' . $completionFile);
@@ -558,7 +556,7 @@ class frankenphp implements package
                 'dst' => '/usr/share/bash-completion/completions/frankenphp' . $frankenphpSuffix,
             ],
             [
-                'src' => "{$alpineFolder}/alpine/frankenphp.openrc",
+                'src' => "{$packageFolder}/alpine/frankenphp.openrc",
                 'dst' => "/etc/init.d/frankenphp{$frankenphpSuffix}",
             ],
             [
@@ -583,7 +581,7 @@ class frankenphp implements package
         $nfpmConfig['contents'] = $contents;
 
         // append ownership taking to postinstall script
-        $originalPostInstall = "{$alpineFolder}/alpine/post-install.sh";
+        $originalPostInstall = "{$packageFolder}/alpine/post-install.sh";
         $combinedPostInstall = TEMP_DIR . '/frankenphp-alpine-combined-postinstall.sh';
         $sessionDir = getVarLibdir() . '/session';
         $combinedScript = file_get_contents($originalPostInstall) . "\n" .
@@ -596,8 +594,8 @@ class frankenphp implements package
 
         $nfpmConfig['scripts'] = [
             'postinstall' => $combinedPostInstall,
-            'preremove' => "{$alpineFolder}/alpine/pre-deinstall.sh",
-            'postremove' => "{$alpineFolder}/alpine/post-deinstall.sh",
+            'preremove' => "{$packageFolder}/alpine/pre-deinstall.sh",
+            'postremove' => "{$packageFolder}/alpine/post-deinstall.sh",
         ];
 
         // Write nfpm config
