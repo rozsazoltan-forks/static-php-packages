@@ -16,12 +16,72 @@ def get_remote_packages(host, owner, password, pkg_type):
     response.raise_for_status()
     return response.json()
 
+def get_package_info(pkg_file, pkg_type):
+    if pkg_type == 'rpm':
+        match = re.match(r'(.+)-([0-9][^-]*)-(\d+)\.(el\d+)\.(x86_64|aarch64)\.rpm', pkg_file.name)
+        if not match:
+            return None
+        name, ver, rel, el_version, arch = match.groups()
+        version = f"{ver}-{rel}.{el_version}"
+    elif pkg_type == 'debian':
+        match = re.match(r'(.+?)_(\d+[^_]+)_(amd64|arm64)\.deb', pkg_file.name)
+        if not match:
+            return None
+        name, version, arch = match.groups()
+    elif pkg_type == 'alpine':
+        match = re.match(r'(.+?)-(\d+\..+)\.(x86_64|aarch64)\.apk', pkg_file.name)
+        if not match:
+            return None
+        name, version, arch = match.groups()
+    else:
+        match = re.match(r'(.+?)-(\d+\..+)\.(x86_64|aarch64)\.pkg\.tar\.zst', pkg_file.name)
+        if not match:
+            return None
+        name, version, arch = match.groups()
+
+    full_name = f"{name.replace('_', '-') if pkg_type == 'debian' else name}-{version}"
+    return name, version, full_name
+
 def list_packages(host, owner, password, pkg_type, pattern=None):
+    local_names = set()
+    has_local_files = False
+    clean_pattern = pattern
+    if pattern:
+        # We strip the extension from the pattern if it's there, to match against remote names.
+        if pkg_type == 'rpm' and pattern.endswith('.rpm'):
+            clean_pattern = pattern[:-4]
+        elif pkg_type == 'debian' and pattern.endswith('.deb'):
+            clean_pattern = pattern[:-4]
+        elif pkg_type == 'alpine' and pattern.endswith('.apk'):
+            clean_pattern = pattern[:-4]
+
+        # If the pattern is quoted and contains wildcards, Path.glob handles it.
+        # But if the user passed a pattern that doesn't match anything locally, local_names remains empty.
+        for pkg_file in Path(".").glob(pattern):
+            if pkg_file.is_file():
+                info = get_package_info(pkg_file, pkg_type)
+                if info:
+                    has_local_files = True
+                    local_names.add(info[2])
+
     packages = get_remote_packages(host, owner, password, pkg_type)
     for pkg in packages:
         full_name = f"{pkg['name']}-{pkg['version']}"
-        if pattern and not fnmatch(full_name, pattern):
+        if pattern:
+            # If we found local files matching the pattern, ONLY show remote packages that match those local files.
+            if has_local_files:
+                if full_name in local_names:
+                    print(full_name)
+                continue
+
+            # Fallback: If NO local files were found, we match against remote names directly (manual usage).
+            # Check if the name or full_name matches the pattern (with or without extension)
+            if any(fnmatch(text, p) for text in [pkg['name'], full_name] for p in [pattern, clean_pattern]):
+                print(full_name)
+                continue
+
             continue
+
         print(full_name)
 
 def delete_packages(host, owner, password, pkg_type, pattern):
@@ -45,26 +105,33 @@ def delete_packages(host, owner, password, pkg_type, pattern):
                     print(f"Error: {resp.text}")
 
 def upload_packages(host, owner, password, pkg_type, pattern, repo="php-zts", branch="main"):
+    existing = []
+    try:
+        packages = get_remote_packages(host, owner, password, pkg_type)
+        existing = [f"{p['name']}-{p['version']}" for p in packages]
+    except Exception as e:
+        print(f"Warning: Could not fetch existing packages: {e}")
+
     for pkg_file in Path(".").glob(pattern):
         if not pkg_file.is_file():
             continue
 
+        info = get_package_info(pkg_file, pkg_type)
+        if not info:
+            continue
+
+        name, version, full_name = info
+
+        # Extract el_version for RPM if needed
+        el_version = None
         if pkg_type == 'rpm':
-            match = re.match(r'(.+)-([0-9][^-]*)-(\d+)\.(el\d+)\.(x86_64|aarch64)\.rpm', pkg_file.name)
-            if not match:
-                continue
-            name, ver, rel, arch, el_version = match.groups()
-            version = f"{ver}-{rel}"
-        elif pkg_type == 'debian':
-            match = re.match(r'(.+?)_(\d+[^_]+)_(amd64|arm64)\.deb', pkg_file.name)
-            if not match:
-                continue
-            name, version, arch = match.groups()
-        else:
-            match = re.match(r'(.+?)-(\d+\..+)\.(x86_64|aarch64)\.(apk|pkg\.tar\.zst)', pkg_file.name)
-            if not match:
-                continue
-            name, version, arch, ext = match.groups()
+            match = re.match(r'.+\.el(\d+)\.(x86_64|aarch64)\.rpm', pkg_file.name)
+            if match:
+                el_version = f"el{match.group(1)}"
+
+        if full_name in existing:
+            print(f"Skip: {pkg_file.name} (already exists as {full_name})")
+            continue
 
         print(f"Uploading: {pkg_file.name}")
         if pkg_type == 'rpm':
