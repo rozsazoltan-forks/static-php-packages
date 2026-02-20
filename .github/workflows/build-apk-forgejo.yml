@@ -159,12 +159,20 @@ jobs:
                     fi
                     php bin/spp all --target="native-native-musl -dynamic" --phpv=${{ matrix.php-version }} --prefix="-zts" --type=apk $ITERATION_FLAG $PACKAGES_FLAG
 
-            -   name: Upload to Forgejo
+            -   name: Upload to Forgejo Host 1
                 working-directory: dist/apk
                 run: |
+                    echo "listing from host 1"
                     ../../bin/forgejo-helper list alpine "${{ env.PHP_VERSION_SHORT }}" "${{ secrets.FORGEJO_PASSWORD }}" "*.apk"
+                    echo "uploading to host 1"
                     ../../bin/forgejo-helper upload alpine "${{ env.PHP_VERSION_SHORT }}" "${{ secrets.FORGEJO_PASSWORD }}" "*.apk"
+
+            -   name: Upload to Forgejo Host 2
+                working-directory: dist/apk
+                run: |
+                    echo "listing from host 2"
                     ../../bin/forgejo-helper --host=2 list alpine "${{ env.PHP_VERSION_SHORT }}" "${{ secrets.FORGEJO_PASSWORD }}" "*.apk"
+                    echo "uploading to host 2"
                     ../../bin/forgejo-helper --host=2 upload alpine "${{ env.PHP_VERSION_SHORT }}" "${{ secrets.FORGEJO_PASSWORD }}" "*.apk"
 
             -   name: Upload logs on failure

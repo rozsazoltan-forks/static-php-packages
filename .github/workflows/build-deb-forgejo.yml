@@ -169,12 +169,20 @@ jobs:
                     fi
                     bin/spp all --phpv=${{ matrix.php-version }} --prefix="-zts" --type=deb --debuginfo $ITERATION_FLAG $PACKAGES_FLAG
 
-            -   name: Upload to Forgejo
+            -   name: Upload to Forgejo Host 1
                 working-directory: dist/deb
                 run: |
+                    echo "listing from host 1"
                     ../../bin/forgejo-helper list debian "${{ env.PHP_VERSION_SHORT }}" "${{ secrets.FORGEJO_PASSWORD }}" "*.deb"
+                    echo "uploading to host 1"
                     ../../bin/forgejo-helper upload debian "${{ env.PHP_VERSION_SHORT }}" "${{ secrets.FORGEJO_PASSWORD }}" "*.deb"
+
+            -   name: Upload to Forgejo Host 2
+                working-directory: dist/deb
+                run: |
+                    echo "listing from host 2"
                     ../../bin/forgejo-helper --host=2 list debian "${{ env.PHP_VERSION_SHORT }}" "${{ secrets.FORGEJO_PASSWORD }}" "*.deb"
+                    echo "uploading to host 2"
                     ../../bin/forgejo-helper --host=2 upload debian "${{ env.PHP_VERSION_SHORT }}" "${{ secrets.FORGEJO_PASSWORD }}" "*.deb"
 
             -   name: Upload logs on failure
