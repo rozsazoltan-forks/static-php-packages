@@ -7,7 +7,9 @@
 
 use SPC\store\FileSystem;
 
-if (preg_match('/after-library\[(.*)\]-build/', patch_point(), $match)) {
+if (!getenv('CI')) return;
+
+if (preg_match('/after-library\[(.*)]-build/', patch_point(), $match)) {
     $lib_name = $match[1];
     $sourcePath = SOURCE_PATH . '/' . $lib_name;
 
@@ -16,7 +18,7 @@ if (preg_match('/after-library\[(.*)\]-build/', patch_point(), $match)) {
         FileSystem::removeDir($sourcePath);
     }
 }
-if (preg_match('/after-shared-ext\[(.*)\]-build/', patch_point(), $match)) {
+if (preg_match('/after-shared-ext\[(.*)]-build/', patch_point(), $match)) {
     $ext_name = $match[1];
     $sourcePath = SOURCE_PATH . '/php-src/ext/' . $ext_name;
 
