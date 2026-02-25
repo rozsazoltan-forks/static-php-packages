@@ -159,6 +159,13 @@ jobs:
                     fi
                     php bin/spp all --target="native-native-musl -dynamic" --phpv=${{ matrix.php-version }} --prefix="-zts" --type=apk $ITERATION_FLAG $PACKAGES_FLAG
 
+            -   name: Upload logs on failure
+                if: ${{ failure() }}
+                uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+                with:
+                    name: build-logs-${{ matrix.arch }}-php${{ matrix.php-version }}
+                    path: log
+
             -   name: Upload to Forgejo Host 1
                 working-directory: dist/apk
                 run: |
@@ -169,18 +176,12 @@ jobs:
 
             -   name: Upload to Forgejo Host 2
                 working-directory: dist/apk
+                continue-on-error: true
                 run: |
                     echo "listing from host 2"
                     ../../bin/forgejo-helper --host=2 list alpine "${{ env.PHP_VERSION_SHORT }}" "${{ secrets.FORGEJO_PASSWORD }}" "*.apk"
                     echo "uploading to host 2"
                     ../../bin/forgejo-helper --host=2 upload alpine "${{ env.PHP_VERSION_SHORT }}" "${{ secrets.FORGEJO_PASSWORD }}" "*.apk"
-
-            -   name: Upload logs on failure
-                if: ${{ failure() }}
-                uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
-                with:
-                    name: build-logs-${{ matrix.arch }}-php${{ matrix.php-version }}
-                    path: log
 
             -   name: Setup tmate session
                 if: ${{ failure() && inputs.debug_tmate == true }}

@@ -169,6 +169,14 @@ jobs:
                     fi
                     bin/spp all --phpv=${{ matrix.php-version }} --prefix="-zts" --type=deb --debuginfo $ITERATION_FLAG $PACKAGES_FLAG
 
+
+            -   name: Upload logs on failure
+                if: ${{ failure() }}
+                uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+                with:
+                    name: build-logs-${{ matrix.arch }}-php${{ matrix.php-version }}
+                    path: log
+
             -   name: Upload to Forgejo Host 1
                 working-directory: dist/deb
                 run: |
@@ -179,18 +187,12 @@ jobs:
 
             -   name: Upload to Forgejo Host 2
                 working-directory: dist/deb
+                continue-on-error: true
                 run: |
                     echo "listing from host 2"
                     ../../bin/forgejo-helper --host=2 list debian "${{ env.PHP_VERSION_SHORT }}" "${{ secrets.FORGEJO_PASSWORD }}" "*.deb"
                     echo "uploading to host 2"
                     ../../bin/forgejo-helper --host=2 upload debian "${{ env.PHP_VERSION_SHORT }}" "${{ secrets.FORGEJO_PASSWORD }}" "*.deb"
-
-            -   name: Upload logs on failure
-                if: ${{ failure() }}
-                uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
-                with:
-                    name: build-logs-${{ matrix.arch }}-php${{ matrix.php-version }}
-                    path: log
 
             -   name: Install tmate
                 if: ${{ failure() && inputs.debug_tmate == true }}
