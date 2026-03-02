@@ -23,9 +23,10 @@ php bin/spp all
 
 ### Parameters
 
-- `--target`: Opional. Specify the target architecture using a target triple that Zig understands, such as `native-native-gnu` or `native-native-musl -dynamic`. Default uses current OS defaults.
+- `--target`: Optional. Specify the target architecture using a target triple that Zig understands, such as `native-native-gnu` or `native-native-musl -dynamic`. Default uses current OS defaults.
 - `--type`: Required. Specify the package type to build. rpm, deb or apk.
 - `--prefix`: Optional. Prefix for binaries and packages. `--prefix="-zts85"` generates `php-zts85` and `php-zts85-cli`. Defaults to `-zts`.
+- `--packages`: Optional. Only build binaries and create packages for those packages. Default empty, builds everything.
 
 ## Links
 
