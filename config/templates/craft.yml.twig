@@ -52,7 +52,7 @@
 
 {# excimer bug when compiling with zig on old OS #}
 {%- if (os == '8' or type == 'deb') and not using_gcc -%}
-{#%-   set shared_ext = shared_ext|filter(v => v != 'excimer') -%#}
+{%-   set shared_ext = shared_ext|filter(v => v != 'excimer') -%}
 {%- endif -%}
 
 php-version: {{ php_version }}
