@@ -2,7 +2,7 @@
     "name": "static-php/spc-packages",
     "version": "1.0.0",
     "description": "Build packages using static-php-cli",
-    "type": "application",
+    "type": "project",
     "homepage": "https://static-php.dev",
     "license": "MIT",
     "authors": [
@@ -22,7 +22,7 @@
         "php": ">=8.5",
         "ext-yaml": "*",
         "ext-zlib": "*",
-        "crazywhalecc/static-php-cli": "dev-feat/avif-dec",
+        "crazywhalecc/static-php-cli": "dev-main",
         "laravel/helpers": "^1.7",
         "twig/twig": "^3.0"
     },
