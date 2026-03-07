@@ -16,6 +16,18 @@ def get_remote_packages(host, owner, password, pkg_type):
     response.raise_for_status()
     return response.json()
 
+def get_remote_package_archs(host, owner, password, pkg_type, name, version):
+    url = f"{host}/api/v1/packages/{owner}/{pkg_type}/{name}/{version}/files"
+    resp = requests.get(url, auth=(owner, password))
+    archs = set()
+    if resp.status_code == 200:
+        for f in resp.json():
+            fname = f.get('name', '')
+            for arch in ['x86_64', 'aarch64', 'amd64', 'arm64']:
+                if arch in fname:
+                    archs.add(arch)
+    return archs
+
 def get_package_info(pkg_file, pkg_type):
     if pkg_type == 'rpm':
         match = re.match(r'(.+)-([0-9][^-]*)-(\d+)\.(el\d+)\.(x86_64|aarch64)\.rpm', pkg_file.name)
@@ -40,7 +52,7 @@ def get_package_info(pkg_file, pkg_type):
         name, version, arch = match.groups()
 
     full_name = f"{name.replace('_', '-') if pkg_type == 'debian' else name}-{version}"
-    return name, version, full_name
+    return name, version, arch, full_name
 
 def list_packages(host, owner, password, pkg_type, pattern=None):
     local_names = set()
@@ -62,27 +74,28 @@ def list_packages(host, owner, password, pkg_type, pattern=None):
                 info = get_package_info(pkg_file, pkg_type)
                 if info:
                     has_local_files = True
-                    local_names.add(info[2])
+                    local_names.add(info[3])
 
     packages = get_remote_packages(host, owner, password, pkg_type)
     for pkg in packages:
         full_name = f"{pkg['name']}-{pkg['version']}"
+        show = False
         if pattern:
             # If we found local files matching the pattern, ONLY show remote packages that match those local files.
             if has_local_files:
                 if full_name in local_names:
-                    print(full_name)
-                continue
+                    show = True
+            else:
+                # Fallback: If NO local files were found, we match against remote names directly (manual usage).
+                if any(fnmatch(text, p) for text in [pkg['name'], full_name] for p in [pattern, clean_pattern]):
+                    show = True
+        else:
+            show = True
 
-            # Fallback: If NO local files were found, we match against remote names directly (manual usage).
-            # Check if the name or full_name matches the pattern (with or without extension)
-            if any(fnmatch(text, p) for text in [pkg['name'], full_name] for p in [pattern, clean_pattern]):
-                print(full_name)
-                continue
-
-            continue
-
-        print(full_name)
+        if show:
+            archs = get_remote_package_archs(host, owner, password, pkg_type, pkg['name'], pkg['version'])
+            arch_suffix = f" [{', '.join(sorted(archs))}]" if archs else ""
+            print(f"{full_name}{arch_suffix}")
 
 def delete_packages(host, owner, password, pkg_type, pattern):
     packages = get_remote_packages(host, owner, password, pkg_type)
@@ -105,12 +118,16 @@ def delete_packages(host, owner, password, pkg_type, pattern):
                     print(f"Error: {resp.text}")
 
 def upload_packages(host, owner, password, pkg_type, pattern, repo="php-zts", branch="main"):
-    existing = []
+    # Build set of name-version strings that exist remotely
+    remote_names = set()
     try:
         packages = get_remote_packages(host, owner, password, pkg_type)
-        existing = [f"{p['name']}-{p['version']}" for p in packages]
+        remote_names = {f"{p['name']}-{p['version']}" for p in packages}
     except Exception as e:
         print(f"Warning: Could not fetch existing packages: {e}")
+
+    # Cache arch lookups so we only fetch files once per name-version
+    arch_cache = {}
 
     for pkg_file in Path(".").glob(pattern):
         if not pkg_file.is_file():
@@ -120,7 +137,7 @@ def upload_packages(host, owner, password, pkg_type, pattern, repo="php-zts", br
         if not info:
             continue
 
-        name, version, full_name = info
+        name, version, arch, full_name = info
 
         # Extract el_version for RPM if needed
         el_version = None
@@ -129,9 +146,14 @@ def upload_packages(host, owner, password, pkg_type, pattern, repo="php-zts", br
             if match:
                 el_version = f"el{match.group(1)}"
 
-        if full_name in existing:
-            print(f"Skip: {pkg_file.name} (already exists as {full_name})")
-            continue
+        # Only fetch arch info for packages that exist remotely
+        if full_name in remote_names:
+            if full_name not in arch_cache:
+                link_name = name.replace('_', '-') if pkg_type == 'debian' else name
+                arch_cache[full_name] = get_remote_package_archs(host, owner, password, pkg_type, link_name, version)
+            if arch in arch_cache[full_name]:
+                print(f"Skip: {pkg_file.name} (already exists for {arch})")
+                continue
 
         print(f"Uploading: {pkg_file.name}")
         if pkg_type == 'rpm':
