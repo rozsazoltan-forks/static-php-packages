@@ -162,7 +162,7 @@ class frankenphp implements package
         // Generate autocompletion
         $completionFile = TEMP_DIR . '/frankenphp.bash';
         $ldLibraryPath = 'LD_LIBRARY_PATH=' . BUILD_LIB_PATH;
-        shell()->exec($ldLibraryPath . ' ' . BUILD_BIN_PATH . '/frankenphp completion bash | sed "s/caddy/frankenphp/g" > ' . $completionFile);
+        shell()->exec($ldLibraryPath . ' ' . BUILD_BIN_PATH . '/frankenphp completion bash > ' . $completionFile);
 
         // append ownership taking to postinstall script
         $originalPostInstall = "{$packageFolder}/rhel/postinstall.sh";
@@ -362,7 +362,7 @@ class frankenphp implements package
         $patchPackageFolder = BASE_PATH . '/src/package/frankenphp';
         $completionFile = TEMP_DIR . '/frankenphp' . $frankenphpSuffix . '.bash';
         $ldLibraryPath = 'LD_LIBRARY_PATH=' . BUILD_LIB_PATH;
-        shell()->exec($ldLibraryPath . ' ' . BUILD_BIN_PATH . '/frankenphp completion bash | sed "s/caddy/frankenphp/g" > ' . $completionFile);
+        shell()->exec($ldLibraryPath . ' ' . BUILD_BIN_PATH . '/frankenphp completion bash > ' . $completionFile);
 
         // append ownership taking to postinstall script
         $originalPostInstall = "{$patchPackageFolder}/debian/postinst.sh";
@@ -543,7 +543,7 @@ class frankenphp implements package
 
         $completionFile = TEMP_DIR . '/frankenphp' . $frankenphpSuffix . '.bash';
         $ldLibraryPath = 'LD_LIBRARY_PATH=' . BUILD_LIB_PATH;
-        shell()->exec($ldLibraryPath . ' ' . BUILD_BIN_PATH . '/frankenphp completion bash | sed "s/caddy/frankenphp/g" > ' . $completionFile);
+        shell()->exec($ldLibraryPath . ' ' . BUILD_BIN_PATH . '/frankenphp completion bash > ' . $completionFile);
 
         // Build contents
         $contents = [
