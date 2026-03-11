@@ -79,15 +79,7 @@ download-options:
     prefer-pre-built: false
     no-alt: false
     shallow-clone: true
-{% if php_version == '8.5' %}
-    # noinspection YAMLDuplicatedKeys
-    ignore-cache-sources: 'php-src,swoole'
-    custom-url:
-        - 'swoole:https://github.com/swoole/swoole-src/archive/refs/tags/v6.2.0-rc1.tar.gz'
-{% else -%}
-    # noinspection YAMLDuplicatedKeys
     ignore-cache-sources: 'php-src'
-{% endif -%}
 craft-options:
     doctor: true
     download: true
