@@ -26,6 +26,7 @@ jobs:
         env:
             GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
             BASH_ENV: /tmp/gha-bashenv
+            FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
         strategy:
             fail-fast: false
             matrix:
@@ -212,6 +213,7 @@ jobs:
         env:
             DEB_GPG_PRIVATE_KEY: ${{ secrets.DEB_GPG_PRIVATE_KEY }}
             DEB_GPG_PASSWORD: ${{ secrets.DEB_GPG_PASSWORD }}
+            FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
         steps:
             -   uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
                 with:
