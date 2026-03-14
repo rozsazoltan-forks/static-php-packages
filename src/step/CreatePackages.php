@@ -463,6 +463,13 @@ class CreatePackages
             }
         }
 
+        if (isset($config['rpm_attrs']) && is_array($config['rpm_attrs'])) {
+            foreach ($config['rpm_attrs'] as $attr) {
+                $fpmArgs[] = '--rpm-attr';
+                $fpmArgs[] = $attr;
+            }
+        }
+
         $rpmProcess = new Process($fpmArgs);
         $rpmProcess->setTimeout(null);
         $rpmProcess->run(function ($type, $buffer) {
@@ -484,7 +491,7 @@ class CreatePackages
     {
         $name = $isDebuginfo ? $package->getName() . '-debuginfo' : $package->getName();
         $config = $isDebuginfo ? $package->getDebuginfoFpmConfig() : $package->getFpmConfig();
-        $extraArgs = $isDebuginfo ? [] : $package->getFpmExtraArgs();
+        $extraArgs = $isDebuginfo ? [] : (method_exists($package, 'getDebExtraArgs') ? $package->getDebExtraArgs() : $package->getFpmExtraArgs());
 
         echo "Creating DEB package for {$name}...\n";
 
@@ -881,7 +888,19 @@ class CreatePackages
         // Handle empty directories
         if (isset($config['empty_directories']) && is_array($config['empty_directories'])) {
             foreach ($config['empty_directories'] as $dir) {
-                $contents[] = ['dst' => $dir, 'type' => 'dir'];
+                $contentItem = ['dst' => $dir, 'type' => 'dir'];
+
+                // Add file_info if specified for this directory
+                if (isset($config['apk_file_info'][$dir])) {
+                    $fileInfo = $config['apk_file_info'][$dir];
+                    $contentItem['file_info'] = [
+                        'mode' => octdec($fileInfo['mode']),
+                        'owner' => $fileInfo['owner'],
+                        'group' => $fileInfo['group'],
+                    ];
+                }
+
+                $contents[] = $contentItem;
             }
         }
 

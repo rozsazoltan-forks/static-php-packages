@@ -112,6 +112,16 @@ class cli implements package
                 getVarLibdir() . '/wsdlcache',
                 getVarLibdir() . '/opcache',
             ],
+            'rpm_attrs' => [
+                '0770,root,frankenphp:' . getVarLibdir() . '/session',
+                '0770,root,frankenphp:' . getVarLibdir() . '/wsdlcache',
+                '0770,root,frankenphp:' . getVarLibdir() . '/opcache',
+            ],
+            'apk_file_info' => [
+                getVarLibdir() . '/session' => ['mode' => '0770', 'owner' => 'root', 'group' => 'frankenphp'],
+                getVarLibdir() . '/wsdlcache' => ['mode' => '0770', 'owner' => 'root', 'group' => 'frankenphp'],
+                getVarLibdir() . '/opcache' => ['mode' => '0770', 'owner' => 'root', 'group' => 'frankenphp'],
+            ],
             'provides' => $provides,
             'replaces' => $replaces,
             'conflicts' => $conflicts,
@@ -122,10 +132,35 @@ class cli implements package
     public function getFpmExtraArgs(): array
     {
         $binarySuffix = getBinarySuffix();
+        $varLibDir = getVarLibdir();
+
+        $beforeInstallScript = <<<BASH
+#!/bin/sh
+# Create frankenphp group if it doesn't exist
+if ! getent group frankenphp > /dev/null 2>&1; then
+    groupadd -r frankenphp
+fi
+BASH;
         $afterInstallScript = <<<BASH
 #!/bin/sh
 if [ ! -e /usr/bin/php ]; then
     ln -sf /usr/bin/php{$binarySuffix} /usr/bin/php
+fi
+BASH;
+        $debAfterInstallScript = <<<BASH
+#!/bin/sh
+set -e
+if [ ! -e /usr/bin/php ]; then
+    ln -sf /usr/bin/php{$binarySuffix} /usr/bin/php
+fi
+
+if getent group frankenphp > /dev/null 2>&1; then
+    chgrp frankenphp "{$varLibDir}/session"
+    chmod 770 "{$varLibDir}/session"
+    chgrp frankenphp "{$varLibDir}/wsdlcache"
+    chmod 770 "{$varLibDir}/wsdlcache"
+    chgrp frankenphp "{$varLibDir}/opcache"
+    chmod 770 "{$varLibDir}/opcache"
 fi
 BASH;
         $afterRemoveScript = <<<BASH
@@ -135,13 +170,27 @@ if [ -L /usr/bin/php ] && [ "\$(readlink /usr/bin/php)" = "/usr/bin/php{$binaryS
 fi
 BASH;
 
+        file_put_contents(TEMP_DIR . '/cli-before-install.sh', $beforeInstallScript);
         file_put_contents(TEMP_DIR . '/cli-after-install.sh', $afterInstallScript);
+        file_put_contents(TEMP_DIR . '/cli-deb-after-install.sh', $debAfterInstallScript);
         file_put_contents(TEMP_DIR . '/cli-after-remove.sh', $afterRemoveScript);
+        chmod(TEMP_DIR . '/cli-before-install.sh', 0755);
         chmod(TEMP_DIR . '/cli-after-install.sh', 0755);
+        chmod(TEMP_DIR . '/cli-deb-after-install.sh', 0755);
         chmod(TEMP_DIR . '/cli-after-remove.sh', 0755);
 
         return [
+            '--before-install', TEMP_DIR . '/cli-before-install.sh',
             '--after-install', TEMP_DIR . '/cli-after-install.sh',
+            '--after-remove', TEMP_DIR . '/cli-after-remove.sh'
+        ];
+    }
+
+    public function getDebExtraArgs(): array
+    {
+        return [
+            '--before-install', TEMP_DIR . '/cli-before-install.sh',
+            '--after-install', TEMP_DIR . '/cli-deb-after-install.sh',
             '--after-remove', TEMP_DIR . '/cli-after-remove.sh'
         ];
     }
