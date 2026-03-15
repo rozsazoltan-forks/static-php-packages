@@ -155,7 +155,6 @@ def upload_packages(host, owner, password, pkg_type, pattern, repo="php-zts", br
                 print(f"Skip: {pkg_file.name} (already exists for {arch})")
                 continue
 
-        print(f"Uploading: {pkg_file.name}")
         if pkg_type == 'rpm':
             url = f"{host}/api/packages/{owner}/rpm/{el_version}/upload?sign=true"
         elif pkg_type == 'debian':
@@ -165,7 +164,7 @@ def upload_packages(host, owner, password, pkg_type, pattern, repo="php-zts", br
         with open(pkg_file, 'rb') as f:
             resp = requests.put(url, files={'file': f}, auth=(owner, password))
             if resp.status_code == 201:
-                print(f"Upload successful: {resp.status_code}")
+                print(f"Uploaded: {pkg_file.name}")
             elif resp.status_code == 409:
                 print(f"Skip: {pkg_file.name} (already exists)")
                 continue

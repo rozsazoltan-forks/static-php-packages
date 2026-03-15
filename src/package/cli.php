@@ -188,6 +188,8 @@ BASH;
 
     public function getDebExtraArgs(): array
     {
+        $this->getFpmExtraArgs();
+
         return [
             '--before-install', TEMP_DIR . '/cli-before-install.sh',
             '--after-install', TEMP_DIR . '/cli-deb-after-install.sh',

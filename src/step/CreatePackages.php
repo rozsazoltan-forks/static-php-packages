@@ -436,6 +436,13 @@ class CreatePackages
             }
         }
 
+        if (isset($config['rpm_attrs']) && is_array($config['rpm_attrs'])) {
+            foreach ($config['rpm_attrs'] as $attr) {
+                $fpmArgs[] = '--rpm-attr';
+                $fpmArgs[] = $attr;
+            }
+        }
+
         if (isset($config['files']) && is_array($config['files'])) {
             foreach ($config['files'] as $source => $dest) {
                 if (file_exists($source)) {
@@ -460,13 +467,6 @@ class CreatePackages
             }
             foreach ($config['empty_directories'] as $dir) {
                 $fpmArgs[] = $emptyDir . '=' . $dir;
-            }
-        }
-
-        if (isset($config['rpm_attrs']) && is_array($config['rpm_attrs'])) {
-            foreach ($config['rpm_attrs'] as $attr) {
-                $fpmArgs[] = '--rpm-attr';
-                $fpmArgs[] = $attr;
             }
         }
 
