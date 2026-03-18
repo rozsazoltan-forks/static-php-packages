@@ -354,8 +354,6 @@ class frankenphp implements package
             '--before-remove', "{$packageFolder}/debian/prerm.sh",
             '--after-remove', "{$packageFolder}/debian/postrm.sh",
             '--iteration', $debIteration,
-            '--rpm-user', 'frankenphp',
-            '--rpm-group', 'frankenphp',
             BUILD_BIN_PATH . '/frankenphp=/usr/bin/frankenphp' . $frankenphpSuffix,
             $completionFile . '=/usr/share/bash-completion/completions/frankenphp' . $frankenphpSuffix,
             "{$packageFolder}/debian/frankenphp.service=/usr/lib/systemd/system/frankenphp{$frankenphpSuffix}.service",
