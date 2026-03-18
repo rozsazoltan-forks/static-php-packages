@@ -81,12 +81,12 @@
             "source": {
                 "type": "git",
                 "url": "https://github.com/crazywhalecc/static-php-cli.git",
-                "reference": "60b2aea09e7a1a90a8636add22ebe9fb6f5427ec"
+                "reference": "f2fa29809afe565bb8cedcd414b4ecdcb23ffc5f"
             },
             "dist": {
                 "type": "zip",
-                "url": "https://api.github.com/repos/crazywhalecc/static-php-cli/zipball/60b2aea09e7a1a90a8636add22ebe9fb6f5427ec",
-                "reference": "60b2aea09e7a1a90a8636add22ebe9fb6f5427ec",
+                "url": "https://api.github.com/repos/crazywhalecc/static-php-cli/zipball/f2fa29809afe565bb8cedcd414b4ecdcb23ffc5f",
+                "reference": "f2fa29809afe565bb8cedcd414b4ecdcb23ffc5f",
                 "shasum": ""
             },
             "require": {
@@ -141,7 +141,7 @@
                     "type": "other"
                 }
             ],
-            "time": "2026-03-18T04:57:27+00:00"
+            "time": "2026-03-18T11:37:16+00:00"
         },
         {
             "name": "doctrine/inflector",

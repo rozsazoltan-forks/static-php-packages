@@ -1,0 +1,9 @@
+services:
+  build:
+    build:
+      context: .
+      dockerfile: Dockerfile.debian
+    working_dir: /build
+    volumes:
+      - .:/build
+    entrypoint: ["bash", "-c"]
