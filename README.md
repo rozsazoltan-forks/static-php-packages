@@ -33,3 +33,7 @@ php bin/spp all
 - [static-php-cli](https://github.com/crazywhalecc/static-php-cli)
 - [Static PHP Website](https://static-php.dev)
 - [Henderkes PHP (ZTS) Packages](https://pkg.henderkes.com)
+
+## Docker images for debugging CI failures
+
+docker compose -f compose-debian.yaml run build "bin/spp all --phpv=8.4 --type=deb --debug"
