@@ -132,7 +132,6 @@ class cli implements package
     public function getFpmExtraArgs(): array
     {
         $binarySuffix = getBinarySuffix();
-        $varLibDir = getVarLibdir();
 
         $beforeInstallScript = <<<BASH
 #!/bin/sh
@@ -147,6 +146,34 @@ if [ ! -e /usr/bin/php ]; then
     ln -sf /usr/bin/php{$binarySuffix} /usr/bin/php
 fi
 BASH;
+        $afterRemoveScript = <<<BASH
+#!/bin/sh
+if [ -L /usr/bin/php ] && [ "\$(readlink /usr/bin/php)" = "/usr/bin/php{$binarySuffix}" ]; then
+    rm -f /usr/bin/php
+fi
+BASH;
+
+        file_put_contents(TEMP_DIR . '/cli-before-install.sh', $beforeInstallScript);
+        file_put_contents(TEMP_DIR . '/cli-after-install.sh', $afterInstallScript);
+        file_put_contents(TEMP_DIR . '/cli-after-remove.sh', $afterRemoveScript);
+        chmod(TEMP_DIR . '/cli-before-install.sh', 0755);
+        chmod(TEMP_DIR . '/cli-after-install.sh', 0755);
+        chmod(TEMP_DIR . '/cli-after-remove.sh', 0755);
+
+        return [
+            '--before-install', TEMP_DIR . '/cli-before-install.sh',
+            '--after-install', TEMP_DIR . '/cli-after-install.sh',
+            '--after-remove', TEMP_DIR . '/cli-after-remove.sh'
+        ];
+    }
+
+    public function getDebExtraArgs(): array
+    {
+        $binarySuffix = getBinarySuffix();
+        $varLibDir = getVarLibdir();
+
+        $this->getFpmExtraArgs();
+
         $debAfterInstallScript = <<<BASH
 #!/bin/sh
 set -e
@@ -163,32 +190,9 @@ if getent group frankenphp > /dev/null 2>&1; then
     chmod 770 "{$varLibDir}/opcache"
 fi
 BASH;
-        $afterRemoveScript = <<<BASH
-#!/bin/sh
-if [ -L /usr/bin/php ] && [ "\$(readlink /usr/bin/php)" = "/usr/bin/php{$binarySuffix}" ]; then
-    rm -f /usr/bin/php
-fi
-BASH;
 
-        file_put_contents(TEMP_DIR . '/cli-before-install.sh', $beforeInstallScript);
-        file_put_contents(TEMP_DIR . '/cli-after-install.sh', $afterInstallScript);
         file_put_contents(TEMP_DIR . '/cli-deb-after-install.sh', $debAfterInstallScript);
-        file_put_contents(TEMP_DIR . '/cli-after-remove.sh', $afterRemoveScript);
-        chmod(TEMP_DIR . '/cli-before-install.sh', 0755);
-        chmod(TEMP_DIR . '/cli-after-install.sh', 0755);
         chmod(TEMP_DIR . '/cli-deb-after-install.sh', 0755);
-        chmod(TEMP_DIR . '/cli-after-remove.sh', 0755);
-
-        return [
-            '--before-install', TEMP_DIR . '/cli-before-install.sh',
-            '--after-install', TEMP_DIR . '/cli-after-install.sh',
-            '--after-remove', TEMP_DIR . '/cli-after-remove.sh'
-        ];
-    }
-
-    public function getDebExtraArgs(): array
-    {
-        $this->getFpmExtraArgs();
 
         return [
             '--before-install', TEMP_DIR . '/cli-before-install.sh',
