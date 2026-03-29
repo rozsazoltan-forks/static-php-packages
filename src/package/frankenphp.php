@@ -204,7 +204,7 @@ class frankenphp implements package
                     '-p', $dbgPackageFile,
                     '-n', $name . '-debuginfo',
                     '-v', $rpmVersion,
-                    '--iteration', $iteration,
+                    '--iteration', $rpmRelease,
                     '--architecture', $architecture,
                     '--license', $this->getLicense(),
                     '--depends', sprintf('%s = %s-%s', $name, $rpmVersion, $rpmRelease),
