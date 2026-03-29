@@ -121,6 +121,7 @@ class TwigRenderer
             'filter_packages' => $packages,
             // Patch file for cleaning up sources during build (absolute path)
             'patch_file' => BASE_PATH . '/src/patches/cleanup-sources.php',
+            'ci' => (bool)getenv('CI'),
         ];
 
         try {
