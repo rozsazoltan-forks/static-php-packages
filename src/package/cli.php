@@ -133,11 +133,14 @@ class cli implements package
     {
         $binarySuffix = getBinarySuffix();
 
+        $addGroupCmd = SPP_TYPE === 'apk'
+            ? 'addgroup -S frankenphp'
+            : 'groupadd -r frankenphp';
         $beforeInstallScript = <<<BASH
 #!/bin/sh
 # Create frankenphp group if it doesn't exist
 if ! getent group frankenphp > /dev/null 2>&1; then
-    groupadd -r frankenphp
+    {$addGroupCmd}
 fi
 BASH;
         $afterInstallScript = <<<BASH
