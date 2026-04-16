@@ -4,7 +4,7 @@
         "Read more about it at https://getcomposer.org/doc/01-basic-usage.md#installing-dependencies",
         "This file is @generated automatically"
     ],
-    "content-hash": "acdd275c35cf9cc42289150864e3d2b5",
+    "content-hash": "05d3d9e2aa0e2497e8e28d828c9001dd",
     "packages": [
         {
             "name": "carbonphp/carbon-doctrine-types",
@@ -77,16 +77,16 @@
         },
         {
             "name": "crazywhalecc/static-php-cli",
-            "version": "dev-main",
+            "version": "dev-feat/decimal",
             "source": {
                 "type": "git",
                 "url": "https://github.com/crazywhalecc/static-php-cli.git",
-                "reference": "c532b9e89346e2e7cbd671f6aaf096371a2a941e"
+                "reference": "1440f104bb6094e4eb1d3612a90c19e5cbd4e916"
             },
             "dist": {
                 "type": "zip",
-                "url": "https://api.github.com/repos/crazywhalecc/static-php-cli/zipball/c532b9e89346e2e7cbd671f6aaf096371a2a941e",
-                "reference": "c532b9e89346e2e7cbd671f6aaf096371a2a941e",
+                "url": "https://api.github.com/repos/crazywhalecc/static-php-cli/zipball/1440f104bb6094e4eb1d3612a90c19e5cbd4e916",
+                "reference": "1440f104bb6094e4eb1d3612a90c19e5cbd4e916",
                 "shasum": ""
             },
             "require": {
@@ -107,7 +107,6 @@
                 "phpstan/phpstan": "^1.10",
                 "phpunit/phpunit": "^10.3 || ^9.5"
             },
-            "default-branch": true,
             "bin": [
                 "bin/spc"
             ],
@@ -134,7 +133,7 @@
             "description": "Build single static PHP binary, with PHP project together, with popular extensions included.",
             "support": {
                 "issues": "https://github.com/crazywhalecc/static-php-cli/issues",
-                "source": "https://github.com/crazywhalecc/static-php-cli/tree/main"
+                "source": "https://github.com/crazywhalecc/static-php-cli/tree/feat/decimal"
             },
             "funding": [
                 {
@@ -142,7 +141,7 @@
                     "type": "other"
                 }
             ],
-            "time": "2026-04-15T04:47:08+00:00"
+            "time": "2026-04-16T06:53:57+00:00"
         },
         {
             "name": "doctrine/inflector",
