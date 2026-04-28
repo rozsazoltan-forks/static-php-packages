@@ -16,6 +16,13 @@ def detect_platform():
             return p
     return None
 
+def detect_arch():
+    cwd = os.getcwd()
+    for a in ['x86_64', 'aarch64', 'noarch']:
+        if a in cwd:
+            return a
+    return None
+
 def parse_rpm_info(filename):
     basename = os.path.basename(filename)
 
@@ -88,7 +95,7 @@ def parse_rpm_info(filename):
 
     return None
 
-def build_module_structure(rpm_map, platform):
+def build_module_structure(rpm_map, platform, arch):
     documents = []
     timestamp = int(datetime.now(timezone.utc).strftime('%Y%m%d'))
 
@@ -122,6 +129,7 @@ def build_module_structure(rpm_map, platform):
                 'stream': f'static-{stream}',
                 'version': timestamp,
                 'context': 'local',
+                'arch': arch,
                 'summary': f'PHP {stream} (ZTS) packages',
                 'description': f'PHP {stream} (ZTS) built statically - no further dependencies',
                 'license': {
@@ -155,6 +163,7 @@ def build_defaults_document(default_stream):
 
 # Detect platform
 platform = detect_platform() or "el10"
+arch = detect_arch() or "x86_64"
 
 # Collect RPMs
 rpm_files = glob.glob("*.rpm")
@@ -168,7 +177,7 @@ for rpm in rpm_files:
             rpm_map[stream].append(rpm)
 
 # Build modules.yaml
-modules_yaml = build_module_structure(rpm_map, platform)
+modules_yaml = build_module_structure(rpm_map, platform, arch)
 
 # Determine highest stream for default (exclude "common")
 if rpm_map:
