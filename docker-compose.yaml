@@ -1,0 +1,47 @@
+x-build-defaults: &build-defaults
+  working_dir: /build
+  volumes:
+    - .:/build
+  command: ["sleep", "infinity"]
+
+services:
+  debian:
+    <<: *build-defaults
+    build:
+      context: .
+      dockerfile: Dockerfile.debian
+    container_name: packages-debian
+
+  alpine:
+    <<: *build-defaults
+    build:
+      context: .
+      dockerfile: Dockerfile.alpine
+    container_name: packages-alpine
+
+  rhel-8:
+    <<: *build-defaults
+    build:
+      context: .
+      dockerfile: Dockerfile.rhel
+      args:
+        ALMA_VERSION: "8"
+    container_name: packages-rhel-8
+
+  rhel-9:
+    <<: *build-defaults
+    build:
+      context: .
+      dockerfile: Dockerfile.rhel
+      args:
+        ALMA_VERSION: "9"
+    container_name: packages-rhel-9
+
+  rhel-10:
+    <<: *build-defaults
+    build:
+      context: .
+      dockerfile: Dockerfile.rhel
+      args:
+        ALMA_VERSION: "10"
+    container_name: packages-rhel-10

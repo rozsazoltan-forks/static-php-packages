@@ -1,0 +1,56 @@
+ARG ALMA_VERSION=10
+FROM almalinux:${ALMA_VERSION}
+
+ARG ALMA_VERSION=10
+ARG RPM_ARCH=x86_64
+
+SHELL ["/bin/bash", "-c"]
+
+ENV PATH=/opt/rh/gcc-toolset-15/root/usr/bin:/usr/lib/gcc-toolset-15/root/usr/bin:${PATH}
+ENV LD_LIBRARY_PATH=/opt/rh/gcc-toolset-15/root/usr/lib64:/usr/lib/gcc-toolset-15/root/usr/lib64:/opt/rh/gcc-toolset-15/root/usr/lib:/usr/lib/gcc-toolset-15/root/usr/lib
+ENV PKG_CONFIG_PATH=/opt/rh/gcc-toolset-15/root/usr/lib64/pkgconfig:/usr/lib/gcc-toolset-15/root/usr/lib64/pkgconfig
+ENV MANPATH=/opt/rh/gcc-toolset-15/root/usr/share/man:/usr/lib/gcc-toolset-15/root/usr/share/man
+
+RUN dnf -y install epel-release dnf-plugins-core && \
+    dnf -y --allowerasing install \
+        perl make rpm-build rpm-sign rpmdevtools \
+        openssh rsync createrepo_c gpg \
+        git jq gzip which sudo xz tar zstd curl \
+        python3 python3-requests \
+        gcc-toolset-15 llvm && \
+    mkdir -p /usr/lib/bfd-plugins && \
+    PLUGIN=$(find /usr/lib /usr/lib64 -name LLVMgold.so 2>/dev/null | head -1) && \
+    [ -n "$PLUGIN" ] && ln -sf "$PLUGIN" /usr/lib/bfd-plugins/LLVMgold.so
+
+RUN if [[ "${ALMA_VERSION}" == "8" || "${ALMA_VERSION}" == "9" ]]; then \
+        dnf -y install '@ruby:3.3' rubygems ruby-devel; \
+    else \
+        dnf -y install ruby rubygems ruby-devel; \
+    fi && \
+    gem install --no-document fpm
+
+RUN if [[ "${ALMA_VERSION}" == "9" || "${ALMA_VERSION}" == "10" ]]; then \
+        dnf -y install re2c; \
+    else \
+        dnf -y install python39 && \
+        curl -L https://github.com/skvadrik/re2c/releases/download/4.3/re2c-4.3.tar.xz | tar xJ && \
+        cd re2c-4.3 && ./configure && make -j2 && make install && cd .. && rm -rf re2c-4.3; \
+    fi
+
+RUN if [[ "${ALMA_VERSION}" == "8" || "${ALMA_VERSION}" == "9" ]]; then \
+        echo 'source /opt/rh/gcc-toolset-15/enable' > /etc/profile.d/gcc-toolset.sh; \
+    else \
+        echo 'source /usr/lib/gcc-toolset/15-env.source' > /etc/profile.d/gcc-toolset.sh; \
+    fi && \
+    chmod +x /etc/profile.d/gcc-toolset.sh
+
+RUN curl -o cmake.tar.gz -fsSL "https://github.com/Kitware/CMake/releases/download/v3.31.4/cmake-3.31.4-linux-$(uname -m).tar.gz" && \
+    tar -xzf cmake.tar.gz -C /usr/local --strip-components=1 && \
+    rm cmake.tar.gz
+
+RUN curl -L "https://files.henderkes.com/${RPM_ARCH}-linux/php" -o /usr/local/bin/php && \
+    chmod +x /usr/local/bin/php && \
+    curl -sS https://raw.githubusercontent.com/composer/getcomposer.org/f3108f64b4e1c1ce6eb462b159956461592b3e3e/web/installer | php -- --quiet && \
+    mv composer.phar /usr/bin/composer
+
+WORKDIR /build
