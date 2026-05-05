@@ -31,7 +31,8 @@ class RunSPC
             $args[] = '--debug';
         }
 
-        $process = new Process($args, BASE_PATH, env: ['CI' => true]);
+        $env = getenv('GITHUB_ACTIONS') ? ['CI' => true] : [];
+        $process = new Process($args, BASE_PATH, env: $env);
         $process->setTimeout(null);
         if (Process::isTtySupported()) {
             $process->setTty(true); // Interactive mode
