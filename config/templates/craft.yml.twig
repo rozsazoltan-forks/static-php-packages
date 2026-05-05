@@ -11,7 +11,7 @@
 {%- set specs_cflags = '-specs=/usr/lib/rpm/redhat/redhat-hardened-cc1' -%}
 {%- set specs_ldflags = '-specs=/usr/lib/rpm/redhat/redhat-hardened-ld' ~ (os == '10' ? ' -Wl,-z,pack-relative-relocs' : '') -%}
 {%- set cflags =
-  '-fPIC -O3 -pipe -fno-plt -fno-semantic-interposition -fasynchronous-unwind-tables -fstack-clash-protection -fno-omit-frame-pointer -mno-omit-leaf-frame-pointer -fno-strict-aliasing -ffunction-sections -fdata-sections -mtls-dialect=gnu2' ~ arch_flags
+  '-fPIC -O3 -pipe -fno-plt -fno-semantic-interposition -fstack-clash-protection -fno-omit-frame-pointer -mno-omit-leaf-frame-pointer -ffunction-sections -fdata-sections -mtls-dialect=gnu2' ~ arch_flags
 -%}
 {%- set cflags = (using_gcc ? '' : '-flto ') ~ cflags -%}
 {%- set is_rhel = os in ['7', '8', '9', '10'] and type == 'rpm' -%}
@@ -99,8 +99,8 @@ extra-env:
     SPC_CMD_VAR_PHP_EMBED_TYPE: 'shared'
     SPC_MICRO_PATCHES:
     SPC_DEFAULT_C_FLAGS: "{{ cflags }}"
-    SPC_DEFAULT_CXX_FLAGS: "{{ cflags }}{{ using_gcc ? '' : ' -fwhole-program-vtables -fstrict-vtable-pointers -fvirtual-function-elimination' }}"
-    SPC_DEFAULT_LD_FLAGS: "-Wl,-z,relro -Wl,--as-needed -Wl,-z,now -Wl,-z,noexecstack {{ using_gcc and is_rhel ? specs_ldflags : '' }}"
+    SPC_DEFAULT_CXX_FLAGS: "{{ cflags }} -fasynchronous-unwind-tables{{ using_gcc ? '' : ' -fwhole-program-vtables -fstrict-vtable-pointers -fvirtual-function-elimination' }}"
+    SPC_DEFAULT_LD_FLAGS: "-Wl,-z,relro -Wl,--as-needed -Wl,-z,now -Wl,-z,noexecstack -Wl,--gc-sections {{ using_gcc and is_rhel ? specs_ldflags : '' }}{{ not using_gcc ? ' -flto' : '' }}"
     SPC_CMD_VAR_PHP_MAKE_EXTRA_CFLAGS: "{{ cflags }} -g -fPIE{{ using_gcc ? '' : ' -flto'}}"
     SPC_CMD_VAR_PHP_MAKE_EXTRA_LDFLAGS: "-Wl,--build-id=sha1 -pie -release {{ release_suffix }}{{ using_gcc ? '' : ' -flto'}}"
     SPC_CMD_PREFIX_PHP_CONFIGURE: "./configure --prefix= --with-valgrind=no --disable-shared --enable-static --disable-all --disable-cgi --disable-phpdbg --disable-debug --with-pic --enable-rtld-now --enable-re2c-cgoto --disable-rpath"
