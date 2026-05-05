@@ -2,9 +2,17 @@ ARG ALMA_VERSION=10
 FROM almalinux:${ALMA_VERSION}
 
 ARG ALMA_VERSION=10
-ARG RPM_ARCH=x86_64
+ARG TARGETARCH
+ARG RPM_ARCH
 
 SHELL ["/bin/bash", "-c"]
+
+RUN if [ -z "${RPM_ARCH}" ]; then \
+        case "${TARGETARCH:-$(uname -m)}" in \
+            arm64|aarch64) echo aarch64 > /tmp/rpm_arch ;; \
+            *) echo x86_64 > /tmp/rpm_arch ;; \
+        esac; \
+    else echo "${RPM_ARCH}" > /tmp/rpm_arch; fi
 
 ENV PATH=/opt/rh/gcc-toolset-15/root/usr/bin:/usr/lib/gcc-toolset-15/root/usr/bin:${PATH}
 ENV LD_LIBRARY_PATH=/opt/rh/gcc-toolset-15/root/usr/lib64:/usr/lib/gcc-toolset-15/root/usr/lib64:/opt/rh/gcc-toolset-15/root/usr/lib:/usr/lib/gcc-toolset-15/root/usr/lib
@@ -17,6 +25,7 @@ RUN dnf -y install epel-release dnf-plugins-core && \
         openssh rsync createrepo_c gpg \
         git jq gzip which sudo xz tar zstd curl \
         python3 python3-requests \
+        bison flex autoconf automake gettext-devel libtool pkgconfig \
         gcc-toolset-15 llvm && \
     mkdir -p /usr/lib/bfd-plugins && \
     PLUGIN=$(find /usr/lib /usr/lib64 -name LLVMgold.so 2>/dev/null | head -1) && \
@@ -48,9 +57,16 @@ RUN curl -o cmake.tar.gz -fsSL "https://github.com/Kitware/CMake/releases/downlo
     tar -xzf cmake.tar.gz -C /usr/local --strip-components=1 && \
     rm cmake.tar.gz
 
-RUN curl -L "https://files.henderkes.com/${RPM_ARCH}-linux/php" -o /usr/local/bin/php && \
+RUN RPM_ARCH=$(cat /tmp/rpm_arch) && \
+    curl -L "https://files.henderkes.com/${RPM_ARCH}-linux/php" -o /usr/local/bin/php && \
     chmod +x /usr/local/bin/php && \
     curl -sS https://raw.githubusercontent.com/composer/getcomposer.org/f3108f64b4e1c1ce6eb462b159956461592b3e3e/web/installer | php -- --quiet && \
     mv composer.phar /usr/bin/composer
+
+RUN U=$(id -un 1000 2>/dev/null || echo "") && \
+    if [ -z "$U" ]; then \
+        groupadd -g 1000 builder && useradd -m -u 1000 -g 1000 -s /bin/bash builder && U=builder; \
+    fi && \
+    echo "$U ALL=(ALL) NOPASSWD: ALL" > /etc/sudoers.d/builder
 
 WORKDIR /build

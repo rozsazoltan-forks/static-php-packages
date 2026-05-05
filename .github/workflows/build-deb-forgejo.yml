@@ -38,7 +38,7 @@ jobs:
             contents: read
         outputs:
             matrix: ${{ steps.set-matrix.outputs.matrix }}
-            archs: ${{ steps.set-matrix.outputs.archs }}
+            libs-matrix: ${{ steps.set-matrix.outputs.libs-matrix }}
         steps:
             -   name: Set up matrix
                 id: set-matrix
@@ -65,17 +65,23 @@ jobs:
                         --argjson arch "$arch_versions" \
                         '{"php-version":$php,"arch":$arch}')
 
-                    archs=$(jq -nc --argjson arch "$arch_versions" '{"arch":$arch}')
+                    # Each arch needs two lib sets — one per toolchain (gcc for php<8.5, zig for 8.5+).
+                    libs_matrix=$(jq -nc \
+                        --argjson arch "$arch_versions" \
+                        '[$arch[] as $r | (
+                            {arch: $r, toolchain: "gcc", phpv: "8.4"},
+                            {arch: $r, toolchain: "zig", phpv: "8.5"}
+                         )] | {include: .}')
 
                     echo "matrix=$matrix" >> $GITHUB_OUTPUT
-                    echo "archs=$archs" >> $GITHUB_OUTPUT
+                    echo "libs-matrix=$libs_matrix" >> $GITHUB_OUTPUT
                 env:
                     INPUTS_PHP_VERSIONS: ${{ inputs.php_versions }}
                     INPUTS_ARCHITECTURES: ${{ inputs.architectures }}
 
     build-libs:
         needs: setup-matrix
-        name: Build libs (${{ matrix.arch }})
+        name: Build libs (${{ matrix.arch }} ${{ matrix.toolchain }})
         runs-on: ubuntu-24.04${{ matrix.arch == 'arm64' && '-arm' || '' }}
         container:
             image: ghcr.io/static-php/packages-builder-debian:latest
@@ -87,7 +93,7 @@ jobs:
                 shell: bash
         strategy:
             fail-fast: false
-            matrix: ${{ fromJson(needs.setup-matrix.outputs.archs) }}
+            matrix: ${{ fromJson(needs.setup-matrix.outputs.libs-matrix) }}
         env:
             GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
             BASH_ENV: /tmp/gha-bashenv
@@ -134,7 +140,7 @@ jobs:
                     rm downloads.tar.gz
 
             -   name: Build libs
-                run: bin/spp build --phpv=8.5 --type=deb --libs-only
+                run: bin/spp build --phpv=${{ matrix.phpv }} --type=deb --libs-only
 
             -   name: Pack buildroot
                 run: tar --zstd -cf buildroot.tar.zst buildroot
@@ -142,7 +148,7 @@ jobs:
             -   name: Upload buildroot
                 uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
                 with:
-                    name: buildroot-deb-${{ matrix.arch }}
+                    name: buildroot-deb-${{ matrix.arch }}-${{ matrix.toolchain }}
                     path: buildroot.tar.zst
                     retention-days: 1
 
@@ -224,7 +230,7 @@ jobs:
             -   name: Download prebuilt buildroot
                 uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
                 with:
-                    name: buildroot-deb-${{ matrix.arch }}
+                    name: buildroot-deb-${{ matrix.arch }}-${{ matrix.php-version == '8.5' && 'zig' || 'gcc' }}
 
             -   name: Extract buildroot
                 run: |

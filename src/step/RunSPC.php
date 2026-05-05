@@ -8,7 +8,7 @@ use staticphp\util\TwigRenderer;
 
 class RunSPC
 {
-    public static function run(bool $debug = false, string $phpVersion = '8.4', ?array $packages = null): bool
+    public static function run(bool $debug = false, string $phpVersion = '8.4', ?array $packages = null, bool $libsOnly = false): bool
     {
         $craftYmlDest = BASE_PATH . '/craft.yml';
 
@@ -30,6 +30,9 @@ class RunSPC
         if ($debug) {
             $args[] = '--debug';
         }
+        if ($libsOnly) {
+            $args[] = '--libs-only';
+        }
 
         $env = getenv('GITHUB_ACTIONS') ? ['CI' => true] : [];
         $process = new Process($args, BASE_PATH, env: $env);
@@ -46,8 +49,10 @@ class RunSPC
 
             echo "Static PHP CLI build completed successfully.\n";
 
-            // Copy the built files to our build directory
-            self::copyBuiltFiles($phpVersion);
+            // Copy the built files to our build directory (only when we actually built PHP)
+            if (!$libsOnly) {
+                self::copyBuiltFiles($phpVersion);
+            }
 
             return true;
         } catch (Exception $e) {

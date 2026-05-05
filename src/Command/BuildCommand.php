@@ -18,7 +18,8 @@ class BuildCommand extends BaseCommand
     {
         parent::configure();
         $this
-            ->addOption('packages', null, InputOption::VALUE_REQUIRED, 'Specify which packages to build (comma-separated)');
+            ->addOption('packages', null, InputOption::VALUE_REQUIRED, 'Specify which packages to build (comma-separated)')
+            ->addOption('libs-only', null, null, 'Build only the libraries (skip PHP and extension build)');
     }
 
     protected function execute(InputInterface $input, OutputInterface $output): int
@@ -26,6 +27,7 @@ class BuildCommand extends BaseCommand
         $debug = $input->getOption('debug');
         $phpVersion = $input->getOption('phpv');
         $target = $input->getOption('target');
+        $libsOnly = (bool) $input->getOption('libs-only');
         $packagesOpt = $input->getOption('packages');
         $packages = null;
         if (is_string($packagesOpt) && $packagesOpt !== '') {
@@ -36,11 +38,14 @@ class BuildCommand extends BaseCommand
         $output->writeln("  debug: " . ($debug ? 'true' : 'false'));
         $output->writeln("  version: {$phpVersion}");
         $output->writeln("  target: {$target}");
+        if ($libsOnly) {
+            $output->writeln("  libs-only: true");
+        }
         if ($packages) {
             $output->writeln("  packages: " . implode(', ', $packages));
         }
 
-        $result = RunSPC::run($debug, $phpVersion, $packages);
+        $result = RunSPC::run($debug, $phpVersion, $packages, $libsOnly);
 
         if ($result) {
             $output->writeln("Build completed successfully.");

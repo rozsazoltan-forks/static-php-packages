@@ -74,10 +74,15 @@ jobs:
                         --argjson arch "$arch_versions" \
                         '{"php-version":$php,"alma":$alma,"arch":$arch}')
 
+                    # Each (alma, arch) needs two lib sets — one per toolchain (gcc for php<8.5, zig for 8.5+).
+                    # Use any pre-8.5 PHP version (8.4) to trigger gcc and 8.5 to trigger zig.
                     libs_matrix=$(jq -nc \
                         --argjson alma "$alma_versions" \
                         --argjson arch "$arch_versions" \
-                        '{"alma":$alma,"arch":$arch}')
+                        '[$alma[] as $a | $arch[] as $r | (
+                            {alma: $a, arch: $r, toolchain: "gcc", phpv: "8.4"},
+                            {alma: $a, arch: $r, toolchain: "zig", phpv: "8.5"}
+                         )] | {include: .}')
 
                     echo "matrix=$matrix" >> $GITHUB_OUTPUT
                     echo "libs-matrix=$libs_matrix" >> $GITHUB_OUTPUT
@@ -88,7 +93,7 @@ jobs:
 
     build-libs:
         needs: setup-matrix
-        name: Build libs (alma${{ matrix.alma }} ${{ matrix.arch }})
+        name: Build libs (alma${{ matrix.alma }} ${{ matrix.arch }} ${{ matrix.toolchain }})
         runs-on: ${{ matrix.arch == 'x86_64' && 'ubuntu-24.04' || 'ubuntu-24.04-arm' }}
         container:
             image: ghcr.io/static-php/packages-builder-rhel-${{ matrix.alma }}:latest
@@ -147,8 +152,8 @@ jobs:
                     tar -xzf downloads.tar.gz -C downloads
                     rm downloads.tar.gz
 
-            -   name: Build libs (via PHP 8.5 reference build)
-                run: php bin/spp build --type=rpm --debuginfo --phpv=8.5
+            -   name: Build libs
+                run: php bin/spp build --type=rpm --debuginfo --phpv=${{ matrix.phpv }} --libs-only
 
             -   name: Pack buildroot
                 run: tar --zstd -cf buildroot.tar.zst buildroot
@@ -156,7 +161,7 @@ jobs:
             -   name: Upload buildroot
                 uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
                 with:
-                    name: buildroot-rpm-alma${{ matrix.alma }}-${{ matrix.arch }}
+                    name: buildroot-rpm-alma${{ matrix.alma }}-${{ matrix.arch }}-${{ matrix.toolchain }}
                     path: buildroot.tar.zst
                     retention-days: 1
 
@@ -164,7 +169,7 @@ jobs:
                 if: ${{ failure() }}
                 uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
                 with:
-                    name: build-logs-libs-alma${{ matrix.alma }}-${{ matrix.arch }}
+                    name: build-logs-libs-alma${{ matrix.alma }}-${{ matrix.arch }}-${{ matrix.toolchain }}
                     path: log
 
     build:
@@ -266,7 +271,7 @@ jobs:
             -   name: Download prebuilt buildroot
                 uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
                 with:
-                    name: buildroot-rpm-alma${{ matrix.alma }}-${{ matrix.arch }}
+                    name: buildroot-rpm-alma${{ matrix.alma }}-${{ matrix.arch }}-${{ matrix.php-version == '8.5' && 'zig' || 'gcc' }}
 
             -   name: Extract buildroot
                 run: |

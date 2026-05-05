@@ -1,8 +1,11 @@
 x-build-defaults: &build-defaults
+  user: "${UID:-1000}:${GID:-1000}"
   working_dir: /build
   volumes:
     - .:/build
-  command: ["sleep", "infinity"]
+  environment:
+    HOME: /build/.docker-home
+  command: ["bash", "-c", "mkdir -p $$HOME && exec sleep infinity"]
 
 services:
   debian:

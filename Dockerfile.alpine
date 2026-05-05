@@ -1,24 +1,41 @@
 FROM ubuntu:24.04
 
-ARG RPM_ARCH=x86_64
+ARG TARGETARCH
+ARG RPM_ARCH
 
 ENV DEBIAN_FRONTEND=noninteractive
 
+RUN if [ -z "${RPM_ARCH}" ]; then \
+        case "${TARGETARCH:-$(dpkg --print-architecture 2>/dev/null || uname -m)}" in \
+            arm64|aarch64) echo aarch64 > /tmp/rpm_arch ;; \
+            *) echo x86_64 > /tmp/rpm_arch ;; \
+        esac; \
+    else echo "${RPM_ARCH}" > /tmp/rpm_arch; fi
+
 RUN apt-get update && \
-    apt-get install -y curl build-essential tar zstd python3 python3-requests jq gzip xz-utils sudo git gnupg llvm && \
+    apt-get install -y curl build-essential tar zstd python3 python3-requests jq gzip xz-utils sudo git gnupg llvm \
+        bison re2c flex autoconf automake autopoint libtool pkg-config && \
     apt-get upgrade -y && \
     mkdir -p /usr/lib/bfd-plugins && \
     PLUGIN=$(find /usr/lib /usr/lib64 -name LLVMgold.so 2>/dev/null | head -1) && \
     [ -n "$PLUGIN" ] && ln -sf "$PLUGIN" /usr/lib/bfd-plugins/LLVMgold.so
 
-RUN NFPM_ARCH=$(case "$RPM_ARCH" in aarch64) echo arm64 ;; *) echo amd64 ;; esac) && \
+RUN RPM_ARCH=$(cat /tmp/rpm_arch) && \
+    NFPM_ARCH=$(case "$RPM_ARCH" in aarch64) echo arm64 ;; *) echo amd64 ;; esac) && \
     curl -L -o nfpm.deb "https://github.com/goreleaser/nfpm/releases/download/v2.44.0/nfpm_2.44.0_${NFPM_ARCH}.deb" && \
     dpkg -i nfpm.deb && \
     rm nfpm.deb
 
-RUN curl -L "https://files.henderkes.com/${RPM_ARCH}-linux/php" -o /usr/local/bin/php && \
+RUN RPM_ARCH=$(cat /tmp/rpm_arch) && \
+    curl -L "https://files.henderkes.com/${RPM_ARCH}-linux/php" -o /usr/local/bin/php && \
     chmod +x /usr/local/bin/php && \
     curl -sS https://raw.githubusercontent.com/composer/getcomposer.org/f3108f64b4e1c1ce6eb462b159956461592b3e3e/web/installer | php -- --quiet && \
     mv composer.phar /usr/local/bin/composer
+
+RUN U=$(id -un 1000 2>/dev/null || echo "") && \
+    if [ -z "$U" ]; then \
+        groupadd -g 1000 builder && useradd -m -u 1000 -g 1000 -s /bin/bash builder && U=builder; \
+    fi && \
+    echo "$U ALL=(ALL) NOPASSWD: ALL" > /etc/sudoers.d/builder
 
 WORKDIR /build
