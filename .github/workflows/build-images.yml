@@ -1,0 +1,70 @@
+name: Build builder images
+
+on:
+    push:
+        branches: [master]
+        paths:
+            - Dockerfile.debian
+            - Dockerfile.alpine
+            - Dockerfile.rhel
+            - .github/workflows/build-images.yml
+    workflow_dispatch:
+
+permissions:
+    contents: read
+    packages: write
+
+jobs:
+    build:
+        runs-on: ubuntu-24.04
+        strategy:
+            fail-fast: false
+            matrix:
+                include:
+                    -   dockerfile: Dockerfile.debian
+                        image: packages-builder-debian
+                        build-args: ""
+                    -   dockerfile: Dockerfile.alpine
+                        image: packages-builder-alpine
+                        build-args: ""
+                    -   dockerfile: Dockerfile.rhel
+                        image: packages-builder-rhel-8
+                        build-args: "ALMA_VERSION=8"
+                    -   dockerfile: Dockerfile.rhel
+                        image: packages-builder-rhel-9
+                        build-args: "ALMA_VERSION=9"
+                    -   dockerfile: Dockerfile.rhel
+                        image: packages-builder-rhel-10
+                        build-args: "ALMA_VERSION=10"
+        steps:
+            -   name: Checkout
+                uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+                with:
+                    persist-credentials: false
+
+            -   name: Set up QEMU
+                uses: docker/setup-qemu-action@29109295f81e9208d7d86ff1c6c12d2833863392 # v3
+
+            -   name: Set up Docker Buildx
+                uses: docker/setup-buildx-action@e468171a9de216ec08956ac3ada2f0791b6bd435 # v3
+
+            -   name: Log in to GHCR
+                uses: docker/login-action@74a5d142397b4f367a81961eba4e8cd7edddf772 # v3
+                with:
+                    registry: ghcr.io
+                    username: ${{ github.actor }}
+                    password: ${{ secrets.GITHUB_TOKEN }}
+
+            -   name: Build and push ${{ matrix.image }}
+                uses: docker/build-push-action@5cd11c3a4ced054e52742c5fd54dca954e0edd85 # v6
+                with:
+                    context: .
+                    file: ${{ matrix.dockerfile }}
+                    platforms: linux/amd64,linux/arm64
+                    push: true
+                    tags: |
+                        ghcr.io/static-php/${{ matrix.image }}:latest
+                        ghcr.io/static-php/${{ matrix.image }}:${{ github.sha }}
+                    build-args: ${{ matrix.build-args }}
+                    cache-from: type=gha,scope=${{ matrix.image }}
+                    cache-to: type=gha,scope=${{ matrix.image }},mode=max

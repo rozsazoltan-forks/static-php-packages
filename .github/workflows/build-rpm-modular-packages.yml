@@ -31,6 +31,7 @@ on:
 
 permissions:
     contents: read
+    packages: read
 
 jobs:
     setup-matrix:
@@ -40,16 +41,15 @@ jobs:
             contents: read
         outputs:
             matrix: ${{ steps.set-matrix.outputs.matrix }}
+            libs-matrix: ${{ steps.set-matrix.outputs.libs-matrix }}
         steps:
             -   name: Set up matrix
                 id: set-matrix
                 run: |
-                    # Default values
                     default_php='["8.2","8.3","8.4","8.5"]'
                     default_alma='["8","9","10"]'
                     default_arch='["x86_64","arm64"]'
 
-                    # Parse inputs or use defaults
                     if [[ -n "${INPUTS_PHP_VERSIONS}" ]]; then
                         php_versions=$(echo "${INPUTS_PHP_VERSIONS}" | jq -R 'split(",") | map(gsub("^\\s+|\\s+$";""))')
                     else
@@ -68,24 +68,113 @@ jobs:
                         arch_versions=$default_arch
                     fi
 
-                    # Create matrix JSON (compact, single line)
                     matrix=$(jq -nc \
                         --argjson php "$php_versions" \
                         --argjson alma "$alma_versions" \
                         --argjson arch "$arch_versions" \
                         '{"php-version":$php,"alma":$alma,"arch":$arch}')
 
+                    libs_matrix=$(jq -nc \
+                        --argjson alma "$alma_versions" \
+                        --argjson arch "$arch_versions" \
+                        '{"alma":$alma,"arch":$arch}')
+
                     echo "matrix=$matrix" >> $GITHUB_OUTPUT
+                    echo "libs-matrix=$libs_matrix" >> $GITHUB_OUTPUT
                 env:
                     INPUTS_PHP_VERSIONS: ${{ inputs.php_versions }}
                     INPUTS_ALMA_VERSIONS: ${{ inputs.alma_versions }}
                     INPUTS_ARCHITECTURES: ${{ inputs.architectures }}
 
-    build:
+    build-libs:
         needs: setup-matrix
+        name: Build libs (alma${{ matrix.alma }} ${{ matrix.arch }})
         runs-on: ${{ matrix.arch == 'x86_64' && 'ubuntu-24.04' || 'ubuntu-24.04-arm' }}
         container:
-            image: almalinux:${{ matrix.alma }}
+            image: ghcr.io/static-php/packages-builder-rhel-${{ matrix.alma }}:latest
+        permissions:
+            contents: read
+            packages: read
+        defaults:
+            run:
+                shell: bash
+        strategy:
+            fail-fast: false
+            matrix: ${{ fromJson(needs.setup-matrix.outputs.libs-matrix) }}
+        env:
+            GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+            BASH_ENV: /tmp/gha-bashenv
+            FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+        steps:
+            -   name: Checkout code
+                uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+                with:
+                    persist-credentials: false
+
+            -   name: Set architecture variables
+                run: |
+                    if [[ "${MATRIX_ARCH}" == "arm64" ]]; then
+                      echo "RPM_ARCH=aarch64" >> $GITHUB_ENV
+                    else
+                      echo "RPM_ARCH=x86_64" >> $GITHUB_ENV
+                    fi
+                env:
+                    MATRIX_ARCH: ${{ matrix.arch }}
+
+            -   name: Prepare cache directories
+                run: composer config -g cache-dir
+
+            -   name: Cache Composer downloads
+                uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
+                with:
+                    path: ~/.cache/composer
+                    key: composer-${{ hashFiles('**/composer.lock') }}
+                    restore-keys: |
+                        composer-
+
+            -   name: Composer install
+                run: composer install --no-interaction --prefer-dist --no-progress
+
+            -   name: Download artifact from spc-download.yml
+                uses: dawidd6/action-download-artifact@ac66b43f0e6a346234dd65d4d0c8fbb31cb316e5 # v11
+                with:
+                    workflow: spc-download.yml
+                    name: downloads-tarball
+
+            -   name: Extract with permissions
+                run: |
+                    mkdir -p downloads
+                    tar -xzf downloads.tar.gz -C downloads
+                    rm downloads.tar.gz
+
+            -   name: Build libs (via PHP 8.5 reference build)
+                run: php bin/spp build --type=rpm --debuginfo --phpv=8.5
+
+            -   name: Pack buildroot
+                run: tar --zstd -cf buildroot.tar.zst buildroot
+
+            -   name: Upload buildroot
+                uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+                with:
+                    name: buildroot-rpm-alma${{ matrix.alma }}-${{ matrix.arch }}
+                    path: buildroot.tar.zst
+                    retention-days: 1
+
+            -   name: Upload logs on failure
+                if: ${{ failure() }}
+                uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+                with:
+                    name: build-logs-libs-alma${{ matrix.alma }}-${{ matrix.arch }}
+                    path: log
+
+    build:
+        needs: [setup-matrix, build-libs]
+        runs-on: ${{ matrix.arch == 'x86_64' && 'ubuntu-24.04' || 'ubuntu-24.04-arm' }}
+        container:
+            image: ghcr.io/static-php/packages-builder-rhel-${{ matrix.alma }}:latest
+        permissions:
+            contents: read
+            packages: read
         defaults:
             run:
                 shell: bash
@@ -114,75 +203,16 @@ jobs:
                 env:
                     MATRIX_ARCH: ${{ matrix.arch }}
 
-            -   name: Install composer
-                run: |
-                    curl -L https://files.henderkes.com/${RPM_ARCH}-linux/php -o /usr/local/bin/php
-                    chmod +x /usr/local/bin/php
-                    curl -sS https://raw.githubusercontent.com/composer/getcomposer.org/f3108f64b4e1c1ce6eb462b159956461592b3e3e/web/installer | php -- --quiet
-                    mv composer.phar /usr/bin/composer
-
-            -   name: Install caching dependencies
-                run: |
-                    dnf -y install tar zstd
-
             -   name: Prepare cache directories
-                run: |
-                    composer config -g cache-dir
-                    mkdir -p /var/cache/dnf
+                run: composer config -g cache-dir
 
-            -   name: Restore composer cache
+            -   name: Cache Composer downloads
                 uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
                 with:
                     path: ~/.cache/composer
                     key: composer-${{ hashFiles('**/composer.lock') }}
                     restore-keys: |
                         composer-
-
-            -   name: Restore DNF cache
-                id: dnf-restore
-                uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
-                with:
-                    path: /var/cache/dnf
-                    key: dnf-${{ matrix.alma }}-${{ matrix.arch }}
-
-            -   name: Bootstrap container
-                run: |
-                    dnf -y install epel-release dnf-plugins-core
-                    dnf -y install \
-                      perl make rpm-build rpm-sign rpmdevtools \
-                      openssh rsync createrepo_c gpg \
-                      git jq gzip which sudo xz gcc-toolset-15
-
-                    if [[ "${MATRIX_ALMA}" -eq 8 || "${MATRIX_ALMA}" -eq 9 ]]; then
-                      dnf -y install @ruby:3.3 rubygems ruby-devel
-                      source /opt/rh/gcc-toolset-15/enable
-                      touch "$BASH_ENV"
-                      echo 'source /opt/rh/gcc-toolset-15/enable' >> "$BASH_ENV"
-                    else
-                      dnf -y install ruby rubygems ruby-devel
-                      touch "$BASH_ENV"
-                      echo 'source /usr/lib/gcc-toolset/15-env.source' >> "$BASH_ENV"
-                    fi
-                    gem install --no-document fpm
-                env:
-                    MATRIX_ALMA: ${{ matrix.alma }}
-
-            -   name: Install re2c
-                run: |
-                    if [[ "${MATRIX_ALMA}" -eq 9 || "${MATRIX_ALMA}" -eq 10 ]]; then
-                      dnf -y install re2c
-                    else
-                      dnf -y install python39
-                      curl -L https://github.com/skvadrik/re2c/releases/download/4.3/re2c-4.3.tar.xz | tar xJ
-                      cd re2c-4.3
-                      ./configure
-                      make -j2
-                      make install
-                      cd ..
-                      rm -rf re2c-4.3
-                    fi
-                env:
-                    MATRIX_ALMA: ${{ matrix.alma }}
 
             -   name: Set up SSH key
                 uses: webfactory/ssh-agent@d4b9b8ff72958532804b70bbe600ad43b36d5f2e # v0.8.0
@@ -233,6 +263,16 @@ jobs:
                     tar -xzf downloads.tar.gz -C downloads
                     rm downloads.tar.gz
 
+            -   name: Download prebuilt buildroot
+                uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+                with:
+                    name: buildroot-rpm-alma${{ matrix.alma }}-${{ matrix.arch }}
+
+            -   name: Extract buildroot
+                run: |
+                    tar --zstd -xf buildroot.tar.zst
+                    rm buildroot.tar.zst
+
             -   name: Build PHP
                 run: |
                     PACKAGES_FLAG=""
@@ -249,7 +289,6 @@ jobs:
 
             -   name: Prepare rpm signing
                 run: |
-                    # Setup GPG
                     export GNUPGHOME="${HOME}/.gnupg"
                     mkdir -p "${GNUPGHOME}"
                     chmod 700 "${GNUPGHOME}"
@@ -257,25 +296,21 @@ jobs:
                     echo "allow-loopback-pinentry" > "${GNUPGHOME}/gpg-agent.conf"
                     gpgconf --kill gpg-agent
 
-                    # Import private key and extract fingerprint
                     FPR=$(printf '%s' "${{ secrets.DEB_GPG_PRIVATE_KEY }}" \
                       | gpg --batch --quiet --with-colons --import-options show-only --import 2>/dev/null \
                       | awk -F: '/^fpr:/ {print $10; exit}')
                     printf '%s' "${{ secrets.DEB_GPG_PRIVATE_KEY }}" | gpg --batch --yes --import
 
-                    # Configure gpg.conf
                     {
                       echo "pinentry-mode loopback"
                       echo "default-key ${FPR}"
                     } > "${GNUPGHOME}/gpg.conf"
 
-                    # Unlock key with passphrase (warmup)
                     t=$(mktemp); echo warmup > "$t"
                     gpg --batch --yes --pinentry-mode loopback --passphrase-fd 0 \
                         --local-user "${FPR}" --sign --output /dev/null "$t" <<<"${{ secrets.DEB_GPG_PASSWORD }}"
                     rm -f "$t"
 
-                    # Create ~/.rpmmacros (not /root/.rpmmacros!)
                     cat > ~/.rpmmacros <<EOF
                     %_signature gpg
                     %_gpg_path ${GNUPGHOME}
@@ -320,11 +355,9 @@ jobs:
             -   name: Set up matrix
                 id: set-matrix
                 run: |
-                    # Default values
                     default_alma='["8","9","10"]'
                     default_arch='["x86_64","arm64"]'
 
-                    # Parse inputs or use defaults
                     if [[ -n "${GITHUB_EVENT_INPUTS_ALMA_VERSIONS}" ]]; then
                         alma_versions=$(echo "${GITHUB_EVENT_INPUTS_ALMA_VERSIONS}" | jq -Rc 'split(",") | map(gsub("^\\s+|\\s+$";""))')
                     else
@@ -337,7 +370,6 @@ jobs:
                         arch_versions=$default_arch
                     fi
 
-                    # Create matrix JSON (compact, single line)
                     matrix=$(jq -nc \
                         --argjson alma "$alma_versions" \
                         --argjson arch "$arch_versions" \
