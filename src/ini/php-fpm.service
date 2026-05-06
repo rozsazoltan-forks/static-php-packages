@@ -7,8 +7,8 @@ Description=The PHP (ZTS) FastCGI Process Manager
 After=network.target
 
 [Service]
-Type=notify
-ExecStart=/usr/sbin/php-fpm-zts --nodaemonize
+Type=simple
+ExecStart=/usr/sbin/php-fpm-zts -y /etc/php-zts/php-fpm.conf --nodaemonize
 ExecReload=/bin/kill -USR2 $MAINPID
 PrivateTmp=true
 RuntimeDirectory=php-fpm-zts

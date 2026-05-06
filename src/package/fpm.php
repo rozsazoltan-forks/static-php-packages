@@ -19,13 +19,14 @@ class fpm implements package
         $contents = str_replace('@confdir@', getConfdir(), $contents);
         $contents = str_replace('@varlibdir@', getVarLibdir(), $contents);
         // Replace ALL hardcoded /var/log/php* paths with prefix-based paths
-        $contents = preg_replace('#/var/log/php[^/]*/#', '/var/log/' . $prefix . '/', $contents);
+        // [^/\n] (not just [^/]) so a path on one line can't gobble across the newline into the next.
+        $contents = preg_replace('#/var/log/php[^/\n]*/#', '/var/log/' . $prefix . '/', $contents);
         // Also replace /var/log/php-fpm.log with prefix-based path
         $contents = str_replace('/var/log/php-fpm.log', '/var/log/' . $prefix . '/php-fpm.log', $contents);
         // Replace ALL hardcoded /var/lib/php* paths with prefix-based paths
-        $contents = preg_replace('#/var/lib/php[^/]*/#', getVarLibdir() . '/', $contents);
+        $contents = preg_replace('#/var/lib/php[^/\n]*/#', getVarLibdir() . '/', $contents);
         // Replace ALL hardcoded /run/php-fpm* paths with prefix-based paths
-        $contents = preg_replace('#/run/php-fpm[^/]*/#', '/run/php-fpm' . getBinarySuffix() . '/', $contents);
+        $contents = preg_replace('#/run/php-fpm[^/\n]*/#', '/run/php-fpm' . getBinarySuffix() . '/', $contents);
         file_put_contents(TEMP_DIR . '/php-fpm.conf', $contents);
 
         // Process the systemd service file to replace ALL hardcoded paths
@@ -33,12 +34,14 @@ class fpm implements package
         $binarySuffix = getBinarySuffix();
         $serviceContents = preg_replace(
             [
-                '#/usr/sbin/php-fpm[^ ]*#',
-                '#RuntimeDirectory=php-fpm[^ ]*#',
+                '#/usr/sbin/php-fpm\S*#',
+                '#RuntimeDirectory=php-fpm\S*#',
+                '#-y /etc/php-zts/php-fpm\.conf#',
             ],
             [
                 '/usr/sbin/php-fpm' . $binarySuffix,
                 'RuntimeDirectory=php-fpm' . $binarySuffix,
+                '-y ' . getConfdir() . '/php-fpm.conf',
             ],
             $serviceContents
         );
@@ -49,10 +52,10 @@ class fpm implements package
         $wwwContents = str_replace('@varlibdir@', getVarLibdir(), $wwwContents);
         $wwwContents = preg_replace(
             [
-                '#/var/lib/php[^/]*/#',
-                '#/var/log/php[^/]*/#',
+                '#/var/lib/php[^/\n]*/#',
+                '#/var/log/php[^/\n]*/#',
                 '#/var/log/php-fpm/#',
-                '#/run/php-fpm[^/]*/#',
+                '#/run/php-fpm[^/\n]*/#',
             ],
             [
                 getVarLibdir() . '/',

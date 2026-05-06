@@ -38,4 +38,13 @@ RUN U=$(id -un 1000 2>/dev/null || echo "") && \
     fi && \
     echo "$U ALL=(ALL) NOPASSWD: ALL" > /etc/sudoers.d/builder
 
+# Pre-install SPC's go-xcaddy and zig packages so workflows don't redownload them.
+ENV PKG_ROOT_PATH=/opt/spc-pkgroot
+COPY composer.json composer.lock /tmp/spc-bootstrap/
+RUN cd /tmp/spc-bootstrap && \
+    composer install --no-interaction --prefer-dist --no-progress --no-scripts && \
+    php vendor/bin/spc install-pkg go-xcaddy && \
+    php vendor/bin/spc install-pkg zig && \
+    rm -rf /tmp/spc-bootstrap /root/.composer /root/.cache
+
 WORKDIR /build
