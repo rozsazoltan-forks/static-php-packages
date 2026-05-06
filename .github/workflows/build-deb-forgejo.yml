@@ -37,17 +37,18 @@ jobs:
         permissions:
             contents: read
         outputs:
-            matrix: ${{ steps.set-matrix.outputs.matrix }}
-            libs-matrix: ${{ steps.set-matrix.outputs.libs-matrix }}
+            libs-pairs: ${{ steps.set-matrix.outputs.libs-pairs }}
+            gcc-php-versions: ${{ steps.set-matrix.outputs.gcc-php-versions }}
+            zig-php-versions: ${{ steps.set-matrix.outputs.zig-php-versions }}
+            gcc-needed: ${{ steps.set-matrix.outputs.gcc-needed }}
+            zig-needed: ${{ steps.set-matrix.outputs.zig-needed }}
         steps:
             -   name: Set up matrix
                 id: set-matrix
                 run: |
-                    # Default values
                     default_php='["8.2","8.3","8.4","8.5"]'
                     default_arch='["amd64","arm64"]'
 
-                    # Parse inputs or use defaults
                     if [[ -n "${INPUTS_PHP_VERSIONS}" ]]; then
                         php_versions=$(echo "${INPUTS_PHP_VERSIONS}" | jq -R 'split(",") | map(gsub("^\\s+|\\s+$";""))')
                     else
@@ -60,28 +61,28 @@ jobs:
                         arch_versions=$default_arch
                     fi
 
-                    matrix=$(jq -nc \
-                        --argjson php "$php_versions" \
-                        --argjson arch "$arch_versions" \
-                        '{"php-version":$php,"arch":$arch}')
+                    # Split PHP versions by required toolchain (gcc for <8.5, zig for >=8.5).
+                    gcc_php=$(jq -nc --argjson p "$php_versions" '[$p[] | select(startswith("8.5") | not)]')
+                    zig_php=$(jq -nc --argjson p "$php_versions" '[$p[] | select(startswith("8.5"))]')
 
-                    # Each arch needs two lib sets — one per toolchain (gcc for php<8.5, zig for 8.5+).
-                    libs_matrix=$(jq -nc \
-                        --argjson arch "$arch_versions" \
-                        '[$arch[] as $r | (
-                            {arch: $r, toolchain: "gcc", phpv: "8.4"},
-                            {arch: $r, toolchain: "zig", phpv: "8.5"}
-                         )] | {include: .}')
+                    gcc_needed=$(jq -nr --argjson p "$gcc_php" 'if ($p | length) > 0 then "true" else "false" end')
+                    zig_needed=$(jq -nr --argjson p "$zig_php" 'if ($p | length) > 0 then "true" else "false" end')
 
-                    echo "matrix=$matrix" >> $GITHUB_OUTPUT
-                    echo "libs-matrix=$libs_matrix" >> $GITHUB_OUTPUT
+                    libs_pairs=$(jq -nc --argjson arch "$arch_versions" '{include: [$arch[] as $r | {arch: $r}]}')
+
+                    echo "libs-pairs=$libs_pairs" >> $GITHUB_OUTPUT
+                    echo "gcc-php-versions=$gcc_php" >> $GITHUB_OUTPUT
+                    echo "zig-php-versions=$zig_php" >> $GITHUB_OUTPUT
+                    echo "gcc-needed=$gcc_needed" >> $GITHUB_OUTPUT
+                    echo "zig-needed=$zig_needed" >> $GITHUB_OUTPUT
                 env:
                     INPUTS_PHP_VERSIONS: ${{ inputs.php_versions }}
                     INPUTS_ARCHITECTURES: ${{ inputs.architectures }}
 
-    build-libs:
+    build-libs-gcc:
         needs: setup-matrix
-        name: Build libs (${{ matrix.arch }} ${{ matrix.toolchain }})
+        if: ${{ needs.setup-matrix.outputs.gcc-needed == 'true' }}
+        name: Build libs gcc (${{ matrix.arch }})
         runs-on: ubuntu-24.04${{ matrix.arch == 'arm64' && '-arm' || '' }}
         container:
             image: ghcr.io/static-php/packages-builder-debian:latest
@@ -93,7 +94,7 @@ jobs:
                 shell: bash
         strategy:
             fail-fast: false
-            matrix: ${{ fromJson(needs.setup-matrix.outputs.libs-matrix) }}
+            matrix: ${{ fromJson(needs.setup-matrix.outputs.libs-pairs) }}
         env:
             GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
             BASH_ENV: /tmp/gha-bashenv
@@ -140,7 +141,7 @@ jobs:
                     rm downloads.tar.gz
 
             -   name: Build libs
-                run: bin/spp build --phpv=${{ matrix.phpv }} --type=deb --libs-only
+                run: bin/spp build --phpv=8.4 --type=deb --libs-only
 
             -   name: Pack buildroot
                 run: tar --zstd -cf buildroot.tar.zst buildroot
@@ -148,7 +149,7 @@ jobs:
             -   name: Upload buildroot
                 uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
                 with:
-                    name: buildroot-deb-${{ matrix.arch }}-${{ matrix.toolchain }}
+                    name: buildroot-deb-${{ matrix.arch }}-gcc
                     path: buildroot.tar.zst
                     retention-days: 1
 
@@ -156,11 +157,171 @@ jobs:
                 if: ${{ failure() }}
                 uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
                 with:
-                    name: build-logs-libs-${{ matrix.arch }}
+                    name: build-logs-libs-${{ matrix.arch }}-gcc
                     path: log
 
-    build:
-        needs: [setup-matrix, build-libs]
+    build-libs-zig:
+        needs: setup-matrix
+        if: ${{ needs.setup-matrix.outputs.zig-needed == 'true' }}
+        name: Build libs zig (${{ matrix.arch }})
+        runs-on: ubuntu-24.04${{ matrix.arch == 'arm64' && '-arm' || '' }}
+        container:
+            image: ghcr.io/static-php/packages-builder-debian:latest
+        permissions:
+            contents: read
+            packages: read
+        defaults:
+            run:
+                shell: bash
+        strategy:
+            fail-fast: false
+            matrix: ${{ fromJson(needs.setup-matrix.outputs.libs-pairs) }}
+        env:
+            GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+            BASH_ENV: /tmp/gha-bashenv
+            FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+        steps:
+            -   name: Checkout code
+                uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+                with:
+                    persist-credentials: false
+
+            -   name: Set architecture variables
+                run: |
+                    if [[ "${{ matrix.arch }}" == "arm64" ]]; then
+                      echo "RPM_ARCH=aarch64" >> $GITHUB_ENV
+                    else
+                      echo "RPM_ARCH=x86_64" >> $GITHUB_ENV
+                    fi
+
+            -   name: Prepare cache directories
+                run: composer config -g cache-dir
+
+            -   name: Cache Composer downloads
+                uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
+                with:
+                    path: ~/.cache/composer
+                    key: composer-${{ hashFiles('**/composer.lock') }}
+                    restore-keys: |
+                        composer-
+
+            -   name: Install vendor
+                run: composer install --no-interaction --prefer-dist --no-progress
+
+            -   name: Download artifact from spc-download.yml
+                uses: dawidd6/action-download-artifact@ac66b43f0e6a346234dd65d4d0c8fbb31cb316e5 # v11
+                with:
+                    workflow: spc-download.yml
+                    name: downloads-tarball
+                    branch: master
+
+            -   name: Extract with permissions
+                run: |
+                    mkdir -p downloads
+                    tar -xzf downloads.tar.gz -C downloads
+                    rm downloads.tar.gz
+
+            -   name: Build libs
+                run: bin/spp build --phpv=8.5 --type=deb --libs-only
+
+            -   name: Pack buildroot
+                run: tar --zstd -cf buildroot.tar.zst buildroot
+
+            -   name: Upload buildroot
+                uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+                with:
+                    name: buildroot-deb-${{ matrix.arch }}-zig
+                    path: buildroot.tar.zst
+                    retention-days: 1
+
+            -   name: Upload logs on failure
+                if: ${{ failure() }}
+                uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+                with:
+                    name: build-logs-libs-${{ matrix.arch }}-zig
+                    path: log
+
+    compute-build-gcc-matrix:
+        needs: [setup-matrix, build-libs-gcc]
+        runs-on: ubuntu-24.04
+        if: ${{ !cancelled() && needs.setup-matrix.outputs.gcc-needed == 'true' }}
+        permissions:
+            actions: read
+        outputs:
+            matrix: ${{ steps.filter.outputs.matrix }}
+            any: ${{ steps.filter.outputs.any }}
+        steps:
+            -   name: Filter build matrix to arches with successful gcc libs
+                id: filter
+                env:
+                    GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+                    GCC_PHP: ${{ needs.setup-matrix.outputs.gcc-php-versions }}
+                run: |
+                    set -euo pipefail
+                    succeeded=$(gh api "repos/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID/jobs" --paginate \
+                        --jq '.jobs[] | select(.conclusion == "success" and (.name | test("^Build libs gcc \\("))) | .name' \
+                        | sed -E 's/^Build libs gcc \(([^)]+)\)$/\1/' \
+                        | sort -u)
+                    echo "Successful gcc libs arches:"
+                    printf '%s\n' "$succeeded"
+
+                    include=$(jq -nc --arg s "$succeeded" --argjson p "$GCC_PHP" '
+                        ($s | split("\n") | map(select(length > 0) | {arch: .})) as $arches |
+                        [ $arches[] as $a | $p[] as $php | $a + {"php-version": $php} ]
+                    ')
+                    count=$(jq 'length' <<< "$include")
+                    echo "Filtered combos: $count"
+                    printf '%s\n' "$include" | jq .
+
+                    if [[ "$count" -gt 0 ]]; then
+                        echo "any=true" >> $GITHUB_OUTPUT
+                    else
+                        echo "any=false" >> $GITHUB_OUTPUT
+                    fi
+                    echo "matrix={\"include\":$include}" >> $GITHUB_OUTPUT
+
+    compute-build-zig-matrix:
+        needs: [setup-matrix, build-libs-zig]
+        runs-on: ubuntu-24.04
+        if: ${{ !cancelled() && needs.setup-matrix.outputs.zig-needed == 'true' }}
+        permissions:
+            actions: read
+        outputs:
+            matrix: ${{ steps.filter.outputs.matrix }}
+            any: ${{ steps.filter.outputs.any }}
+        steps:
+            -   name: Filter build matrix to arches with successful zig libs
+                id: filter
+                env:
+                    GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+                    ZIG_PHP: ${{ needs.setup-matrix.outputs.zig-php-versions }}
+                run: |
+                    set -euo pipefail
+                    succeeded=$(gh api "repos/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID/jobs" --paginate \
+                        --jq '.jobs[] | select(.conclusion == "success" and (.name | test("^Build libs zig \\("))) | .name' \
+                        | sed -E 's/^Build libs zig \(([^)]+)\)$/\1/' \
+                        | sort -u)
+                    echo "Successful zig libs arches:"
+                    printf '%s\n' "$succeeded"
+
+                    include=$(jq -nc --arg s "$succeeded" --argjson p "$ZIG_PHP" '
+                        ($s | split("\n") | map(select(length > 0) | {arch: .})) as $arches |
+                        [ $arches[] as $a | $p[] as $php | $a + {"php-version": $php} ]
+                    ')
+                    count=$(jq 'length' <<< "$include")
+                    echo "Filtered combos: $count"
+                    printf '%s\n' "$include" | jq .
+
+                    if [[ "$count" -gt 0 ]]; then
+                        echo "any=true" >> $GITHUB_OUTPUT
+                    else
+                        echo "any=false" >> $GITHUB_OUTPUT
+                    fi
+                    echo "matrix={\"include\":$include}" >> $GITHUB_OUTPUT
+
+    build-gcc:
+        needs: [compute-build-gcc-matrix]
+        if: ${{ !cancelled() && needs.compute-build-gcc-matrix.outputs.any == 'true' }}
         name: Build for ${{ matrix.arch }} PHP ${{ matrix.php-version }}
         runs-on: ubuntu-24.04${{ matrix.arch == 'arm64' && '-arm' || '' }}
         container:
@@ -173,7 +334,7 @@ jobs:
                 shell: bash
         strategy:
             fail-fast: false
-            matrix: ${{ fromJson(needs.setup-matrix.outputs.matrix) }}
+            matrix: ${{ fromJson(needs.compute-build-gcc-matrix.outputs.matrix) }}
         env:
             GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
             BASH_ENV: /tmp/gha-bashenv
@@ -230,7 +391,141 @@ jobs:
             -   name: Download prebuilt buildroot
                 uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
                 with:
-                    name: buildroot-deb-${{ matrix.arch }}-${{ matrix.php-version == '8.5' && 'zig' || 'gcc' }}
+                    name: buildroot-deb-${{ matrix.arch }}-gcc
+
+            -   name: Extract buildroot
+                run: |
+                    tar --zstd -xf buildroot.tar.zst
+                    rm buildroot.tar.zst
+
+            -   name: Build PHP packages
+                run: |
+                    PACKAGES_FLAG=""
+                    if [[ -n "${{ env.PACKAGES }}" ]]; then
+                      PACKAGES_FLAG="--packages=${{ env.PACKAGES }}"
+                    fi
+                    ITERATION_FLAG=""
+                    if [[ -n "${ITERATION}" ]]; then
+                      ITERATION_FLAG="--iteration=${ITERATION}"
+                    fi
+                    bin/spp all --phpv=${{ matrix.php-version }} --prefix="-zts" --type=deb --debuginfo $ITERATION_FLAG $PACKAGES_FLAG
+
+            -   name: Upload logs on failure
+                if: ${{ failure() }}
+                uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+                with:
+                    name: build-logs-${{ matrix.arch }}-php${{ matrix.php-version }}
+                    path: log
+
+            -   name: Upload to Forgejo Host 1
+                working-directory: dist/deb
+                run: |
+                    echo "listing from host 1"
+                    ../../bin/forgejo-helper list debian "${{ env.PHP_VERSION_SHORT }}" "${{ secrets.FORGEJO_PASSWORD }}" "*.deb"
+                    echo "uploading to host 1"
+                    ../../bin/forgejo-helper upload debian "${{ env.PHP_VERSION_SHORT }}" "${{ secrets.FORGEJO_PASSWORD }}" "*.deb"
+
+            -   name: Upload to Forgejo Host 2
+                working-directory: dist/deb
+                continue-on-error: true
+                run: |
+                    echo "listing from host 2"
+                    ../../bin/forgejo-helper --host=2 list debian "${{ env.PHP_VERSION_SHORT }}" "${{ secrets.FORGEJO_PASSWORD }}" "*.deb"
+                    echo "uploading to host 2"
+                    ../../bin/forgejo-helper --host=2 upload debian "${{ env.PHP_VERSION_SHORT }}" "${{ secrets.FORGEJO_PASSWORD }}" "*.deb"
+
+            -   name: Install tmate
+                if: ${{ failure() && inputs.debug_tmate == true }}
+                run: |
+                    case "${RPM_ARCH}" in
+                      x86_64)  arch="amd64" ;;
+                      aarch64) arch="arm64v8" ;;
+                    esac
+                    dir="tmate-2.4.0-static-linux-$arch"
+                    curl -L "https://github.com/tmate-io/tmate/releases/download/2.4.0/$dir.tar.xz" | tar -xJ -O "$dir/tmate" > /usr/bin/tmate
+                    chmod +x /usr/bin/tmate
+
+            -   name: Setup tmate session
+                if: ${{ failure() && inputs.debug_tmate == true }}
+                uses: mxschmitt/action-tmate@c0afd6f790e3a5564914980036ebf83216678101 # v3
+                with:
+                    install-dependencies: false
+                    sudo: false
+                timeout-minutes: 30
+
+    build-zig:
+        needs: [compute-build-zig-matrix]
+        if: ${{ !cancelled() && needs.compute-build-zig-matrix.outputs.any == 'true' }}
+        name: Build for ${{ matrix.arch }} PHP ${{ matrix.php-version }}
+        runs-on: ubuntu-24.04${{ matrix.arch == 'arm64' && '-arm' || '' }}
+        container:
+            image: ghcr.io/static-php/packages-builder-debian:latest
+        permissions:
+            contents: read
+            packages: read
+        defaults:
+            run:
+                shell: bash
+        strategy:
+            fail-fast: false
+            matrix: ${{ fromJson(needs.compute-build-zig-matrix.outputs.matrix) }}
+        env:
+            GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+            BASH_ENV: /tmp/gha-bashenv
+            ITERATION: ${{ inputs.iteration || '' }}
+            PACKAGES: ${{ inputs.packages || '' }}
+            FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
+        steps:
+            -   name: Checkout code
+                uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+                with:
+                    persist-credentials: false
+
+            -   name: Set architecture variables
+                run: |
+                    if [[ "${{ matrix.arch }}" == "arm64" ]]; then
+                      echo "RPM_ARCH=aarch64" >> $GITHUB_ENV
+                    else
+                      echo "RPM_ARCH=x86_64" >> $GITHUB_ENV
+                    fi
+
+            -   name: Set PHP version short
+                run: |
+                    PHP_VERSION_SHORT=$(echo "${{ matrix.php-version }}" | tr -d '.')
+                    echo "PHP_VERSION_SHORT=$PHP_VERSION_SHORT" >> $GITHUB_ENV
+
+            -   name: Prepare cache directories
+                run: composer config -g cache-dir
+
+            -   name: Cache Composer downloads
+                uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
+                with:
+                    path: ~/.cache/composer
+                    key: composer-${{ hashFiles('**/composer.lock') }}
+                    restore-keys: |
+                        composer-
+
+            -   name: Install vendor
+                run: composer install --no-interaction --prefer-dist --no-progress
+
+            -   name: Download artifact from spc-download.yml
+                uses: dawidd6/action-download-artifact@ac66b43f0e6a346234dd65d4d0c8fbb31cb316e5 # v11
+                with:
+                    workflow: spc-download.yml
+                    name: downloads-tarball
+                    branch: master
+
+            -   name: Extract with permissions
+                run: |
+                    mkdir -p downloads
+                    tar -xzf downloads.tar.gz -C downloads
+                    rm downloads.tar.gz
+
+            -   name: Download prebuilt buildroot
+                uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+                with:
+                    name: buildroot-deb-${{ matrix.arch }}-zig
 
             -   name: Extract buildroot
                 run: |
