@@ -73,6 +73,7 @@ RUN U=$(id -un 1000 2>/dev/null || echo "") && \
 ENV PKG_ROOT_PATH=/opt/spc-pkgroot
 COPY composer.json composer.lock /tmp/spc-bootstrap/
 RUN cd /tmp/spc-bootstrap && \
+    mkdir -p src && \
     composer install --no-interaction --prefer-dist --no-progress --no-scripts && \
     php vendor/bin/spc install-pkg go-xcaddy && \
     php vendor/bin/spc install-pkg zig && \
