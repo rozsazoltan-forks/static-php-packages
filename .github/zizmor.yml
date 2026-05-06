@@ -1,0 +1,6 @@
+rules:
+  unpinned-images:
+    ignore:
+      - build-apk-forgejo.yml
+      - build-deb-forgejo.yml
+      - build-rpm-modular-packages.yml
