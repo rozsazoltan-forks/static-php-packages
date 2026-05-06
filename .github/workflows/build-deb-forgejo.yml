@@ -113,10 +113,39 @@ jobs:
                       echo "RPM_ARCH=x86_64" >> $GITHUB_ENV
                     fi
 
+            -   name: Download artifact from spc-download.yml
+                uses: dawidd6/action-download-artifact@ac66b43f0e6a346234dd65d4d0c8fbb31cb316e5 # v11
+                with:
+                    workflow: spc-download.yml
+                    name: downloads-tarball
+                    branch: master
+
+            -   name: Compute buildroot cache key
+                id: cache-key
+                run: |
+                    set -euo pipefail
+                    HASH=$(
+                      {
+                        sha256sum composer.lock craft.yml bin/spp Dockerfile.debian downloads.tar.gz
+                        find src -type f -print0 | LC_ALL=C sort -z | xargs -0 sha256sum
+                      } | sha256sum | cut -c1-16
+                    )
+                    WEEK=$(date -u +%G-%V)
+                    echo "key=buildroot-deb-${{ matrix.arch }}-gcc-${WEEK}-${HASH}" >> $GITHUB_OUTPUT
+
+            -   name: Restore buildroot cache
+                id: cache
+                uses: actions/cache/restore@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
+                with:
+                    path: buildroot.tar.zst
+                    key: ${{ steps.cache-key.outputs.key }}
+
             -   name: Prepare cache directories
+                if: steps.cache.outputs.cache-hit != 'true'
                 run: composer config -g cache-dir
 
             -   name: Cache Composer downloads
+                if: steps.cache.outputs.cache-hit != 'true'
                 uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
                 with:
                     path: ~/.cache/composer
@@ -125,26 +154,30 @@ jobs:
                         composer-
 
             -   name: Install vendor
+                if: steps.cache.outputs.cache-hit != 'true'
                 run: composer install --no-interaction --prefer-dist --no-progress
 
-            -   name: Download artifact from spc-download.yml
-                uses: dawidd6/action-download-artifact@ac66b43f0e6a346234dd65d4d0c8fbb31cb316e5 # v11
-                with:
-                    workflow: spc-download.yml
-                    name: downloads-tarball
-                    branch: master
-
             -   name: Extract with permissions
+                if: steps.cache.outputs.cache-hit != 'true'
                 run: |
                     mkdir -p downloads
                     tar -xzf downloads.tar.gz -C downloads
                     rm downloads.tar.gz
 
             -   name: Build libs
+                if: steps.cache.outputs.cache-hit != 'true'
                 run: bin/spp build --phpv=8.4 --type=deb --libs-only
 
             -   name: Pack buildroot
+                if: steps.cache.outputs.cache-hit != 'true'
                 run: tar --zstd -cf buildroot.tar.zst buildroot
+
+            -   name: Save buildroot cache
+                if: steps.cache.outputs.cache-hit != 'true'
+                uses: actions/cache/save@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
+                with:
+                    path: buildroot.tar.zst
+                    key: ${{ steps.cache-key.outputs.key }}
 
             -   name: Upload buildroot
                 uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
@@ -194,10 +227,39 @@ jobs:
                       echo "RPM_ARCH=x86_64" >> $GITHUB_ENV
                     fi
 
+            -   name: Download artifact from spc-download.yml
+                uses: dawidd6/action-download-artifact@ac66b43f0e6a346234dd65d4d0c8fbb31cb316e5 # v11
+                with:
+                    workflow: spc-download.yml
+                    name: downloads-tarball
+                    branch: master
+
+            -   name: Compute buildroot cache key
+                id: cache-key
+                run: |
+                    set -euo pipefail
+                    HASH=$(
+                      {
+                        sha256sum composer.lock craft.yml bin/spp Dockerfile.debian downloads.tar.gz
+                        find src -type f -print0 | LC_ALL=C sort -z | xargs -0 sha256sum
+                      } | sha256sum | cut -c1-16
+                    )
+                    WEEK=$(date -u +%G-%V)
+                    echo "key=buildroot-deb-${{ matrix.arch }}-zig-${WEEK}-${HASH}" >> $GITHUB_OUTPUT
+
+            -   name: Restore buildroot cache
+                id: cache
+                uses: actions/cache/restore@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
+                with:
+                    path: buildroot.tar.zst
+                    key: ${{ steps.cache-key.outputs.key }}
+
             -   name: Prepare cache directories
+                if: steps.cache.outputs.cache-hit != 'true'
                 run: composer config -g cache-dir
 
             -   name: Cache Composer downloads
+                if: steps.cache.outputs.cache-hit != 'true'
                 uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
                 with:
                     path: ~/.cache/composer
@@ -206,26 +268,30 @@ jobs:
                         composer-
 
             -   name: Install vendor
+                if: steps.cache.outputs.cache-hit != 'true'
                 run: composer install --no-interaction --prefer-dist --no-progress
 
-            -   name: Download artifact from spc-download.yml
-                uses: dawidd6/action-download-artifact@ac66b43f0e6a346234dd65d4d0c8fbb31cb316e5 # v11
-                with:
-                    workflow: spc-download.yml
-                    name: downloads-tarball
-                    branch: master
-
             -   name: Extract with permissions
+                if: steps.cache.outputs.cache-hit != 'true'
                 run: |
                     mkdir -p downloads
                     tar -xzf downloads.tar.gz -C downloads
                     rm downloads.tar.gz
 
             -   name: Build libs
+                if: steps.cache.outputs.cache-hit != 'true'
                 run: bin/spp build --phpv=8.5 --type=deb --libs-only
 
             -   name: Pack buildroot
+                if: steps.cache.outputs.cache-hit != 'true'
                 run: tar --zstd -cf buildroot.tar.zst buildroot
+
+            -   name: Save buildroot cache
+                if: steps.cache.outputs.cache-hit != 'true'
+                uses: actions/cache/save@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
+                with:
+                    path: buildroot.tar.zst
+                    key: ${{ steps.cache-key.outputs.key }}
 
             -   name: Upload buildroot
                 uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
