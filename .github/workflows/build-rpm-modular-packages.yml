@@ -129,24 +129,12 @@ jobs:
                 env:
                     MATRIX_ARCH: ${{ matrix.arch }}
 
-            -   name: Download artifact from spc-download.yml
-                uses: dawidd6/action-download-artifact@ac66b43f0e6a346234dd65d4d0c8fbb31cb316e5 # v11
-                with:
-                    workflow: spc-download.yml
-                    name: downloads-tarball
-
             -   name: Compute buildroot cache key
                 id: cache-key
                 run: |
                     set -euo pipefail
-                    HASH=$(
-                      {
-                        sha256sum composer.lock craft.yml bin/spp Dockerfile.rhel downloads.tar.gz
-                        find src -type f -print0 | LC_ALL=C sort -z | xargs -0 sha256sum
-                      } | sha256sum | cut -c1-16
-                    )
                     WEEK=$(date -u +%G-%V)
-                    echo "key=buildroot-rpm-alma${{ matrix.alma }}-${{ matrix.arch }}-gcc-${WEEK}-${HASH}" >> $GITHUB_OUTPUT
+                    echo "key=buildroot-rpm-alma${{ matrix.alma }}-${{ matrix.arch }}-gcc-${WEEK}" >> $GITHUB_OUTPUT
 
             -   name: Restore buildroot cache
                 id: cache
@@ -154,6 +142,13 @@ jobs:
                 with:
                     path: buildroot.tar.zst
                     key: ${{ steps.cache-key.outputs.key }}
+
+            -   name: Download artifact from spc-download.yml
+                if: steps.cache.outputs.cache-hit != 'true'
+                uses: dawidd6/action-download-artifact@ac66b43f0e6a346234dd65d4d0c8fbb31cb316e5 # v11
+                with:
+                    workflow: spc-download.yml
+                    name: downloads-tarball
 
             -   name: Prepare cache directories
                 if: steps.cache.outputs.cache-hit != 'true'
@@ -194,19 +189,33 @@ jobs:
                     path: buildroot.tar.zst
                     key: ${{ steps.cache-key.outputs.key }}
 
-            -   name: Upload buildroot
-                uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
-                with:
-                    name: buildroot-rpm-alma${{ matrix.alma }}-${{ matrix.arch }}-gcc
-                    path: buildroot.tar.zst
-                    retention-days: 1
-
             -   name: Upload logs on failure
                 if: ${{ failure() }}
                 uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
                 with:
                     name: build-logs-libs-alma${{ matrix.alma }}-${{ matrix.arch }}-gcc
                     path: log
+
+            -   name: Install tmate
+                if: ${{ failure() && inputs.debug_tmate == true }}
+                run: |
+                    case "${MATRIX_ARCH}" in
+                      x86_64) arch="amd64" ;;
+                      arm64)  arch="arm64v8" ;;
+                    esac
+                    dir="tmate-2.4.0-static-linux-$arch"
+                    curl -L "https://github.com/tmate-io/tmate/releases/download/2.4.0/$dir.tar.xz" | tar -xJ -O "$dir/tmate" > /usr/bin/tmate
+                    chmod +x /usr/bin/tmate
+                env:
+                    MATRIX_ARCH: ${{ matrix.arch }}
+
+            -   name: Setup tmate session
+                if: ${{ failure() && inputs.debug_tmate == true }}
+                uses: mxschmitt/action-tmate@c0afd6f790e3a5564914980036ebf83216678101 # v3
+                with:
+                    install-dependencies: false
+                    sudo: false
+                timeout-minutes: 30
 
     build-libs-zig:
         needs: setup-matrix
@@ -244,24 +253,12 @@ jobs:
                 env:
                     MATRIX_ARCH: ${{ matrix.arch }}
 
-            -   name: Download artifact from spc-download.yml
-                uses: dawidd6/action-download-artifact@ac66b43f0e6a346234dd65d4d0c8fbb31cb316e5 # v11
-                with:
-                    workflow: spc-download.yml
-                    name: downloads-tarball
-
             -   name: Compute buildroot cache key
                 id: cache-key
                 run: |
                     set -euo pipefail
-                    HASH=$(
-                      {
-                        sha256sum composer.lock craft.yml bin/spp Dockerfile.rhel downloads.tar.gz
-                        find src -type f -print0 | LC_ALL=C sort -z | xargs -0 sha256sum
-                      } | sha256sum | cut -c1-16
-                    )
                     WEEK=$(date -u +%G-%V)
-                    echo "key=buildroot-rpm-alma${{ matrix.alma }}-${{ matrix.arch }}-zig-${WEEK}-${HASH}" >> $GITHUB_OUTPUT
+                    echo "key=buildroot-rpm-alma${{ matrix.alma }}-${{ matrix.arch }}-zig-${WEEK}" >> $GITHUB_OUTPUT
 
             -   name: Restore buildroot cache
                 id: cache
@@ -269,6 +266,13 @@ jobs:
                 with:
                     path: buildroot.tar.zst
                     key: ${{ steps.cache-key.outputs.key }}
+
+            -   name: Download artifact from spc-download.yml
+                if: steps.cache.outputs.cache-hit != 'true'
+                uses: dawidd6/action-download-artifact@ac66b43f0e6a346234dd65d4d0c8fbb31cb316e5 # v11
+                with:
+                    workflow: spc-download.yml
+                    name: downloads-tarball
 
             -   name: Prepare cache directories
                 if: steps.cache.outputs.cache-hit != 'true'
@@ -309,19 +313,33 @@ jobs:
                     path: buildroot.tar.zst
                     key: ${{ steps.cache-key.outputs.key }}
 
-            -   name: Upload buildroot
-                uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
-                with:
-                    name: buildroot-rpm-alma${{ matrix.alma }}-${{ matrix.arch }}-zig
-                    path: buildroot.tar.zst
-                    retention-days: 1
-
             -   name: Upload logs on failure
                 if: ${{ failure() }}
                 uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
                 with:
                     name: build-logs-libs-alma${{ matrix.alma }}-${{ matrix.arch }}-zig
                     path: log
+
+            -   name: Install tmate
+                if: ${{ failure() && inputs.debug_tmate == true }}
+                run: |
+                    case "${MATRIX_ARCH}" in
+                      x86_64) arch="amd64" ;;
+                      arm64)  arch="arm64v8" ;;
+                    esac
+                    dir="tmate-2.4.0-static-linux-$arch"
+                    curl -L "https://github.com/tmate-io/tmate/releases/download/2.4.0/$dir.tar.xz" | tar -xJ -O "$dir/tmate" > /usr/bin/tmate
+                    chmod +x /usr/bin/tmate
+                env:
+                    MATRIX_ARCH: ${{ matrix.arch }}
+
+            -   name: Setup tmate session
+                if: ${{ failure() && inputs.debug_tmate == true }}
+                uses: mxschmitt/action-tmate@c0afd6f790e3a5564914980036ebf83216678101 # v3
+                with:
+                    install-dependencies: false
+                    sudo: false
+                timeout-minutes: 30
 
     compute-build-gcc-matrix:
         needs: [setup-matrix, build-libs-gcc]
@@ -499,10 +517,21 @@ jobs:
                     tar -xzf downloads.tar.gz -C downloads
                     rm downloads.tar.gz
 
-            -   name: Download prebuilt buildroot
-                uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+            -   name: Compute buildroot cache key
+                id: cache-key
+                run: |
+                    set -euo pipefail
+                    WEEK=$(date -u +%G-%V)
+                    echo "key=buildroot-rpm-alma${{ matrix.alma }}-${{ matrix.arch }}-gcc-${WEEK}" >> $GITHUB_OUTPUT
+
+            -   name: Restore buildroot cache
+                uses: actions/cache/restore@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
                 with:
-                    name: buildroot-rpm-alma${{ matrix.alma }}-${{ matrix.arch }}-gcc
+                    path: buildroot.tar.zst
+                    key: ${{ steps.cache-key.outputs.key }}
+                    restore-keys: |
+                        buildroot-rpm-alma${{ matrix.alma }}-${{ matrix.arch }}-gcc-
+                    fail-on-cache-miss: true
 
             -   name: Extract buildroot
                 run: |
@@ -679,10 +708,21 @@ jobs:
                     tar -xzf downloads.tar.gz -C downloads
                     rm downloads.tar.gz
 
-            -   name: Download prebuilt buildroot
-                uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+            -   name: Compute buildroot cache key
+                id: cache-key
+                run: |
+                    set -euo pipefail
+                    WEEK=$(date -u +%G-%V)
+                    echo "key=buildroot-rpm-alma${{ matrix.alma }}-${{ matrix.arch }}-zig-${WEEK}" >> $GITHUB_OUTPUT
+
+            -   name: Restore buildroot cache
+                uses: actions/cache/restore@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
                 with:
-                    name: buildroot-rpm-alma${{ matrix.alma }}-${{ matrix.arch }}-zig
+                    path: buildroot.tar.zst
+                    key: ${{ steps.cache-key.outputs.key }}
+                    restore-keys: |
+                        buildroot-rpm-alma${{ matrix.alma }}-${{ matrix.arch }}-zig-
+                    fail-on-cache-miss: true
 
             -   name: Extract buildroot
                 run: |

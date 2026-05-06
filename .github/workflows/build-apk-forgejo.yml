@@ -97,10 +97,26 @@ jobs:
                 with:
                     persist-credentials: false
 
+            -   name: Compute buildroot cache key
+                id: cache-key
+                run: |
+                    set -euo pipefail
+                    WEEK=$(date -u +%G-%V)
+                    echo "key=buildroot-apk-${{ matrix.arch }}-${WEEK}" >> $GITHUB_OUTPUT
+
+            -   name: Restore buildroot cache
+                id: cache
+                uses: actions/cache/restore@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
+                with:
+                    path: buildroot.tar.zst
+                    key: ${{ steps.cache-key.outputs.key }}
+
             -   name: Prepare cache directories
+                if: steps.cache.outputs.cache-hit != 'true'
                 run: composer config -g cache-dir
 
             -   name: Cache Composer downloads
+                if: steps.cache.outputs.cache-hit != 'true'
                 uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
                 with:
                     path: ~/.cache/composer
@@ -109,9 +125,11 @@ jobs:
                         composer-
 
             -   name: Install vendor
+                if: steps.cache.outputs.cache-hit != 'true'
                 run: composer install --no-interaction --prefer-dist --no-progress
 
             -   name: Download artifact from spc-download.yml
+                if: steps.cache.outputs.cache-hit != 'true'
                 uses: dawidd6/action-download-artifact@ac66b43f0e6a346234dd65d4d0c8fbb31cb316e5 # v11
                 with:
                     workflow: spc-download.yml
@@ -119,23 +137,26 @@ jobs:
                     branch: master
 
             -   name: Extract with permissions
+                if: steps.cache.outputs.cache-hit != 'true'
                 run: |
                     mkdir -p downloads
                     tar -xzf downloads.tar.gz -C downloads
                     rm downloads.tar.gz
 
             -   name: Build libs (via PHP 8.5 reference build)
+                if: steps.cache.outputs.cache-hit != 'true'
                 run: php bin/spp all --target="native-native-musl -dynamic" --phpv=8.5 --prefix="-zts" --type=apk
 
             -   name: Pack buildroot
+                if: steps.cache.outputs.cache-hit != 'true'
                 run: tar --zstd -cf buildroot.tar.zst buildroot
 
-            -   name: Upload buildroot
-                uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+            -   name: Save buildroot cache
+                if: steps.cache.outputs.cache-hit != 'true'
+                uses: actions/cache/save@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
                 with:
-                    name: buildroot-apk-${{ matrix.arch }}
                     path: buildroot.tar.zst
-                    retention-days: 1
+                    key: ${{ steps.cache-key.outputs.key }}
 
             -   name: Upload logs on failure
                 if: ${{ failure() }}
@@ -143,6 +164,11 @@ jobs:
                 with:
                     name: build-logs-libs-${{ matrix.arch }}
                     path: log
+
+            -   name: Setup tmate session
+                if: ${{ failure() && inputs.debug_tmate == true }}
+                uses: mxschmitt/action-tmate@c0afd6f790e3a5564914980036ebf83216678101 # v3
+                timeout-minutes: 30
 
     build:
         needs: [setup-matrix, build-libs]
@@ -204,10 +230,21 @@ jobs:
                     tar -xzf downloads.tar.gz -C downloads
                     rm downloads.tar.gz
 
-            -   name: Download prebuilt buildroot
-                uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+            -   name: Compute buildroot cache key
+                id: cache-key
+                run: |
+                    set -euo pipefail
+                    WEEK=$(date -u +%G-%V)
+                    echo "key=buildroot-apk-${{ matrix.arch }}-${WEEK}" >> $GITHUB_OUTPUT
+
+            -   name: Restore buildroot cache
+                uses: actions/cache/restore@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
                 with:
-                    name: buildroot-apk-${{ matrix.arch }}
+                    path: buildroot.tar.zst
+                    key: ${{ steps.cache-key.outputs.key }}
+                    restore-keys: |
+                        buildroot-apk-${{ matrix.arch }}-
+                    fail-on-cache-miss: true
 
             -   name: Extract buildroot
                 run: |
