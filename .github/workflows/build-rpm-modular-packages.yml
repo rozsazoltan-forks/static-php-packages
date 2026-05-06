@@ -784,7 +784,7 @@ jobs:
                     echo "Successful build combos:"
                     printf '%s\n' "$succeeded"
 
-                    include=$(jq -Rs '
+                    include=$(jq -cRs '
                         split("\n")
                         | map(select(length > 0))
                         | map(split(" ") | {alma: .[0], arch: .[1]})
