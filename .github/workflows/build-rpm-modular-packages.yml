@@ -189,6 +189,14 @@ jobs:
                     path: buildroot.tar.zst
                     key: ${{ steps.cache-key.outputs.key }}
 
+            -   name: Upload buildroot
+#                if: steps.cache.outputs.cache-hit != 'true'
+                uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+                with:
+                    name: buildroot-rpm-alma${{ matrix.alma }}-${{ matrix.arch }}-gcc
+                    path: buildroot.tar.zst
+                    retention-days: 1
+
             -   name: Upload logs on failure
                 if: ${{ failure() }}
                 uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
@@ -312,6 +320,14 @@ jobs:
                 with:
                     path: buildroot.tar.zst
                     key: ${{ steps.cache-key.outputs.key }}
+
+            -   name: Upload buildroot
+#                if: steps.cache.outputs.cache-hit != 'true'
+                uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+                with:
+                    name: buildroot-rpm-alma${{ matrix.alma }}-${{ matrix.arch }}-zig
+                    path: buildroot.tar.zst
+                    retention-days: 1
 
             -   name: Upload logs on failure
                 if: ${{ failure() }}
