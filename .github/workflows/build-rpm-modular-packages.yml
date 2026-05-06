@@ -156,7 +156,7 @@ jobs:
                 run: php bin/spp build --type=rpm --debuginfo --phpv=${{ matrix.phpv }} --libs-only
 
             -   name: Pack buildroot
-                run: tar --zstd -cf buildroot.tar.zst buildroot
+                run: tar -cf - buildroot | zstd -o buildroot.tar.zst
 
             -   name: Upload buildroot
                 uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
@@ -275,7 +275,7 @@ jobs:
 
             -   name: Extract buildroot
                 run: |
-                    tar --zstd -xf buildroot.tar.zst
+                    zstd -dc buildroot.tar.zst | tar -xf -
                     rm buildroot.tar.zst
 
             -   name: Build PHP
