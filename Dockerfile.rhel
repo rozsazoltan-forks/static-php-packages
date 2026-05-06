@@ -43,7 +43,7 @@ RUN if [[ "${ALMA_VERSION}" == "9" || "${ALMA_VERSION}" == "10" ]]; then \
     else \
         dnf -y install python39 && \
         curl -L https://github.com/skvadrik/re2c/releases/download/4.3/re2c-4.3.tar.xz | tar xJ && \
-        cd re2c-4.3 && ./configure && make -j2 && make install && cd .. && rm -rf re2c-4.3; \
+        cd re2c-4.3 && ./configure && make -j"$(nproc)" && make install && cd .. && rm -rf re2c-4.3; \
     fi
 
 RUN if [[ "${ALMA_VERSION}" == "8" || "${ALMA_VERSION}" == "9" ]]; then \

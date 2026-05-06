@@ -9,4 +9,5 @@
 /.idea
 /dist
 craft.yml
-.claude/
+/.claude/
+/.docker-home/

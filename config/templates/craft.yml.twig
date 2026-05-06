@@ -13,7 +13,7 @@
 {%- set cflags =
   '-fPIC -O3 -pipe -fno-plt -fno-semantic-interposition -fstack-clash-protection -fno-omit-frame-pointer -mno-omit-leaf-frame-pointer -ffunction-sections -fdata-sections' ~ arch_flags
 -%}
-{%- set cflags = (using_gcc ? '' : '-flto ') ~ cflags -%}
+{%- set cflags = (using_gcc ? '' : '-flto=thin ') ~ cflags -%}
 {%- set is_rhel = os in ['7', '8', '9', '10'] and type == 'rpm' -%}
 {%- if using_gcc and is_rhel -%}
     {%- if os == '7' or os == '8' -%}
@@ -99,10 +99,10 @@ extra-env:
     SPC_CMD_VAR_PHP_EMBED_TYPE: 'shared'
     SPC_MICRO_PATCHES:
     SPC_DEFAULT_C_FLAGS: "{{ cflags }}"
-    SPC_DEFAULT_CXX_FLAGS: "{{ cflags }} -fasynchronous-unwind-tables{{ using_gcc ? '' : ' -fwhole-program-vtables -fstrict-vtable-pointers -fvirtual-function-elimination' }}"
-    SPC_DEFAULT_LD_FLAGS: "-Wl,-z,relro -Wl,--as-needed -Wl,-z,now -Wl,-z,noexecstack -Wl,--gc-sections {{ using_gcc and is_rhel ? specs_ldflags : '' }}{{ not using_gcc ? ' -flto' : '' }}"
-    SPC_CMD_VAR_PHP_MAKE_EXTRA_CFLAGS: "{{ cflags }} -g -fPIE{{ using_gcc ? '' : ' -flto'}}"
-    SPC_CMD_VAR_PHP_MAKE_EXTRA_LDFLAGS: "-Wl,--build-id=sha1 -pie -release {{ release_suffix }}{{ using_gcc ? '' : ' -flto'}}"
+    SPC_DEFAULT_CXX_FLAGS: "{{ cflags }} -fasynchronous-unwind-tables"
+    SPC_DEFAULT_LD_FLAGS: "-Wl,-z,relro -Wl,--as-needed -Wl,-z,now -Wl,-z,noexecstack -Wl,--gc-sections {{ using_gcc and is_rhel ? specs_ldflags : '' }}{{ not using_gcc ? ' -flto=thin' : '' }}"
+    SPC_CMD_VAR_PHP_MAKE_EXTRA_CFLAGS: "{{ cflags }} -g -fPIE{{ using_gcc ? '' : ' -flto=thin'}}"
+    SPC_CMD_VAR_PHP_MAKE_EXTRA_LDFLAGS: "-Wl,--build-id=sha1 -pie -release {{ release_suffix }}{{ using_gcc ? '' : ' -flto=thin'}}"
     SPC_CMD_PREFIX_PHP_CONFIGURE: "./configure --prefix= --with-valgrind=no --disable-shared --enable-static --disable-all --disable-cgi --disable-phpdbg --disable-debug --with-pic --enable-rtld-now --enable-re2c-cgoto --disable-rpath"
     SPC_CMD_VAR_FRANKENPHP_XCADDY_MODULES: "--with github.com/dunglas/frankenphp/caddy --with github.com/dunglas/mercure/caddy --with github.com/dunglas/vulcain/caddy --with github.com/dunglas/caddy-cbrotli --with github.com/baldinof/caddy-supervisor"
     PHP_BUILD_PROVIDER: "Static PHP <https://static-php.dev> #StandWithUkraine"
