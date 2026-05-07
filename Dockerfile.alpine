@@ -14,7 +14,7 @@ RUN if [ -z "${RPM_ARCH}" ]; then \
 
 RUN apt-get update && \
     apt-get install -y curl build-essential tar zstd python3 python3-requests jq gzip xz-utils sudo git gnupg llvm \
-        bison re2c flex autoconf automake autopoint libtool pkg-config && \
+        bison re2c flex autoconf automake autopoint libtool pkg-config unzip cmake && \
     apt-get upgrade -y && \
     mkdir -p /usr/lib/bfd-plugins && \
     PLUGIN=$(find /usr/lib /usr/lib64 -name LLVMgold.so 2>/dev/null | head -1) && \
@@ -46,6 +46,7 @@ RUN cd /tmp/spc-bootstrap && \
     composer install --no-interaction --prefer-dist --no-progress --no-scripts && \
     php vendor/bin/spc install-pkg go-xcaddy && \
     php vendor/bin/spc install-pkg zig && \
+    SPC_TARGET=native-native-musl php vendor/bin/spc doctor --auto-fix --debug && \
     rm -rf /tmp/spc-bootstrap /root/.composer /root/.cache
 
 WORKDIR /build
