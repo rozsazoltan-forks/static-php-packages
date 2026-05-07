@@ -2,6 +2,8 @@ FROM debian:11
 
 ARG TARGETARCH
 ARG RPM_ARCH
+ARG UID=1000
+ARG GID=1000
 
 RUN if [ -z "${RPM_ARCH}" ]; then \
         case "${TARGETARCH:-$(dpkg --print-architecture 2>/dev/null || uname -m)}" in \
@@ -44,6 +46,7 @@ RUN cd /tmp/spc-bootstrap && \
     php vendor/bin/spc install-pkg go-xcaddy && \
     php vendor/bin/spc install-pkg zig && \
     SPC_TARGET=native-native-musl php vendor/bin/spc doctor --auto-fix --debug && \
-    rm -rf /tmp/spc-bootstrap /root/.composer /root/.cache
+    rm -rf /tmp/spc-bootstrap /root/.composer /root/.cache && \
+    chown -R ${UID}:${GID} "$PKG_ROOT_PATH"
 
 WORKDIR /build

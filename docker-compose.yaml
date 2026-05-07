@@ -13,6 +13,9 @@ services:
     build:
       context: .
       dockerfile: Dockerfile.debian
+      args:
+        UID: "${UID:-1000}"
+        GID: "${GID:-1000}"
     container_name: packages-debian
 
   alpine:
@@ -20,6 +23,9 @@ services:
     build:
       context: .
       dockerfile: Dockerfile.alpine
+      args:
+        UID: "${UID:-1000}"
+        GID: "${GID:-1000}"
     container_name: packages-alpine
 
   rhel-8:
@@ -29,6 +35,8 @@ services:
       dockerfile: Dockerfile.rhel
       args:
         ALMA_VERSION: "8"
+        UID: "${UID:-1000}"
+        GID: "${GID:-1000}"
     container_name: packages-rhel-8
 
   rhel-9:
@@ -38,6 +46,8 @@ services:
       dockerfile: Dockerfile.rhel
       args:
         ALMA_VERSION: "9"
+        UID: "${UID:-1000}"
+        GID: "${GID:-1000}"
     container_name: packages-rhel-9
 
   rhel-10:
@@ -47,4 +57,6 @@ services:
       dockerfile: Dockerfile.rhel
       args:
         ALMA_VERSION: "10"
+        UID: "${UID:-1000}"
+        GID: "${GID:-1000}"
     container_name: packages-rhel-10
