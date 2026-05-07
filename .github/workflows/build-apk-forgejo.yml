@@ -152,7 +152,7 @@ jobs:
                 run: tar --zstd -cf buildroot.tar.zst buildroot
 
             -   name: Save buildroot cache
-                if: steps.cache.outputs.cache-hit != 'true'
+                if: steps.cache.outputs.cache-hit != 'true' && !inputs.packages
                 uses: ./.github/actions/buildroot-cache
                 with:
                     mode: save
