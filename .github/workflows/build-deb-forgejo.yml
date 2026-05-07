@@ -87,7 +87,7 @@ jobs:
         container:
             image: ghcr.io/static-php/packages-builder-debian:latest
         permissions:
-            contents: read
+            contents: write
             packages: read
         defaults:
             run:
@@ -122,9 +122,9 @@ jobs:
 
             -   name: Restore buildroot cache
                 id: cache
-                uses: actions/cache/restore@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
+                uses: ./.github/actions/buildroot-cache
                 with:
-                    path: buildroot.tar.zst
+                    mode: restore
                     key: ${{ steps.cache-key.outputs.key }}
 
             -   name: Download artifact from spc-download.yml
@@ -169,9 +169,9 @@ jobs:
 
             -   name: Save buildroot cache
                 if: steps.cache.outputs.cache-hit != 'true'
-                uses: actions/cache/save@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
+                uses: ./.github/actions/buildroot-cache
                 with:
-                    path: buildroot.tar.zst
+                    mode: save
                     key: ${{ steps.cache-key.outputs.key }}
 
             -   name: Upload logs on failure
@@ -208,7 +208,7 @@ jobs:
         container:
             image: ghcr.io/static-php/packages-builder-debian:latest
         permissions:
-            contents: read
+            contents: write
             packages: read
         defaults:
             run:
@@ -243,9 +243,9 @@ jobs:
 
             -   name: Restore buildroot cache
                 id: cache
-                uses: actions/cache/restore@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
+                uses: ./.github/actions/buildroot-cache
                 with:
-                    path: buildroot.tar.zst
+                    mode: restore
                     key: ${{ steps.cache-key.outputs.key }}
 
             -   name: Download artifact from spc-download.yml
@@ -290,9 +290,9 @@ jobs:
 
             -   name: Save buildroot cache
                 if: steps.cache.outputs.cache-hit != 'true'
-                uses: actions/cache/save@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
+                uses: ./.github/actions/buildroot-cache
                 with:
-                    path: buildroot.tar.zst
+                    mode: save
                     key: ${{ steps.cache-key.outputs.key }}
 
             -   name: Upload logs on failure
@@ -476,12 +476,10 @@ jobs:
                     echo "key=buildroot-deb-${{ matrix.arch }}-gcc-${WEEK}" >> $GITHUB_OUTPUT
 
             -   name: Restore buildroot cache
-                uses: actions/cache/restore@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
+                uses: ./.github/actions/buildroot-cache
                 with:
-                    path: buildroot.tar.zst
+                    mode: restore
                     key: ${{ steps.cache-key.outputs.key }}
-                    restore-keys: |
-                        buildroot-deb-${{ matrix.arch }}-gcc-
                     fail-on-cache-miss: true
 
             -   name: Extract buildroot
@@ -621,12 +619,10 @@ jobs:
                     echo "key=buildroot-deb-${{ matrix.arch }}-zig-${WEEK}" >> $GITHUB_OUTPUT
 
             -   name: Restore buildroot cache
-                uses: actions/cache/restore@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
+                uses: ./.github/actions/buildroot-cache
                 with:
-                    path: buildroot.tar.zst
+                    mode: restore
                     key: ${{ steps.cache-key.outputs.key }}
-                    restore-keys: |
-                        buildroot-deb-${{ matrix.arch }}-zig-
                     fail-on-cache-miss: true
 
             -   name: Extract buildroot

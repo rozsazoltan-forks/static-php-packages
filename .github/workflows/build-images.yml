@@ -71,6 +71,8 @@ jobs:
                     file: ${{ matrix.image.dockerfile }}
                     platforms: linux/${{ matrix.platform.arch }}
                     build-args: ${{ matrix.image.build-args }}
+                    cache-from: type=gha,scope=${{ matrix.image.name }}-${{ matrix.platform.arch }}
+                    cache-to: type=gha,scope=${{ matrix.image.name }}-${{ matrix.platform.arch }},mode=max
                     outputs: type=image,name=${{ env.REGISTRY }}/${{ env.OWNER }}/${{ matrix.image.name }},push-by-digest=true,name-canonical=true,push=true
 
             -   name: Export digest
