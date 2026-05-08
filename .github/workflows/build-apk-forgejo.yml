@@ -37,17 +37,15 @@ jobs:
         permissions:
             contents: read
         outputs:
-            matrix: ${{ steps.set-matrix.outputs.matrix }}
-            archs: ${{ steps.set-matrix.outputs.archs }}
+            libs-pairs: ${{ steps.set-matrix.outputs.libs-pairs }}
+            php-versions: ${{ steps.set-matrix.outputs.php-versions }}
         steps:
             -   name: Set up matrix
                 id: set-matrix
                 run: |
-                    # Default values
                     default_php='["8.2","8.3","8.4","8.5"]'
                     default_arch='["x86_64","aarch64"]'
 
-                    # Parse inputs or use defaults
                     if [[ -n "${INPUTS_PHP_VERSIONS}" ]]; then
                         php_versions=$(echo "${INPUTS_PHP_VERSIONS}" | jq -R 'split(",") | map(gsub("^\\s+|\\s+$";""))')
                     else
@@ -60,15 +58,10 @@ jobs:
                         arch_versions=$default_arch
                     fi
 
-                    matrix=$(jq -nc \
-                        --argjson php "$php_versions" \
-                        --argjson arch "$arch_versions" \
-                        '{"php-version":$php,"arch":$arch}')
+                    libs_pairs=$(jq -nc --argjson arch "$arch_versions" '{include: [$arch[] as $r | {arch: $r}]}')
 
-                    archs=$(jq -nc --argjson arch "$arch_versions" '{"arch":$arch}')
-
-                    echo "matrix=$matrix" >> $GITHUB_OUTPUT
-                    echo "archs=$archs" >> $GITHUB_OUTPUT
+                    echo "libs-pairs=$libs_pairs" >> $GITHUB_OUTPUT
+                    echo "php-versions=$php_versions" >> $GITHUB_OUTPUT
                 env:
                     INPUTS_PHP_VERSIONS: ${{ inputs.php_versions }}
                     INPUTS_ARCHITECTURES: ${{ inputs.architectures }}
@@ -87,7 +80,7 @@ jobs:
                 shell: bash
         strategy:
             fail-fast: false
-            matrix: ${{ fromJson(needs.setup-matrix.outputs.archs) }}
+            matrix: ${{ fromJson(needs.setup-matrix.outputs.libs-pairs) }}
         env:
             GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
             FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
@@ -143,9 +136,9 @@ jobs:
                     tar -xzf downloads.tar.gz -C downloads
                     rm downloads.tar.gz
 
-            -   name: Build libs (via PHP 8.5 reference build)
+            -   name: Build libs
                 if: steps.cache.outputs.cache-hit != 'true'
-                run: php bin/spp all --target="native-native-musl -dynamic" --phpv=8.5 --prefix="-zts" --type=apk
+                run: bin/spp build --target="native-native-musl -dynamic" --phpv=8.5 --type=apk --libs-only
 
             -   name: Pack buildroot
                 if: steps.cache.outputs.cache-hit != 'true'
@@ -170,8 +163,48 @@ jobs:
                 uses: mxschmitt/action-tmate@c0afd6f790e3a5564914980036ebf83216678101 # v3
                 timeout-minutes: 30
 
-    build:
+    compute-build-matrix:
         needs: [setup-matrix, build-libs]
+        runs-on: ubuntu-24.04
+        if: ${{ !cancelled() }}
+        permissions:
+            actions: read
+        outputs:
+            matrix: ${{ steps.filter.outputs.matrix }}
+            any: ${{ steps.filter.outputs.any }}
+        steps:
+            -   name: Filter build matrix to arches with successful libs
+                id: filter
+                env:
+                    GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+                    PHP_VERSIONS: ${{ needs.setup-matrix.outputs.php-versions }}
+                run: |
+                    set -euo pipefail
+                    succeeded=$(gh api "repos/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID/jobs" --paginate \
+                        --jq '.jobs[] | select(.conclusion == "success" and (.name | test("^Build libs \\("))) | .name' \
+                        | sed -E 's/^Build libs \(([^)]+)\)$/\1/' \
+                        | sort -u)
+                    echo "Successful libs arches:"
+                    printf '%s\n' "$succeeded"
+
+                    include=$(jq -nc --arg s "$succeeded" --argjson p "$PHP_VERSIONS" '
+                        ($s | split("\n") | map(select(length > 0) | {arch: .})) as $arches |
+                        [ $arches[] as $a | $p[] as $php | $a + {"php-version": $php} ]
+                    ')
+                    count=$(jq 'length' <<< "$include")
+                    echo "Filtered combos: $count"
+                    printf '%s\n' "$include" | jq .
+
+                    if [[ "$count" -gt 0 ]]; then
+                        echo "any=true" >> $GITHUB_OUTPUT
+                    else
+                        echo "any=false" >> $GITHUB_OUTPUT
+                    fi
+                    echo "matrix={\"include\":$include}" >> $GITHUB_OUTPUT
+
+    build:
+        needs: [compute-build-matrix]
+        if: ${{ !cancelled() && needs.compute-build-matrix.outputs.any == 'true' }}
         name: Build for ${{ matrix.arch }} PHP ${{ matrix.php-version }}
         runs-on: ${{ matrix.arch == 'x86_64' && 'ubuntu-24.04' || 'ubuntu-24.04-arm' }}
         container:
@@ -184,7 +217,7 @@ jobs:
                 shell: bash
         strategy:
             fail-fast: false
-            matrix: ${{ fromJson(needs.setup-matrix.outputs.matrix) }}
+            matrix: ${{ fromJson(needs.compute-build-matrix.outputs.matrix) }}
         env:
             GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
             ITERATION: ${{ inputs.iteration || '' }}
