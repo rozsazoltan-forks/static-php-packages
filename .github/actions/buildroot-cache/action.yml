@@ -1,7 +1,8 @@
 name: Buildroot release cache
 description: |
     Restore/save buildroot.tar.zst as a GitHub Release asset on the current
-    repository. Used in place of actions/cache. Tag pattern: cache-YYYY-WW (ISO week). Releases are
+    repository. Used in place of actions/cache when the asset is too big for
+    the 10 GB GHA cache. Tag pattern: cache-YYYY-WW (ISO week). Releases are
     marked prerelease so they don't appear as "Latest".
 
 inputs:
@@ -53,6 +54,10 @@ runs:
                     curl -fsSL "https://github.com/${REPO}/releases/download/${tag}/${asset}" -o "$LOCAL_FILE" 2>/dev/null
                 }
 
+                api() {
+                    curl -sSL -H "Authorization: Bearer $GH_TOKEN" -H "Accept: application/vnd.github+json" "$@"
+                }
+
                 case "$MODE" in
                     restore)
                         if public_dl "$EXACT_TAG" "$EXACT_ASSET"; then
@@ -68,20 +73,28 @@ runs:
                         fi
                         ;;
                     save)
-                        gh release view "$EXACT_TAG" --repo "$REPO" >/dev/null 2>&1 || \
-                            gh release create "$EXACT_TAG" \
-                                --repo "$REPO" \
-                                --prerelease \
-                                --title "[cache] $EXACT_TAG" \
-                                --notes "Buildroot caches for ISO week ${EXACT_WEEK}." \
-                                >/dev/null 2>&1 || true
+                        api -X POST "https://api.github.com/repos/${REPO}/releases" \
+                            -d "$(jq -nc --arg tag "$EXACT_TAG" --arg name "[cache] $EXACT_TAG" --arg body "Buildroot caches for ISO week ${EXACT_WEEK}." \
+                                '{tag_name:$tag, name:$name, body:$body, prerelease:true}')" \
+                            >/dev/null 2>&1 || true
+                        rel_id=$(api "https://api.github.com/repos/${REPO}/releases/tags/${EXACT_TAG}" | jq -r '.id // empty')
+                        if [ -z "$rel_id" ]; then
+                            echo "::error::could not resolve release id for ${EXACT_TAG}"
+                            exit 1
+                        fi
 
-                        staged="$(mktemp -d)/${EXACT_ASSET}"
-                        ln -s "$(realpath "$LOCAL_FILE")" "$staged"
-                        gh release upload "$EXACT_TAG" "$staged" \
-                            --repo "$REPO" \
-                            --clobber
+                        existing=$(api "https://api.github.com/repos/${REPO}/releases/${rel_id}/assets" \
+                            | jq -r --arg n "$EXACT_ASSET" '.[] | select(.name == $n) | .id' | head -1)
+                        if [ -n "$existing" ]; then
+                            api -X DELETE "https://api.github.com/repos/${REPO}/releases/assets/${existing}" >/dev/null
+                        fi
 
+                        curl -fsSL -X POST \
+                            -H "Authorization: Bearer $GH_TOKEN" \
+                            -H "Content-Type: application/octet-stream" \
+                            -T "$LOCAL_FILE" \
+                            "https://uploads.github.com/repos/${REPO}/releases/${rel_id}/assets?name=${EXACT_ASSET}" \
+                            >/dev/null
                         echo "Uploaded ${EXACT_TAG}/${EXACT_ASSET}"
                         ;;
                     *)
