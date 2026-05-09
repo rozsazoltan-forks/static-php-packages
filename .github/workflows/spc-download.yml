@@ -97,7 +97,8 @@ jobs:
                         --slurpfile cur downloads/.lock.json '
                         ($prev[0] // {}) as $p | ($cur[0] // {}) as $c |
                         [ ($c | keys[]) as $k
-                          | select(($p[$k].hash // "") != ($c[$k].hash // "")) ]
+                          | select(($p[$k].hash // "") != ($c[$k].hash // ""))
+                          | $k ]
                     ')
                     echo "Changed source keys: $(jq -c . <<< "$changed_sources")"
 
@@ -112,7 +113,9 @@ jobs:
                         --slurpfile cur downloads/.spc-meta.json '
                         (($prev[0].php_versions) // {}) as $p |
                         (($cur[0].php_versions)  // {}) as $c |
-                        [ ($c | keys[]) as $k | select($c[$k] != ($p[$k] // "")) ]
+                        [ ($c | keys[]) as $k
+                          | select($c[$k] != ($p[$k] // ""))
+                          | $k ]
                     ')
                     echo "PHP minors with bumped php-src: $(jq -c . <<< "$full_versions")"
 
