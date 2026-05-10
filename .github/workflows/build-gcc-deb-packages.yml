@@ -87,6 +87,7 @@ jobs:
                 with:
                     workflow: spc-download.yml
                     name: downloads-tarball
+                    search_artifacts: true
 
             -   name: Extract with permissions
                 run: |

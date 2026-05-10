@@ -128,6 +128,7 @@ jobs:
                     workflow: spc-download.yml
                     name: downloads-tarball
                     branch: master
+                    search_artifacts: true
 
             -   name: Extract with permissions
                 if: steps.cache.outputs.cache-hit != 'true'
@@ -256,6 +257,7 @@ jobs:
                     workflow: spc-download.yml
                     name: downloads-tarball
                     branch: master
+                    search_artifacts: true
 
             -   name: Extract with permissions
                 run: |
