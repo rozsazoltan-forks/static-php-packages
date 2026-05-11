@@ -169,7 +169,7 @@ jobs:
                 run: tar --zstd -cf buildroot.tar.zst buildroot
 
             -   name: Save buildroot cache
-                if: steps.cache.outputs.cache-hit != 'true' && !inputs.packages
+                if: steps.cache.outputs.cache-hit != 'true'
                 uses: ./.github/actions/buildroot-cache
                 with:
                     mode: save
@@ -291,7 +291,7 @@ jobs:
                 run: tar --zstd -cf buildroot.tar.zst buildroot
 
             -   name: Save buildroot cache
-                if: steps.cache.outputs.cache-hit != 'true' && !inputs.packages
+                if: steps.cache.outputs.cache-hit != 'true'
                 uses: ./.github/actions/buildroot-cache
                 with:
                     mode: save
