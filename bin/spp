@@ -10,11 +10,28 @@ const DIST_DEB_PATH = DIST_PATH . '/deb';
 const DIST_APK_PATH = DIST_PATH . '/apk';
 define('TEMP_DIR', sys_get_temp_dir() . '/spc-packages');
 
+// Seed SPC's download cache from the container's prebuilt PKG_ROOT_PATH (set in
+// Dockerfile.{rhel,debian,alpine}). The bootstrap step installs zig + go-xcaddy
+// into PKG_ROOT_PATH and saves the resulting cache; without this merge SPC would
+// re-download them on first run inside /build.
+$_seed = ($_pkg_root = getenv('PKG_ROOT_PATH')) ? $_pkg_root . '/.cache.json' : null;
+$_target = BASE_PATH . '/downloads/.cache.json';
+if ($_seed && is_readable($_seed)) {
+    $_seed_data = json_decode((string) file_get_contents($_seed), true) ?: [];
+    $_target_data = is_readable($_target) ? (json_decode((string) file_get_contents($_target), true) ?: []) : [];
+    $_merged = $_target_data + $_seed_data;
+    if ($_merged !== $_target_data) {
+        if (!is_dir(dirname($_target))) {
+            mkdir(dirname($_target), 0755, true);
+        }
+        file_put_contents($_target, json_encode($_merged, JSON_UNESCAPED_SLASHES | JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE));
+    }
+}
+unset($_seed, $_target, $_seed_data, $_target_data, $_merged, $_pkg_root);
 
 // Ensure autoloading is set up
 require_once BASE_PATH . '/vendor/autoload.php';
 
-use SPC\builder\linux\SystemUtil;
 use staticphp\step\CreatePackages;
 use Symfony\Component\Console\Application;
 use staticphp\Command\BuildCommand;

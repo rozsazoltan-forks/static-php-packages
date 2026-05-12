@@ -46,6 +46,7 @@ RUN cd /tmp/spc-bootstrap && \
     php vendor/bin/spc install-pkg go-xcaddy && \
     php vendor/bin/spc install-pkg zig && \
     SPC_TARGET=native-native-musl php vendor/bin/spc doctor --auto-fix --debug && \
+    cp /tmp/spc-bootstrap/downloads/.cache.json "$PKG_ROOT_PATH/.cache.json" && \
     rm -rf /tmp/spc-bootstrap /root/.composer /root/.cache && \
     chown -R ${UID}:${GID} "$PKG_ROOT_PATH"
 

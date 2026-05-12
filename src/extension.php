@@ -3,8 +3,8 @@
 namespace staticphp;
 
 use Exception;
-use SPC\store\Config;
 use staticphp\step\CreatePackages;
+use staticphp\util\ExtMeta;
 use staticphp\util\TwigRenderer;
 
 class extension implements package
@@ -24,12 +24,10 @@ class extension implements package
             return '';
         }
 
-        $config = Config::getExt($this->name);
-
         if ($this->name === 'xdebug' || $this->name === 'ffi') {
             return '15-';
         }
-        if ($config['zend-extension'] ?? false) {
+        if (ExtMeta::isZendExtension($this->name)) {
             return '10-';
         }
 
@@ -44,9 +42,7 @@ class extension implements package
 
     public function getExtensionDependencies(string $extensionName, array $visited = []): array
     {
-        $config = Config::getExt($extensionName);
-        $keys = ['ext-depends', 'ext-suggests', 'ext-depends-unix', 'ext-suggests-unix', 'ext-depends-linux', 'ext-suggests-linux'];
-        if (!$config) {
+        if (ExtMeta::get($extensionName) === null) {
             return [];
         }
 
@@ -54,15 +50,7 @@ class extension implements package
         $visited[] = $extensionName;
         $craftConfig = CraftConfig::getInstance();
 
-        $dependencies = [];
-        foreach ($keys as $key) {
-            if (isset($config[$key])) {
-                foreach ($config[$key] as $item) {
-                    $dependencies[] = $item;
-                }
-            }
-        }
-        foreach ($dependencies as $dependency) {
+        foreach (ExtMeta::extDependencies($extensionName) as $dependency) {
             if (!in_array($dependency, $craftConfig->getSharedExtensions()) || in_array($dependency, $craftConfig->getStaticExtensions())) {
                 continue;
             }
@@ -71,20 +59,10 @@ class extension implements package
                 continue;
             }
 
-            $depConfig = Config::getExt($dependency);
-            $hasDependencies = false;
-            foreach ($keys as $key) {
-                if (!empty($depConfig[$key])) {
-                    $hasDependencies = true;
-                    break;
-                }
-            }
-
-            if ($hasDependencies) {
+            if (ExtMeta::extDependencies($dependency) !== []) {
                 $transitiveDeps = $this->getExtensionDependencies($dependency, $visited);
 
                 foreach ($transitiveDeps as $transitiveDep) {
-                    $craftConfig = CraftConfig::getInstance();
                     if (!in_array($transitiveDep, $craftConfig->getSharedExtensions()) || in_array($transitiveDep, $craftConfig->getStaticExtensions())) {
                         continue;
                     }
@@ -102,8 +80,7 @@ class extension implements package
 
     public function getFpmConfig(): array
     {
-        $config = Config::getExt($this->name);
-        if (!$config) {
+        if (ExtMeta::get($this->name) === null) {
             throw new Exception("Extension configuration for '{$this->name}' not found.");
         }
         $prefix = CreatePackages::getPrefix();
@@ -111,39 +88,25 @@ class extension implements package
         $seen = [];
         $ordered = [];
 
-        $keys = ['ext-depends', 'ext-suggests', 'ext-depends-unix', 'ext-suggests-unix', 'ext-depends-linux', 'ext-suggests-linux'];
-
-        /**
-         * Add a package and recursively include its ext-depends.
-         *
-         * @param string $name
-         * @param callable $loadConfig function(string $name): ?array
-         */
-        $collect = function (string $name) use (&$collect, &$ordered, &$seen, $prefix, $keys): void {
+        $collect = function (string $name) use (&$collect, &$ordered, &$seen, $prefix): void {
             if (isset($seen[$name])) {
                 return;
             }
             $seen[$name] = true;
 
-            $cfg = Config::getExt($name);
-            if ($cfg['type'] !== 'addon') {
-                $ordered[] = $prefix . '-' . $name;
-            }
-            if (!is_array($cfg)) {
+            if (ExtMeta::get($name) === null) {
                 return;
             }
-
-            foreach ($keys as $key) {
-                foreach ($cfg[$key] ?? [] as $dep) {
-                    $collect($dep);
-                }
+            if (!ExtMeta::isAddon($name)) {
+                $ordered[] = $prefix . '-' . $name;
+            }
+            foreach (ExtMeta::extDependencies($name) as $dep) {
+                $collect($dep);
             }
         };
 
-        foreach ($keys as $key) {
-            foreach (($config[$key] ?? []) as $dep) {
-                $collect($dep);
-            }
+        foreach (ExtMeta::extDependencies($this->name) as $dep) {
+            $collect($dep);
         }
 
         $depends = array_merge($depends, $ordered);

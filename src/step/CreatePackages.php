@@ -3,9 +3,9 @@
 namespace staticphp\step;
 
 use RuntimeException;
-use SPC\store\Config;
 use staticphp\extension;
 use staticphp\package;
+use staticphp\util\ExtMeta;
 use Symfony\Component\Process\Process;
 use staticphp\CraftConfig;
 
@@ -188,7 +188,7 @@ class CreatePackages
         echo "Creating packages for extensions...\n";
 
         foreach (self::$sharedExtensions as $extension) {
-            if (Config::getExt($extension)['type'] === 'addon') {
+            if (ExtMeta::isAddon($extension)) {
                 continue;
             }
             self::createExtensionPackage($extension);
@@ -241,7 +241,7 @@ class CreatePackages
         ];
         foreach ($dependencies as $dependency) {
             $depExt = new extension($dependency);
-            if ($depExt->isSharedExtension() && Config::getExt($dependency)['type'] !== 'addon') {
+            if ($depExt->isSharedExtension() && !ExtMeta::isAddon($dependency)) {
                 $args[] = '-d';
                 $args[] = "extension={$dependency}";
             }

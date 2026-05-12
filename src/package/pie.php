@@ -3,8 +3,6 @@
 namespace staticphp\package;
 
 use RuntimeException;
-use SPC\store\CurlHook;
-use SPC\store\Downloader;
 use staticphp\package;
 use staticphp\step\CreatePackages;
 use staticphp\util\TwigRenderer;
@@ -138,29 +136,50 @@ class pie implements package
 
     private function downloadLatestPiePhar(string $targetPath): void
     {
-        [$url, $filename] = Downloader::getLatestGithubRelease('pie', [
-            'repo' => 'php/pie',
-            'match' => 'pie\.phar',
-            'prefer-stable' => true,
-        ]);
+        // Resolve the asset URL for `pie.phar` from the latest stable GitHub release.
+        $headers = self::githubAuthHeaders();
+        $body = default_shell()->executeCurl(
+            'https://api.github.com/repos/php/pie/releases/latest',
+            headers: $headers,
+        );
+        $data = json_decode((string) $body, true);
+        if (!is_array($data) || empty($data['assets']) || !is_array($data['assets'])) {
+            throw new RuntimeException('PIE: failed to fetch latest release metadata from GitHub.');
+        }
+        $assetUrl = null;
+        foreach ($data['assets'] as $asset) {
+            if (isset($asset['name'], $asset['url']) && preg_match('/^pie\.phar$/', $asset['name'])) {
+                $assetUrl = $asset['url'];
+                break;
+            }
+        }
+        if ($assetUrl === null) {
+            throw new RuntimeException('PIE: no pie.phar asset found in latest release.');
+        }
 
-        Downloader::downloadFile(
-            name: 'pie',
-            url: $url,
-            filename: $filename,
-            move_path: null,
-            download_as: SPC_DOWNLOAD_PACKAGE,
-            headers: ['Accept: application/octet-stream'],
-            hooks: [[CurlHook::class, 'setupGithubToken']]
+        // GitHub's asset endpoints redirect to a signed S3 URL when the
+        // `application/octet-stream` Accept header is used.
+        default_shell()->executeCurlDownload(
+            $assetUrl,
+            $targetPath,
+            headers: array_merge($headers, ['Accept: application/octet-stream']),
         );
 
-        $downloaded = DOWNLOAD_PATH . '/' . $filename;
-        if (!file_exists($downloaded)) {
-            throw new RuntimeException('PIE download did not produce expected file: ' . $downloaded);
+        if (!file_exists($targetPath)) {
+            throw new RuntimeException('PIE download did not produce expected file: ' . $targetPath);
         }
+    }
 
-        if ($downloaded !== $targetPath && !@copy($downloaded, $targetPath)) {
-            throw new RuntimeException('Failed to stage pie.phar to build directory.');
+    /** @return list<string> */
+    private static function githubAuthHeaders(): array
+    {
+        $token = getenv('GITHUB_TOKEN') ?: getenv('GH_TOKEN');
+        if (!is_string($token) || $token === '') {
+            return [];
         }
+        return [
+            'Authorization: Bearer ' . $token,
+            'X-GitHub-Api-Version: 2022-11-28',
+        ];
     }
 }
