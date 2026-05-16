@@ -58,8 +58,8 @@ jobs:
                 run: |
                     php vendor/bin/spc download --shallow-clone -e amqp,apcu,ast,bcmath,brotli,bz2,calendar,ctype,curl,dba,decimal,deepclone,dio,dom,ds,ev,event,excimer,exif,ffi,fileinfo,filter,ftp,gd,gettext,gmp,gmssl,grpc,iconv,igbinary,imagick,inotify,intl,ldap,libxml,lz4,maxminddb,mbregex,mbstring,memcache,memcached,mongodb,msgpack,mysqli,mysqlnd,mysqlnd_parsec,mysqlnd_ed25519,odbc,opcache,openssl,opentelemetry,parallel,password-argon2,pcov,pcntl,pdo,pdo_mysql,pdo_odbc,pdo_pgsql,pdo_sqlite,pdo_sqlsrv,pgsql,phar,posix,protobuf,rar,rdkafka,readline,redis,session,shmop,simdjson,simplexml,snappy,soap,sockets,sodium,spx,sqlite3,sqlsrv,ssh2,swoole,sysvmsg,sysvsem,sysvshm,tidy,tokenizer,trader,uuid,uv,xdebug,xhprof,xlswriter,xml,xmlreader,xmlwriter,xsl,xz,yac,yaml,zip,zlib,zstd
 
-            -   name: Probe latest PHP versions
-                id: probe-php
+            -   name: Probe upstream releases
+                id: probe-upstream
                 run: |
                     set -euo pipefail
                     new='{}'
@@ -73,8 +73,21 @@ jobs:
                         echo "PHP ${v} latest: ${latest}"
                         new=$(jq --arg v "$v" --arg l "$latest" '. + {($v): $l}' <<< "$new")
                     done
+
+                    pie_latest=$(curl -fsSL \
+                        -H "Authorization: Bearer $GITHUB_TOKEN" \
+                        -H "Accept: application/vnd.github+json" \
+                        "https://api.github.com/repos/php/pie/releases/latest" \
+                        | jq -r '.tag_name // empty')
+                    if [[ -z "$pie_latest" ]]; then
+                        echo "::error::Failed to fetch latest pie release"
+                        exit 1
+                    fi
+                    echo "pie latest: ${pie_latest}"
+
                     mkdir -p downloads
-                    jq --argjson v "$new" -n '{php_versions: $v}' > downloads/.spc-meta.json
+                    jq --argjson v "$new" --arg pie "$pie_latest" -n \
+                        '{php_versions: $v, pie_version: $pie}' > downloads/.spc-meta.json
 
             -   name: Diff state and compute triggers
                 id: diff
@@ -84,13 +97,29 @@ jobs:
                     set -euo pipefail
 
                     EXT_JSON=vendor/crazywhalecc/static-php-cli/config/ext.json
-                    src_to_ext=$(jq -c '
+                    ext_map=$(jq -c '
                         to_entries
                         | map(select(.value.source != null))
                         | map({(.value.source): .key})
                         | add // {}
                     ' "$EXT_JSON")
-                    echo "Source->ext map size: $(jq 'length' <<< "$src_to_ext")"
+
+                    # Map SAPI source keys (frankenphp, ...) to their package name.
+                    # cli/cgi/fpm/embed live in php-src and ride php_versions bumps;
+                    # any SAPI in craft.yml whose name also appears as an SPC source
+                    # gets a 1:1 mapping here so its source bumps trigger a rebuild.
+                    SAPI_CSV=$(sed -n 's/^sapi: *//p' craft.yml | head -1)
+                    sapi_map=$(jq -nc \
+                        --arg s "$SAPI_CSV" \
+                        --slurpfile lock downloads/.lock.json '
+                        ($lock[0] // {} | keys) as $keys |
+                        ($s | split(",") | map(gsub("^\\s+|\\s+$"; ""))) as $sapis |
+                        [ $sapis[] | select(. as $n | $keys | index($n)) | {(.): .} ]
+                        | add // {}
+                    ')
+
+                    src_to_pkg=$(jq -nc --argjson e "$ext_map" --argjson s "$sapi_map" '$e + $s')
+                    echo "Source->package map size: $(jq 'length' <<< "$src_to_pkg") (ext=$(jq 'length' <<< "$ext_map"), sapi=$(jq 'length' <<< "$sapi_map"))"
 
                     changed_sources=$(jq -nc \
                         --slurpfile prev .download-state/lock.prev.json \
@@ -102,10 +131,21 @@ jobs:
                     ')
                     echo "Changed source keys: $(jq -c . <<< "$changed_sources")"
 
-                    changed_exts=$(jq -nc --argjson s "$changed_sources" --argjson m "$src_to_ext" '
+                    changed_pkgs=$(jq -nc --argjson s "$changed_sources" --argjson m "$src_to_pkg" '
                         $s | map($m[.]) | map(select(. != null)) | unique
                     ')
-                    pkgs=$(jq -r 'join(",")' <<< "$changed_exts")
+
+                    # pie is downloaded outside SPC (src/package/pie.php pulls from
+                    # github.com/php/pie releases), so it never appears in lock.json.
+                    # Detect bumps via the version stashed in .spc-meta.json by probe-upstream.
+                    prev_pie=$(jq -r '.pie_version // ""' .download-state/meta.prev.json)
+                    cur_pie=$(jq -r '.pie_version // ""'  downloads/.spc-meta.json)
+                    if [[ "$prev_pie" != "$cur_pie" ]]; then
+                        echo "pie version bump: ${prev_pie:-<none>} -> ${cur_pie}"
+                        changed_pkgs=$(jq -c '. + ["pie"] | unique' <<< "$changed_pkgs")
+                    fi
+
+                    pkgs=$(jq -r 'join(",")' <<< "$changed_pkgs")
                     echo "Changed packages: ${pkgs:-<none>}"
 
                     full_versions=$(jq -nrc \
