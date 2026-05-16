@@ -219,12 +219,12 @@ jobs:
                     key: spc-downloads-lock
 
             -   name: Create tarball (keep permissions)
-                if: steps.diff.outputs.any_change == 'true'
+                if: steps.diff.outputs.any_change == 'true' || github.event_name == 'workflow_dispatch'
                 run: |
                     tar -czf downloads.tar.gz -C downloads .
 
             -   name: Upload downloads directory
-                if: steps.diff.outputs.any_change == 'true'
+                if: steps.diff.outputs.any_change == 'true' || github.event_name == 'workflow_dispatch'
                 uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
                 with:
                     name: downloads-tarball
