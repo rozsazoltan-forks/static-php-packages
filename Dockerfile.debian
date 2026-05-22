@@ -45,6 +45,7 @@ RUN cd /tmp/spc-bootstrap && \
     composer install --no-interaction --prefer-dist --no-progress --no-scripts && \
     php vendor/bin/spc install-pkg go-xcaddy && \
     php vendor/bin/spc install-pkg zig && \
+    php vendor/bin/spc install-pkg llvm-tools && \
     SPC_TARGET=native-native-musl php vendor/bin/spc doctor --auto-fix --debug && \
     cp /tmp/spc-bootstrap/downloads/.cache.json "$PKG_ROOT_PATH/.cache.json" && \
     rm -rf /tmp/spc-bootstrap /root/.composer /root/.cache && \
