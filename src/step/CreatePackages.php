@@ -446,6 +446,11 @@ class CreatePackages
         if (isset($config['files']) && is_array($config['files'])) {
             foreach ($config['files'] as $source => $dest) {
                 if (file_exists($source)) {
+                    if (str_starts_with($source, BUILD_BIN_PATH . '/') &&
+                        is_executable($source) &&
+                        basename($source) !== basename($dest)) {
+                        $source = self::fixBinaryDebugLink($source, $dest);
+                    }
                     $fpmArgs[] = $source . '=' . $dest;
                 }
                 else {

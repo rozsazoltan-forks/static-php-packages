@@ -33,8 +33,7 @@ RUN dnf -y install epel-release dnf-plugins-core && \
         git jq gzip which sudo xz tar zstd curl \
         python3 python3-requests \
         bison flex autoconf automake gettext-devel libtool pkgconfig \
-        gperf \
-        gcc-toolset-15 llvm && \
+        gcc-toolset-15 llvm nasm gperf && \
     mkdir -p /usr/lib/bfd-plugins && \
     PLUGIN=$(find /usr/lib /usr/lib64 -name LLVMgold.so 2>/dev/null | head -1) && \
     [ -n "$PLUGIN" ] && ln -sf "$PLUGIN" /usr/lib/bfd-plugins/LLVMgold.so

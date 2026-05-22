@@ -14,7 +14,7 @@ RUN if [ -z "${RPM_ARCH}" ]; then \
 
 RUN apt-get update && \
     apt-get install -y ruby build-essential jq curl gzip sudo git gnupg tar zstd python3 python3-requests llvm \
-        bison re2c flex autoconf automake autopoint libtool pkg-config && \
+        bison re2c flex autoconf automake autopoint libtool pkg-config nasm && \
     apt-get upgrade -y && \
     gem install --no-document fpm && \
     mkdir -p /usr/lib/bfd-plugins && \
