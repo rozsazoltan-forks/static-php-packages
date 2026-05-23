@@ -17,7 +17,7 @@ abstract class BaseCommand extends Command
             ->addOption('phpv', null, InputOption::VALUE_REQUIRED, 'Specify PHP version to build', '8.4')
             ->addOption('target', null, InputOption::VALUE_REQUIRED, 'Specify the target triple for Zig (e.g., x86_64-linux-gnu, aarch64-linux-gnu)')
             ->addOption('prefix', null, InputOption::VALUE_REQUIRED, 'Specify the package prefix (e.g., -zts, -zts8.5, -zts85)', '-zts')
-            ->addOption('type', null, InputOption::VALUE_REQUIRED, 'Specify package type: rpm (uses /usr/lib64), deb (uses /usr/lib), or apk (uses /usr/lib). Required.', null)
+            ->addOption('type', null, InputOption::VALUE_REQUIRED, 'Specify package type: rpm (uses /usr/lib64), deb (uses /usr/lib), or apk (uses /usr/lib). Auto-detected from --target (musl → apk) or /etc/os-release if omitted.', null)
             ->addOption('debuginfo', null, InputOption::VALUE_NONE, 'Create debuginfo packages for APK (RPM and DEB always create debuginfo)');
     }
 
@@ -29,9 +29,9 @@ abstract class BaseCommand extends Command
         $prefix = $input->getOption('prefix') ?? '-zts';
         $type = $input->getOption('type');
 
-        // Validate that --type is provided
+        // Auto-detect type if not provided
         if ($type === null) {
-            throw new InvalidArgumentException('The --type option is required. Specify: rpm, deb, or apk');
+            $type = $this->detectType($target);
         }
 
         // Validate type value
@@ -59,6 +59,36 @@ abstract class BaseCommand extends Command
 
         // Create necessary directories
         $this->createDirectories();
+    }
+
+    private function detectType(?string $target): string
+    {
+        if ($target !== null && str_contains($target, 'musl')) {
+            return 'apk';
+        }
+
+        $osRelease = @parse_ini_file('/etc/os-release');
+        if ($osRelease === false) {
+            throw new InvalidArgumentException('Could not auto-detect package type: /etc/os-release missing. Specify --type=rpm|deb|apk.');
+        }
+
+        $id = strtolower($osRelease['ID'] ?? '');
+        $idLike = strtolower($osRelease['ID_LIKE'] ?? '');
+        $ids = array_filter(array_merge([$id], preg_split('/\s+/', $idLike)));
+
+        foreach ($ids as $candidate) {
+            if ($candidate === 'alpine') {
+                return 'apk';
+            }
+            if (in_array($candidate, ['rhel', 'fedora', 'centos', 'almalinux', 'rocky'], true)) {
+                return 'rpm';
+            }
+            if (in_array($candidate, ['debian', 'ubuntu'], true)) {
+                return 'deb';
+            }
+        }
+
+        throw new InvalidArgumentException('Could not auto-detect package type from /etc/os-release (ID=' . $id . '). Specify --type=rpm|deb|apk.');
     }
 
     protected function createDirectories(): void
