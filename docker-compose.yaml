@@ -5,6 +5,7 @@ x-build-defaults: &build-defaults
     - .:/build
   environment:
     HOME: /build/.docker-home
+    GITHUB_TOKEN: "${GITHUB_TOKEN:-}"
   command: ["bash", "-c", "mkdir -p $$HOME && exec sleep infinity"]
 
 services:
@@ -16,6 +17,7 @@ services:
       args:
         UID: "${UID:-1000}"
         GID: "${GID:-1000}"
+        GITHUB_TOKEN: "${GITHUB_TOKEN:-}"
     container_name: packages-debian
 
   alpine:
@@ -26,6 +28,7 @@ services:
       args:
         UID: "${UID:-1000}"
         GID: "${GID:-1000}"
+        GITHUB_TOKEN: "${GITHUB_TOKEN:-}"
     container_name: packages-alpine
 
   rhel-8:
@@ -37,6 +40,7 @@ services:
         ALMA_VERSION: "8"
         UID: "${UID:-1000}"
         GID: "${GID:-1000}"
+        GITHUB_TOKEN: "${GITHUB_TOKEN:-}"
     container_name: packages-rhel-8
 
   rhel-9:
@@ -48,6 +52,7 @@ services:
         ALMA_VERSION: "9"
         UID: "${UID:-1000}"
         GID: "${GID:-1000}"
+        GITHUB_TOKEN: "${GITHUB_TOKEN:-}"
     container_name: packages-rhel-9
 
   rhel-10:
@@ -59,4 +64,5 @@ services:
         ALMA_VERSION: "10"
         UID: "${UID:-1000}"
         GID: "${GID:-1000}"
+        GITHUB_TOKEN: "${GITHUB_TOKEN:-}"
     container_name: packages-rhel-10
