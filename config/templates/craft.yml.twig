@@ -64,7 +64,6 @@ sapi: {{ sapi_list|join(',') }}
 debug: false
 build-options:
     enable-zts: true
-    with-clean: false
     with-suggested-libs: true
     with-suggested-exts: true
     no-strip: false
@@ -88,7 +87,7 @@ craft-options:
 
 extra-env:
     {% if using_gcc -%}
-    SPC_TOOLCHAIN: 'SPC\toolchain\GccNativeToolchain'
+    SPC_TOOLCHAIN: 'StaticPHP\Toolchain\GccNativeToolchain'
     SPC_LIBC: '{{ type == 'apk' ? 'musl' : 'glibc' }}'
     SPC_MUSL_DYNAMIC: 'true'
     {% else -%}

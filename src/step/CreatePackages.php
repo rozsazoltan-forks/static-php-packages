@@ -24,8 +24,11 @@ class CreatePackages
     public static function run($packageNames = null, ?string $iteration = null, ?bool $debuginfo = null): true
     {
         self::loadConfig();
+        self::bootstrapSpcGlobals();
 
-        define('DOWNLOAD_PATH', BUILD_ROOT_PATH . '/download');
+        if (!defined('DOWNLOAD_PATH')) {
+            define('DOWNLOAD_PATH', BUILD_ROOT_PATH . '/download');
+        }
         if (!is_dir(DOWNLOAD_PATH)) {
             @mkdir(DOWNLOAD_PATH, 0755, true);
         }
@@ -253,6 +256,22 @@ class CreatePackages
         $rawExtensionVersion = trim($versionProcess->getOutput());
         $rawExtensionVersion = trim(preg_replace('/^Warning:.*$/m', '', $rawExtensionVersion));
 
+        // Some shared extensions need libphp-zts-NN.so via LD_LIBRARY_PATH to dlopen, and may
+        // still segfault from symbol collisions with the static CLI; tolerate both.
+        if ($rawExtensionVersion === '' && is_dir(BUILD_LIB_PATH)) {
+            try {
+                $versionProcess = new Process([$phpBinary, ...$args, '-r', "echo phpversion('{$extension}');"], env: ['LD_LIBRARY_PATH' => BUILD_LIB_PATH]);
+                $versionProcess->run();
+                $rawExtensionVersion = trim($versionProcess->getOutput());
+                $rawExtensionVersion = trim(preg_replace('/^Warning:.*$/m', '', $rawExtensionVersion));
+            } catch (\Throwable) {
+                $rawExtensionVersion = '';
+            }
+        }
+        if ($rawExtensionVersion === '') {
+            $rawExtensionVersion = self::detectExtensionVersionFromSource($extension);
+        }
+
         // Parse the extension version preserving a possible pre-release suffix
         // Examples of inputs we want to support:
         //  - 1.2.3
@@ -285,6 +304,54 @@ class CreatePackages
         echo "Detected version for extension {$extension}: {$extensionVersion}\n";
 
         return $extensionVersion;
+    }
+
+    /** Pull SPC's internal-env constants and package configs in after BaseCommand has set BUILD_ROOT_PATH. */
+    private static function bootstrapSpcGlobals(): void
+    {
+        static $done = false;
+        if ($done) {
+            return;
+        }
+        $done = true;
+        $spcRoot = BASE_PATH . '/vendor/crazywhalecc/static-php-cli';
+        require_once $spcRoot . '/src/globals/internal-env.php';
+        foreach (['lib', 'target', 'ext'] as $kind) {
+            \StaticPHP\Config\PackageConfig::loadFromDir($spcRoot . "/config/pkg/{$kind}", 'core');
+        }
+    }
+
+    private static function detectExtensionVersionFromSource(string $extension): string
+    {
+        $sourceDir = SOURCE_PATH . '/php-src/ext/' . $extension;
+        if (!is_dir($sourceDir)) {
+            return '';
+        }
+        // PECL extensions ship a package.xml at the source root.
+        $packageXml = $sourceDir . '/package.xml';
+        if (is_file($packageXml)) {
+            $xml = @simplexml_load_file($packageXml);
+            if ($xml !== false && isset($xml->version->release)) {
+                return trim((string) $xml->version->release);
+            }
+        }
+        // Otherwise scan the C headers for PHP_<EXT>_VERSION (the macro PHP_MINFO_FUNCTION
+        // emits as the phpversion() result). Look in php_<ext>.h first, then any header
+        // matching <ext>*.h.
+        $candidates = array_merge(
+            [$sourceDir . '/php_' . $extension . '.h'],
+            (array) glob($sourceDir . '/*.h'),
+        );
+        foreach ($candidates as $hdr) {
+            if (!is_file($hdr)) {
+                continue;
+            }
+            $contents = (string) file_get_contents($hdr);
+            if (preg_match('/define\s+PHP_' . strtoupper($extension) . '_VERSION\s+"([^"]+)"/i', $contents, $m)) {
+                return trim($m[1]);
+            }
+        }
+        return '';
     }
 
     private static function createPackageWithFpm(package $package, string $phpVersion, string $architecture, bool $isDebuginfo = false): void

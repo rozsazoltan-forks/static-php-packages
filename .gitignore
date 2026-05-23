@@ -12,3 +12,5 @@ craft.yml
 /.claude/
 /.docker-home/
 .spc.cache.php
+/.env
+/.env.local
