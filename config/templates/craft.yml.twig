@@ -74,6 +74,9 @@ build-options:
     with-hardcoded-ini: [ ]
     # UPX pack the binary (default: false)
     with-upx-pack: false
+    # Maintainer-only: skip PHP buildconf/configure/make when libphp.a/.so already exist.
+    # Frankenphp + shared extensions still rebuild. Flip to true to iterate on frankenphp.
+    maintainer-skip-build: false
 
 download-options:
     prefer-pre-built: false
