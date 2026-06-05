@@ -55,6 +55,9 @@
 {%- if (os == '8' or type == 'deb') and not using_gcc -%}
 {%-   set shared_ext = shared_ext|filter(v => v != 'excimer') -%}
 {%- endif -%}
+{%- if php_version < '8.3' -%}
+{%-   set shared_ext = shared_ext|filter(v => v != 'fastjson' and v != 'fastchart') -%}
+{%- endif -%}
 
 php-version: {{ php_version }}
 extensions: {{ extensions|join(',') }}
