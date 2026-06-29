@@ -104,7 +104,7 @@ extra-env:
     SPC_MICRO_PATCHES:
     SPC_DEFAULT_C_FLAGS: "{{ cflags }}"
     SPC_DEFAULT_CXX_FLAGS: "{{ cflags }} -fasynchronous-unwind-tables"
-    SPC_DEFAULT_LD_FLAGS: "-Wl,-z,relro -Wl,--as-needed -Wl,-z,now -Wl,-z,noexecstack -Wl,--gc-sections {{ is_rhel and os == '10' ? '-Wl,-z,pack-relative-relocs' : '' }} {{ using_gcc and is_rhel ? specs_ldflags : '' }}{{ not using_gcc ? ' -flto=thin' : '' }}"
+    SPC_DEFAULT_LD_FLAGS: "-Wl,-z,relro -Wl,--as-needed -Wl,-z,now -Wl,-z,noexecstack -Wl,--gc-sections {{ using_gcc and is_rhel ? specs_ldflags : '' }}{{ not using_gcc ? ' -flto=thin' : '' }}"
     SPC_CMD_VAR_PHP_MAKE_EXTRA_CFLAGS: "{{ cflags }} -g -fno-math-errno -fPIE{{ using_gcc ? '' : ' -flto'}}"
     SPC_CMD_VAR_PHP_MAKE_EXTRA_LDFLAGS: "-Wl,--build-id=sha1 -pie -release {{ release_suffix }}{{ using_gcc ? '' : ' -flto'}}"
     SPC_CMD_PREFIX_PHP_CONFIGURE: "./configure --prefix= --with-valgrind=no --disable-shared --enable-static --disable-all --disable-cgi --disable-phpdbg --disable-debug --with-pic --enable-rtld-now --enable-re2c-cgoto --disable-rpath"
