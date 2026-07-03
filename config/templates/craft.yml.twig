@@ -98,6 +98,8 @@ extra-env:
     {% else -%}
     SPC_TARGET: '{{ target }}'
     SPC_EXTRA_PHP_VARS: 'php_cv_preserve_none=yes'
+    # zig cc without -O keeps Debug UB traps; bare-built minilua aborts on Lua's 2^32 double->int cast
+    SPC_COMPILER_EXTRA: '-fno-sanitize=undefined'
     {% endif -%}
     EXTENSION_DIR: "{{ moduledir }}"
     SPC_CMD_VAR_PHP_EMBED_TYPE: 'shared'
