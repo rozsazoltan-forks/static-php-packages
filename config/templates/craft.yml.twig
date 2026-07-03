@@ -11,7 +11,7 @@
 {%- set specs_cflags = '-specs=/usr/lib/rpm/redhat/redhat-hardened-cc1' -%}
 {%- set specs_ldflags = '-specs=/usr/lib/rpm/redhat/redhat-hardened-ld' ~ (os == '10' ? ' -Wl,-z,pack-relative-relocs' : '') -%}
 {%- set cflags =
-  '-fPIC -O3 -pipe -fno-plt -fno-semantic-interposition -fstack-clash-protection -fno-omit-frame-pointer -mno-omit-leaf-frame-pointer -ffunction-sections -fdata-sections' ~ arch_flags
+  '-fPIC -O3 -pipe -fno-plt -fno-semantic-interposition -fstack-clash-protection -fno-omit-frame-pointer -momit-leaf-frame-pointer -ffunction-sections -fdata-sections' ~ arch_flags
 -%}
 {%- set cflags = (using_gcc ? '' : '-flto=thin ') ~ cflags -%}
 {%- set is_rhel = os in ['7', '8', '9', '10'] and type == 'rpm' -%}
