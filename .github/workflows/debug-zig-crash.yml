@@ -135,3 +135,12 @@ jobs:
                     path: |
                         diag
                         log
+
+            -   name: Report result
+                if: ${{ always() }}
+                run: |
+                    if [ "${{ steps.build.outcome }}" = "failure" ]; then
+                        echo "::error::zig crash REPRODUCED — see the zig-crash-diag artifact"
+                        exit 1
+                    fi
+                    echo "no crash this run (clean VM); re-dispatch to try another runner"
