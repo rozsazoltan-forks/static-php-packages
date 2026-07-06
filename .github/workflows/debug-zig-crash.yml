@@ -114,6 +114,16 @@ jobs:
                             for c in core*; do
                                 [ -f "$c" ] && gdb -q -batch -ex 'bt' -ex 'info threads' /opt/spc-pkgroot/zig/zig "$c" > ../../diag/gdb-core.$i.txt 2>&1 || true
                             done
+                            # hypothesis test: a poisoned zig global cache (Scrt1.o/libc++/compiler_rt
+                            # are linked from it) causes the per-VM-deterministic crash; purge and relink
+                            echo "purging zig cache and relinking" | tee ../../diag/cache-purge-test.txt
+                            rm -rf "${ZIG_GLOBAL_CACHE_DIR:-$HOME/.cache/zig}"
+                            rm -f sapi/cli/php
+                            if eval "$MAKE_CMD" > ../../diag/purged-link.out 2> ../../diag/purged-link.err; then
+                                echo "LINK SUCCEEDED AFTER CACHE PURGE (cache poisoning confirmed)" | tee -a ../../diag/cache-purge-test.txt
+                            else
+                                echo "link still fails after cache purge (rc=$?)" | tee -a ../../diag/cache-purge-test.txt
+                            fi
                         fi
                     done
 

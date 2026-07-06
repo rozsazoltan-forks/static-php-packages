@@ -104,7 +104,17 @@ class RunSPC
                     [[ -n "$output" ]] && echo "$output" >&2
                     $1
                     rc=$?
-                    [[ $rc -ge 128 ]] && echo "zig-cc: zig terminated by signal $((rc-128)) again (exit code $rc)" >&2
+                fi
+                if [[ $rc -ge 128 ]]; then
+                    # A second identical death means per-machine state is poisoned: the link consumes
+                    # Scrt1.o/libc++/libunwind/compiler_rt etc. from zig's global cache, which is
+                    # populated concurrently on first use and can be corrupted by a race. Rebuild it.
+                    zig_cache="${ZIG_GLOBAL_CACHE_DIR:-$HOME/.cache/zig}"
+                    echo "zig-cc: zig terminated by signal $((rc-128)) again; purging zig cache ($zig_cache) and retrying" >&2
+                    rm -rf "$zig_cache" 2>/dev/null
+                    $1
+                    rc=$?
+                    [[ $rc -ge 128 ]] && echo "zig-cc: zig terminated by signal $((rc-128)) even after cache purge (exit code $rc)" >&2
                 fi
                 exit $rc
                 BASH,
