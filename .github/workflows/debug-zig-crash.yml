@@ -45,6 +45,7 @@ jobs:
             -   name: Use requested craft template
                 if: ${{ inputs.craft-ref != '' }}
                 run: |
+                    git config --global --add safe.directory "$GITHUB_WORKSPACE"
                     git fetch --depth=1 origin ${{ inputs.craft-ref }}
                     git checkout ${{ inputs.craft-ref }} -- config/templates/craft.yml.twig
 
