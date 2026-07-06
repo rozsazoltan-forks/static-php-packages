@@ -1,0 +1,126 @@
+# Debug helper for the intermittent silent "Aborted (core dumped) zig-cc" during
+# the LTO link of sapi/cli/php (zig ld.lld child dies, zig aborts without output).
+# Dispatch manually; does not run on push/schedule.
+name: Debug zig crash
+
+on:
+    workflow_dispatch:
+        inputs:
+            cache-week:
+                description: 'Buildroot cache week (YYYY-WW)'
+                default: '2026-27'
+            craft-ref:
+                description: 'Commit whose craft.yml.twig to build with (empty = current)'
+                default: 'cbab85e7b488cee383bb69412701998d80486a48'
+            iterations:
+                description: 'Link attempts after a failure'
+                default: '5'
+
+jobs:
+    repro:
+        runs-on: ubuntu-24.04
+        container:
+            image: ghcr.io/static-php/packages-builder-debian:latest
+        permissions:
+            contents: read
+            packages: read
+        env:
+            GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        steps:
+            -   name: Checkout code
+                uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+                with:
+                    persist-credentials: false
+
+            -   name: Host info
+                run: |
+                    uname -a
+                    cat /proc/sys/vm/mmap_rnd_bits 2>/dev/null || true
+                    cat /proc/sys/kernel/core_pattern || true
+                    nproc
+                    ulimit -a
+                    grep -m1 'model name' /proc/cpuinfo || true
+                    /opt/spc-pkgroot/zig/zig version
+
+            -   name: Use requested craft template
+                if: ${{ inputs.craft-ref != '' }}
+                run: |
+                    git fetch --depth=1 origin ${{ inputs.craft-ref }}
+                    git checkout ${{ inputs.craft-ref }} -- config/templates/craft.yml.twig
+
+            -   name: Install vendor
+                run: composer install --no-interaction --prefer-dist --no-progress
+
+            -   name: Download artifact from spc-download.yml
+                uses: dawidd6/action-download-artifact@ac66b43f0e6a346234dd65d4d0c8fbb31cb316e5 # v11
+                with:
+                    workflow: spc-download.yml
+                    name: downloads-tarball
+                    branch: master
+                    search_artifacts: true
+
+            -   name: Extract downloads
+                run: |
+                    mkdir -p downloads
+                    tar -xzf downloads.tar.gz -C downloads
+                    rm downloads.tar.gz
+
+            -   name: Restore buildroot (fixed week)
+                run: |
+                    curl -fsSL "https://github.com/${{ github.repository }}/releases/download/cache-${{ inputs.cache-week }}/buildroot-deb-amd64-zig.tar.zst" -o buildroot.tar.zst
+                    tar --zstd -xf buildroot.tar.zst
+                    rm buildroot.tar.zst
+
+            -   name: Install debug tools
+                run: apt-get update -qq && apt-get install -y -qq gdb strace procps
+
+            -   name: Build (crash expected at the cli link)
+                id: build
+                continue-on-error: true
+                run: |
+                    ulimit -c unlimited
+                    bin/spp build --phpv=8.5 --type=deb --packages=cli
+
+            -   name: Re-run failing make with diagnostics
+                if: ${{ steps.build.outcome == 'failure' }}
+                run: |
+                    set -x
+                    ulimit -c unlimited
+                    ulimit -n 2048
+                    export PATH="/opt/spc-pkgroot/zig:/opt/spc-pkgroot/bin:$PATH"
+                    export SPC_TARGET=x86_64-linux-gnu
+                    export SPC_COMPILER_EXTRA='-fno-sanitize=undefined'
+                    export BUILD_INCLUDE_PATH="$GITHUB_WORKSPACE/buildroot/include"
+                    mkdir -p diag
+                    MAKE_CMD=$(grep -m1 -o 'Failed command: make .*' log/spc.output.log | sed 's/^Failed command: //') || true
+                    if [ -z "$MAKE_CMD" ]; then echo "no failed make command found"; exit 0; fi
+                    echo "$MAKE_CMD" > diag/make-cmd.txt
+                    cd source/php-src
+                    for i in $(seq 1 ${{ inputs.iterations }}); do
+                        rm -f sapi/cli/php
+                        if eval "$MAKE_CMD" > ../../diag/make.$i.out 2> ../../diag/make.$i.err; then
+                            echo "iter $i OK"
+                        else
+                            rc=$?
+                            echo "iter $i FAILED rc=$rc"
+                            tail -50 ../../diag/make.$i.err || true
+                            # capture the faulting signal + address of every subprocess
+                            eval "strace -ff -o ../../diag/strace.$i -e trace=%signal $MAKE_CMD" > /dev/null 2>&1 || true
+                            grep -l 'SIGSEGV\|SIGABRT\|SIGBUS\|SIGILL' ../../diag/strace.$i.* 2>/dev/null | while read f; do
+                                echo "=== $f"; tail -20 "$f"
+                            done > ../../diag/strace-summary.$i.txt || true
+                            ls core* /tmp/core* 2>/dev/null || true
+                            for c in core*; do
+                                [ -f "$c" ] && gdb -q -batch -ex 'bt' -ex 'info threads' /opt/spc-pkgroot/zig/zig "$c" > ../../diag/gdb-core.$i.txt 2>&1 || true
+                            done
+                        fi
+                    done
+
+            -   name: Upload diagnostics
+                if: ${{ always() }}
+                uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+                with:
+                    name: zig-crash-diag
+                    path: |
+                        diag
+                        log

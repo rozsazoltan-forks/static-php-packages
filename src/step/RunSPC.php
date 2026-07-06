@@ -25,6 +25,8 @@ class RunSPC
             return false;
         }
 
+        self::hardenZigCcWrappers();
+
         // Build the command arguments
         $args = ['vendor/bin/spc', 'craft'];
         if ($debug) {
@@ -58,6 +60,62 @@ class RunSPC
         } catch (Exception $e) {
             echo "Error running static-php-cli with: " . $e->getMessage() . "\n";
             return false;
+        }
+    }
+
+    /**
+     * Work around a zig 0.16 failure mode in spc's zig-cc / zig-c++ wrapper scripts
+     * (vendor/crazywhalecc/static-php-cli/src/SPC/store/scripts/zig-cc.sh):
+     *
+     * When the `zig cc` child process (usually `zig ld.lld` during the LTO link of
+     * sapi/cli/php) dies from a signal such as SIGSEGV, zig aborts WITHOUT printing
+     * anything, so the build log only shows "Aborted (core dumped)" with no clue.
+     * On glibc-versioned targets (alma), the wrapper additionally captures the first
+     * attempt's output and discards it before blindly re-running via exec.
+     *
+     * This rewrites the wrappers' final exec so that a signal-death is logged loudly
+     * (including any captured output) and retried once, since these crashes have been
+     * one-off per runner in CI.
+     */
+    private static function hardenZigCcWrappers(): void
+    {
+        $pkgRoot = getenv('PKG_ROOT_PATH');
+        if (!is_string($pkgRoot) || $pkgRoot === '') {
+            return;
+        }
+
+        foreach (['zig-cc', 'zig-c++'] as $wrapper) {
+            $path = "{$pkgRoot}/zig/{$wrapper}";
+            if (!is_file($path)) {
+                continue;
+            }
+            $content = file_get_contents($path);
+            if ($content === false || str_contains($content, 'terminated by signal')) {
+                continue; // unreadable or already patched
+            }
+
+            $patched = preg_replace(
+                '/^exec (zig (?:cc|c\+\+) \$TARGET \$SPC_COMPILER_EXTRA "\$\{PARSED_ARGS\[@]}")$/m',
+                <<<'BASH'
+                $1
+                rc=$?
+                if [[ $rc -ge 128 ]]; then
+                    echo "zig-cc: zig terminated by signal $((rc-128)) (exit code $rc); retrying once" >&2
+                    [[ -n "$output" ]] && echo "$output" >&2
+                    $1
+                    rc=$?
+                    [[ $rc -ge 128 ]] && echo "zig-cc: zig terminated by signal $((rc-128)) again (exit code $rc)" >&2
+                fi
+                exit $rc
+                BASH,
+                $content,
+                1,
+                $count
+            );
+
+            if ($patched !== null && $count === 1 && file_put_contents($path, $patched) !== false) {
+                echo "Hardened {$wrapper} wrapper (log + retry on zig signal death): {$path}\n";
+            }
         }
     }
 
