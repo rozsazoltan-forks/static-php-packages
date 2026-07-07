@@ -87,6 +87,15 @@ jobs:
                     ulimit -c unlimited
                     bin/spp build --phpv=8.5 --type=deb --packages=cli
 
+            -   name: Hash link inputs
+                if: ${{ always() && steps.build.outcome != 'cancelled' }}
+                shell: bash
+                run: |
+                    mkdir -p diag
+                    find source/php-src -name '*.o' -type f 2>/dev/null | sort | xargs -r sha256sum > diag/object-hashes.txt || true
+                    sha256sum buildroot/lib/*.a >> diag/object-hashes.txt 2>/dev/null || true
+                    wc -l diag/object-hashes.txt
+
             -   name: Re-run failing make with diagnostics
                 if: ${{ steps.build.outcome == 'failure' }}
                 shell: bash
@@ -145,11 +154,31 @@ jobs:
                     gdb -q -batch -ex 'set pagination off' -ex run -ex 'info registers' -ex 'x/8i $rip' \
                         -ex bt -ex 'thread apply all bt' --args "${LLD[@]}" > ../../diag/gdb-live.txt 2>&1 || true
                     tail -40 ../../diag/gdb-live.txt || true
-                    # 2) which LLVM pass dies: opt-bisect logs every pass to stderr until the crash
+                    # 2) pack a byte-exact reproducer: lld streams every input it opens into the
+                    # tar, so it survives the crash; replaying it locally settles whether the
+                    # trigger is in the inputs or in the runner environment
+                    rm -f sapi/cli/php
+                    "${LLD[@]}" --reproduce=../../lld-repro.tar > /dev/null 2>&1 || true
+                    ls -la ../../lld-repro.tar || true
+                    zstd -T0 --rm ../../lld-repro.tar -o ../../lld-repro.tar.zst || true
+                    # 3) environment discriminators on the affected VM
+                    rm -f sapi/cli/php
+                    if env -i PATH=/usr/bin:/bin HOME=/tmp "${LLD[@]}" > /dev/null 2>&1 && [ -f sapi/cli/php ]; then
+                        echo "ENV-I REPLAY OK   (crash depends on environment variables)" | tee -a ../../diag/mitigations.txt
+                    else
+                        echo "ENV-I REPLAY FAIL (environment variables ruled out)" | tee -a ../../diag/mitigations.txt
+                    fi
+                    rm -f sapi/cli/php
+                    if taskset -c 0 "${LLD[@]}" > /dev/null 2>&1 && [ -f sapi/cli/php ]; then
+                        echo "TASKSET-1CPU REPLAY OK   (crash depends on thread scheduling)" | tee -a ../../diag/mitigations.txt
+                    else
+                        echo "TASKSET-1CPU REPLAY FAIL (single-cpu still crashes)" | tee -a ../../diag/mitigations.txt
+                    fi
+                    # 4) which LLVM pass dies: opt-bisect logs every pass to stderr until the crash
                     rm -f sapi/cli/php
                     "${LLD[@]}" -mllvm -opt-bisect-limit=2147483647 2>&1 >/dev/null | tail -n 500 > ../../diag/bisect-tail.txt || true
                     tail -3 ../../diag/bisect-tail.txt || true
-                    # 3) lld-level mitigations (for --lto-O*/--threads the last occurrence wins)
+                    # 5) lld-level mitigations (for --lto-O*/--threads the last occurrence wins)
                     for extra in '--lto-O2' '--lto-O1' '--lto-O0' '--threads=1'; do
                         rm -f sapi/cli/php
                         if "${LLD[@]}" $extra > /dev/null 2>&1 && [ -f sapi/cli/php ]; then
@@ -158,7 +187,7 @@ jobs:
                             echo "LLD MITIGATION FAIL: $extra" | tee -a ../../diag/mitigations.txt
                         fi
                     done
-                    # 4) production-path candidate: -O0 on the link line only; zig cc maps the link-time
+                    # 6) production-path candidate: -O0 on the link line only; zig cc maps the link-time
                     # -O level to lld's --lto-O, and EXTRA_LDFLAGS_PROGRAM lands after EXTRA_CFLAGS' -O3
                     MAKE_O0=$(printf '%s' "$MAKE_CMD" | sed "s|EXTRA_LDFLAGS_PROGRAM='\([^']*\)'|EXTRA_LDFLAGS_PROGRAM='\1 -O0'|")
                     rm -f sapi/cli/php
@@ -167,7 +196,7 @@ jobs:
                     else
                         echo "MAKE MITIGATION FAIL: EXTRA_LDFLAGS_PROGRAM += -O0" | tee -a ../../diag/mitigations.txt
                     fi
-                    # 5) the mixed-LTO hypothesis: buildroot libs are ThinLTO bitcode (-flto=thin) but
+                    # 7) the mixed-LTO hypothesis: buildroot libs are ThinLTO bitcode (-flto=thin) but
                     # the trailing -flto makes PHP objects full-LTO bitcode; the crash sits in LLVM's
                     # prevailing-symbol resolution that reconciles the two. Rebuild PHP thin-only.
                     MAKE_THIN=$(printf '%s' "$MAKE_CMD" | sed "s/ -flto\([ ']\)/\1/g")
@@ -188,6 +217,14 @@ jobs:
                     path: |
                         diag
                         log
+
+            -   name: Upload lld reproducer
+                if: ${{ always() }}
+                uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+                with:
+                    name: lld-repro
+                    path: lld-repro.tar.zst
+                    if-no-files-found: ignore
 
             -   name: Report result
                 if: ${{ always() }}
