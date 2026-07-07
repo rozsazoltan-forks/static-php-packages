@@ -14,13 +14,16 @@ on:
                 default: 'cbab85e7b488cee383bb69412701998d80486a48'
             iterations:
                 description: 'Link attempts after a failure'
-                default: '5'
+                default: '2'
 
 jobs:
     repro:
         runs-on: ubuntu-24.04
         container:
             image: ghcr.io/static-php/packages-builder-debian:latest
+            # privileged so we can point kernel.core_pattern at a plain file; the
+            # default host pattern pipes cores to a helper we cannot reach from here
+            options: --privileged
         permissions:
             contents: read
             packages: read
@@ -40,6 +43,9 @@ jobs:
                     nproc
                     ulimit -a
                     grep -m1 'model name' /proc/cpuinfo || true
+                    grep -m1 'microcode' /proc/cpuinfo || true
+                    grep -m1 'flags' /proc/cpuinfo | md5sum || true
+                    free -m
                     /opt/spc-pkgroot/zig/zig version
 
             -   name: Use requested craft template
@@ -93,37 +99,45 @@ jobs:
                     export SPC_COMPILER_EXTRA='-fno-sanitize=undefined'
                     export BUILD_INCLUDE_PATH="$GITHUB_WORKSPACE/buildroot/include"
                     mkdir -p diag
+                    # make cores land as plain files in the crashing process's cwd; the host
+                    # default pipes them to a helper that is unreachable from this container
+                    sysctl -w kernel.core_pattern='core.%e.%p' || echo "WARN: cannot set core_pattern; no cores will be captured"
                     MAKE_CMD=$(grep -m1 -o 'Failed command: make .*' log/spc.output.log | sed 's/^Failed command: //') || true
                     if [ -z "$MAKE_CMD" ]; then echo "no failed make command found"; exit 0; fi
                     echo "$MAKE_CMD" > diag/make-cmd.txt
                     cd source/php-src
+                    crashed=0
                     for i in $(seq 1 ${{ inputs.iterations }}); do
-                        rm -f sapi/cli/php
+                        rm -f core.* sapi/cli/php
                         if eval "$MAKE_CMD" > ../../diag/make.$i.out 2> ../../diag/make.$i.err; then
                             echo "iter $i OK"
                         else
                             rc=$?
+                            crashed=1
                             echo "iter $i FAILED rc=$rc"
-                            tail -50 ../../diag/make.$i.err || true
-                            # capture the faulting signal + address of every subprocess
-                            eval "strace -ff -o ../../diag/strace.$i -e trace=%signal $MAKE_CMD" > /dev/null 2>&1 || true
-                            grep -l 'SIGSEGV\|SIGABRT\|SIGBUS\|SIGILL' ../../diag/strace.$i.* 2>/dev/null | while read f; do
-                                echo "=== $f"; tail -20 "$f"
-                            done > ../../diag/strace-summary.$i.txt || true
-                            ls core* /tmp/core* 2>/dev/null || true
-                            for c in core*; do
-                                [ -f "$c" ] && gdb -q -batch -ex 'bt' -ex 'info threads' /opt/spc-pkgroot/zig/zig "$c" > ../../diag/gdb-core.$i.txt 2>&1 || true
+                            tail -5 ../../diag/make.$i.err || true
+                            # backtrace every core (SIGSEGV child = the lld crash, SIGABRT parent = zig's reaction)
+                            for c in core.*; do
+                                [ -f "$c" ] || continue
+                                gdb -q -batch -ex 'set pagination off' -ex 'info registers rip rsp' -ex bt -ex 'thread apply all bt' \
+                                    /opt/spc-pkgroot/zig/zig "$c" > "../../diag/gdb-$i-$c.txt" 2>&1 || true
                             done
-                            # hypothesis test: a poisoned zig global cache (Scrt1.o/libc++/compiler_rt
-                            # are linked from it) causes the per-VM-deterministic crash; purge and relink
-                            echo "purging zig cache and relinking" | tee ../../diag/cache-purge-test.txt
-                            rm -rf "${ZIG_GLOBAL_CACHE_DIR:-$HOME/.cache/zig}"
-                            rm -f sapi/cli/php
-                            if eval "$MAKE_CMD" > ../../diag/purged-link.out 2> ../../diag/purged-link.err; then
-                                echo "LINK SUCCEEDED AFTER CACHE PURGE (cache poisoning confirmed)" | tee -a ../../diag/cache-purge-test.txt
-                            else
-                                echo "link still fails after cache purge (rc=$?)" | tee -a ../../diag/cache-purge-test.txt
-                            fi
+                            ls -la core.* > ../../diag/cores.$i.txt 2>&1 || echo "no cores captured" > ../../diag/cores.$i.txt
+                            rm -f core.*
+                        fi
+                    done
+                    [ "$crashed" = 1 ] || { echo "crash did not re-reproduce in diagnostics"; exit 0; }
+                    # mitigation matrix: the crash is deterministic on an affected VM, so test which
+                    # link-time flag dodges it (wrapper appends SPC_COMPILER_EXTRA to every zig cc call)
+                    ulimit -c 0
+                    m=0
+                    for mit in '-Wl,--threads=1' '-Wl,--thinlto-jobs=1' '-Wl,--lto-O0' '-Wl,--threads=1 -Wl,--thinlto-jobs=1'; do
+                        m=$((m+1))
+                        rm -f sapi/cli/php
+                        if SPC_COMPILER_EXTRA="-fno-sanitize=undefined $mit" eval "$MAKE_CMD" > /dev/null 2> ../../diag/mit.$m.err; then
+                            echo "MITIGATION OK:   $mit" | tee -a ../../diag/mitigations.txt
+                        else
+                            echo "MITIGATION FAIL: $mit (rc=$?, $(grep -c 'terminated by signal' ../../diag/mit.$m.err || true) signal deaths)" | tee -a ../../diag/mitigations.txt
                         fi
                     done
 
