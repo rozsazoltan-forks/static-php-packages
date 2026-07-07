@@ -10,8 +10,8 @@ on:
                 description: 'Buildroot cache week (YYYY-WW)'
                 default: '2026-27'
             craft-ref:
-                description: 'Commit whose craft.yml.twig to build with (empty = current)'
-                default: 'cbab85e7b488cee383bb69412701998d80486a48'
+                description: 'Commit whose craft.yml.twig to build with (empty = current checkout; use cbab85e7b488cee383bb69412701998d80486a48 for the known-crashing template)'
+                default: ''
             iterations:
                 description: 'Link attempts after a failure'
                 default: '2'
