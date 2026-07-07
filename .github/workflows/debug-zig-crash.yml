@@ -43,9 +43,8 @@ jobs:
                     nproc
                     ulimit -a
                     grep -m1 'model name' /proc/cpuinfo || true
-                    grep -m1 'microcode' /proc/cpuinfo || true
                     grep -m1 'flags' /proc/cpuinfo | md5sum || true
-                    free -m
+                    grep MemTotal /proc/meminfo || true
                     /opt/spc-pkgroot/zig/zig version
 
             -   name: Use requested craft template
