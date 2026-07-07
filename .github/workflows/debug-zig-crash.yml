@@ -89,6 +89,7 @@ jobs:
 
             -   name: Re-run failing make with diagnostics
                 if: ${{ steps.build.outcome == 'failure' }}
+                shell: bash
                 run: |
                     set -x
                     ulimit -c unlimited
@@ -105,40 +106,67 @@ jobs:
                     if [ -z "$MAKE_CMD" ]; then echo "no failed make command found"; exit 0; fi
                     echo "$MAKE_CMD" > diag/make-cmd.txt
                     cd source/php-src
-                    crashed=0
-                    for i in $(seq 1 ${{ inputs.iterations }}); do
-                        rm -f core.* sapi/cli/php
-                        if eval "$MAKE_CMD" > ../../diag/make.$i.out 2> ../../diag/make.$i.err; then
-                            echo "iter $i OK"
-                        else
-                            rc=$?
-                            crashed=1
-                            echo "iter $i FAILED rc=$rc"
-                            tail -5 ../../diag/make.$i.err || true
-                            # backtrace every core (SIGSEGV child = the lld crash, SIGABRT parent = zig's reaction)
-                            for c in core.*; do
-                                [ -f "$c" ] || continue
-                                gdb -q -batch -ex 'set pagination off' -ex 'info registers rip rsp' -ex bt -ex 'thread apply all bt' \
-                                    /opt/spc-pkgroot/zig/zig "$c" > "../../diag/gdb-$i-$c.txt" 2>&1 || true
+                    # re-run the failed make once, harvesting the `zig ld.lld` child argv from /proc
+                    # so the link can be replayed without zig cc in the way (zig cc rejects lld args
+                    # like --threads/--lto-O*, and swallows the child's crash entirely)
+                    rm -f core.* sapi/cli/php ../../diag/lld-cmdline ../../diag/harvest-stop
+                    (
+                        while [ ! -f ../../diag/harvest-stop ]; do
+                            for p in /proc/[0-9]*/cmdline; do
+                                if tr '\0' '\n' < "$p" 2>/dev/null | sed -n 2p | grep -qx 'ld.lld'; then
+                                    cp "$p" ../../diag/lld-cmdline 2>/dev/null || true
+                                fi
                             done
-                            ls -la core.* > ../../diag/cores.$i.txt 2>&1 || echo "no cores captured" > ../../diag/cores.$i.txt
-                            rm -f core.*
-                        fi
+                            sleep 0.05
+                        done
+                    ) &
+                    HARVEST=$!
+                    if eval "$MAKE_CMD" > ../../diag/make.out 2> ../../diag/make.err; then
+                        touch ../../diag/harvest-stop; wait $HARVEST || true
+                        echo "crash did not re-reproduce in diagnostics"; exit 0
+                    fi
+                    touch ../../diag/harvest-stop; wait $HARVEST || true
+                    tail -3 ../../diag/make.err || true
+                    # cores show the re-raise site, not the original fault: lld's crash handler
+                    # catches the SIGSEGV, resets handlers and rt_tgsigqueueinfo()s itself
+                    for c in core.*; do
+                        [ -f "$c" ] || continue
+                        gdb -q -batch -ex 'set pagination off' -ex 'info registers rip' -ex 'thread apply all bt' \
+                            /opt/spc-pkgroot/zig/zig "$c" > "../../diag/gdb-$c.txt" 2>&1 || true
                     done
-                    [ "$crashed" = 1 ] || { echo "crash did not re-reproduce in diagnostics"; exit 0; }
-                    # mitigation matrix: the crash is deterministic on an affected VM, so test which
-                    # link-time flag dodges it (wrapper appends SPC_COMPILER_EXTRA to every zig cc call)
+                    rm -f core.*
                     ulimit -c 0
-                    m=0
-                    for mit in '-Wl,--threads=1' '-Wl,--thinlto-jobs=1' '-Wl,--lto-O0' '-Wl,--threads=1 -Wl,--thinlto-jobs=1'; do
-                        m=$((m+1))
+                    if [ ! -s ../../diag/lld-cmdline ]; then echo "failed to harvest lld argv"; exit 0; fi
+                    readarray -t -d '' LLD < ../../diag/lld-cmdline
+                    tr '\0' '\n' < ../../diag/lld-cmdline > ../../diag/lld-args.txt
+                    echo "harvested ${#LLD[@]} lld args"
+                    # 1) the original fault: gdb sees the first SIGSEGV before the handler re-raises
+                    rm -f sapi/cli/php
+                    gdb -q -batch -ex 'set pagination off' -ex run -ex 'info registers' -ex 'x/8i $rip' \
+                        -ex bt -ex 'thread apply all bt' --args "${LLD[@]}" > ../../diag/gdb-live.txt 2>&1 || true
+                    tail -40 ../../diag/gdb-live.txt || true
+                    # 2) which LLVM pass dies: opt-bisect logs every pass to stderr until the crash
+                    rm -f sapi/cli/php
+                    "${LLD[@]}" -mllvm -opt-bisect-limit=2147483647 2>&1 >/dev/null | tail -n 500 > ../../diag/bisect-tail.txt || true
+                    tail -3 ../../diag/bisect-tail.txt || true
+                    # 3) lld-level mitigations (for --lto-O*/--threads the last occurrence wins)
+                    for extra in '--lto-O2' '--lto-O1' '--lto-O0' '--threads=1'; do
                         rm -f sapi/cli/php
-                        if SPC_COMPILER_EXTRA="-fno-sanitize=undefined $mit" eval "$MAKE_CMD" > /dev/null 2> ../../diag/mit.$m.err; then
-                            echo "MITIGATION OK:   $mit" | tee -a ../../diag/mitigations.txt
+                        if "${LLD[@]}" $extra > /dev/null 2>&1 && [ -f sapi/cli/php ]; then
+                            echo "LLD MITIGATION OK:   $extra" | tee -a ../../diag/mitigations.txt
                         else
-                            echo "MITIGATION FAIL: $mit (rc=$?, $(grep -c 'terminated by signal' ../../diag/mit.$m.err || true) signal deaths)" | tee -a ../../diag/mitigations.txt
+                            echo "LLD MITIGATION FAIL: $extra" | tee -a ../../diag/mitigations.txt
                         fi
                     done
+                    # 4) production-path candidate: -O0 on the link line only; zig cc maps the link-time
+                    # -O level to lld's --lto-O, and EXTRA_LDFLAGS_PROGRAM lands after EXTRA_CFLAGS' -O3
+                    MAKE_O0=$(printf '%s' "$MAKE_CMD" | sed "s|EXTRA_LDFLAGS_PROGRAM='\([^']*\)'|EXTRA_LDFLAGS_PROGRAM='\1 -O0'|")
+                    rm -f sapi/cli/php
+                    if eval "$MAKE_O0" > /dev/null 2> ../../diag/make-o0.err && [ -f sapi/cli/php ]; then
+                        echo "MAKE MITIGATION OK:   EXTRA_LDFLAGS_PROGRAM += -O0" | tee -a ../../diag/mitigations.txt
+                    else
+                        echo "MAKE MITIGATION FAIL: EXTRA_LDFLAGS_PROGRAM += -O0" | tee -a ../../diag/mitigations.txt
+                    fi
 
             -   name: Upload diagnostics
                 if: ${{ always() }}
