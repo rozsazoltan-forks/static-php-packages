@@ -123,7 +123,12 @@ jobs:
                         while [ ! -f ../../diag/harvest-stop ]; do
                             for p in /proc/[0-9]*/cmdline; do
                                 if tr '\0' '\n' < "$p" 2>/dev/null | sed -n 2p | grep -qx 'ld.lld'; then
-                                    cp "$p" ../../diag/lld-cmdline 2>/dev/null || true
+                                    # copy to a temp first: reading /proc of a dying pid yields an
+                                    # empty file, which must not clobber an earlier good capture
+                                    cp "$p" ../../diag/lld-cmdline.tmp 2>/dev/null || true
+                                    if [ -s ../../diag/lld-cmdline.tmp ]; then
+                                        mv ../../diag/lld-cmdline.tmp ../../diag/lld-cmdline
+                                    fi
                                 fi
                             done
                             sleep 0.05
