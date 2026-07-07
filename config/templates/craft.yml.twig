@@ -97,13 +97,13 @@ extra-env:
     SPC_MUSL_DYNAMIC: 'true'
     {% else -%}
     SPC_TARGET: '{{ target }}'
-    # __builtin_cpu_supports=yes makes PHP emit __attribute__((ifunc)) AVX2 resolvers
-    # (mbstring, standard), and ifuncs in full-LTO bitcode crash zig 0.16's lld
-    # (LLVM 21.1.0) with a silent SIGSEGV during LTO symbol resolution. The configure
-    # probe itself is an -flto link test whose result varies per machine (zig
-    # compiler_rt __cpu_model resolution), which made the crash look random per VM.
-    # Force the safe function-pointer dispatch path instead.
-    SPC_EXTRA_PHP_VARS: 'php_cv_preserve_none=yes php_cv_have___builtin_cpu_supports=no php_cv_have___builtin_cpu_init=no'
+    # An __attribute__((ifunc)) in LTO bitcode crashes zig 0.16's lld (LLVM 21) during
+    # thin-link symbol resolution — long-standing upstream bug (llvm-project #45833,
+    # #45694); zig then aborts with no output. Hide only the ifunc attribute from PHP's
+    # configure: ZEND_INTRIN_*_FUNC_PROTO falls back to FUNC_PTR dispatch, which still
+    # compiles the AVX2/SSE fast paths and still selects them at startup via
+    # __builtin_cpu_supports (resolved by spc's libclang_rt.cpu_model.a).
+    SPC_EXTRA_PHP_VARS: 'php_cv_preserve_none=yes ax_cv_have_func_attribute_ifunc=no'
     # zig cc without -O keeps Debug UB traps; bare-built minilua aborts on Lua's 2^32 double->int cast
     SPC_COMPILER_EXTRA: '-fno-sanitize=undefined'
     {% endif -%}
