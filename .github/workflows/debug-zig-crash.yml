@@ -167,6 +167,18 @@ jobs:
                     else
                         echo "MAKE MITIGATION FAIL: EXTRA_LDFLAGS_PROGRAM += -O0" | tee -a ../../diag/mitigations.txt
                     fi
+                    # 5) the mixed-LTO hypothesis: buildroot libs are ThinLTO bitcode (-flto=thin) but
+                    # the trailing -flto makes PHP objects full-LTO bitcode; the crash sits in LLVM's
+                    # prevailing-symbol resolution that reconciles the two. Rebuild PHP thin-only.
+                    MAKE_THIN=$(printf '%s' "$MAKE_CMD" | sed "s/ -flto\([ ']\)/\1/g")
+                    echo "$MAKE_THIN" > ../../diag/make-thin-cmd.txt
+                    find . \( -name '*.o' -o -name '*.lo' \) -delete
+                    rm -f sapi/cli/php
+                    if eval "$MAKE_THIN" > /dev/null 2> ../../diag/make-thin.err && [ -f sapi/cli/php ]; then
+                        echo "MAKE MITIGATION OK:   thin-only rebuild (standalone -flto removed)" | tee -a ../../diag/mitigations.txt
+                    else
+                        echo "MAKE MITIGATION FAIL: thin-only rebuild (standalone -flto removed)" | tee -a ../../diag/mitigations.txt
+                    fi
 
             -   name: Upload diagnostics
                 if: ${{ always() }}
