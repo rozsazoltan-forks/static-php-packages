@@ -41,14 +41,18 @@ RUN U=$(id -un 1000 2>/dev/null || echo "") && \
     echo "$U ALL=(ALL) NOPASSWD: ALL" > /etc/sudoers.d/builder
 
 # Pre-install SPC's go-xcaddy and zig packages so workflows don't redownload them.
+ARG GITHUB_TOKEN=
 ENV PKG_ROOT_PATH=/opt/spc-pkgroot
 COPY composer.json composer.lock /tmp/spc-bootstrap/
 RUN cd /tmp/spc-bootstrap && \
+    export GITHUB_TOKEN="${GITHUB_TOKEN}" && \
     mkdir -p src && \
     composer install --no-interaction --prefer-dist --no-progress --no-scripts && \
     php vendor/bin/spc install-pkg go-xcaddy && \
     SPC_TARGET="$(uname -m)-linux-musl" php vendor/bin/spc install-pkg zig && \
+    php vendor/bin/spc install-pkg llvm-tools && \
     SPC_TARGET=native-native-musl php vendor/bin/spc doctor --auto-fix --debug && \
+    cp /tmp/spc-bootstrap/downloads/.cache.json "$PKG_ROOT_PATH/.cache.json" && \
     rm -rf /tmp/spc-bootstrap /root/.composer /root/.cache && \
     chown -R ${UID}:${GID} "$PKG_ROOT_PATH"
 

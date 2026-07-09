@@ -1,0 +1,4 @@
+name: packages
+package:
+    psr-4:
+        staticphp\hook: src/hook

@@ -3,9 +3,7 @@
 {%- if arch == 'x86_64' and os == '10' %} {% set arch_flags = arch_flags ~ ' -march=x86-64-v3' -%} {%- endif -%}
 {%- if arch == 'x86_64' and os == '9'  %} {% set arch_flags = arch_flags ~ ' -march=x86-64-v2' -%} {%- endif -%}
 {%- if arch == 'x86_64' and os != '10' and os != '9' -%} {%- set arch_flags = arch_flags ~ ' ' -%} {%- endif -%}
-{%- set using_gcc = not target and php_version < '8.5' -%}
-{%- if not using_gcc and not target and os == 8 %}{% set target = 'native-native-gnu.2.28' -%}{%- endif -%}
-{%- if not using_gcc and not target and os == 9 %}{% set target = 'native-native-gnu.2.34' -%}{%- endif -%}
+{%- set using_gcc = not target -%}
 {%- if not using_gcc and not target %}{% set target = 'native-native-gnu' -%}{% endif -%}
 {%- set target = target|replace({'native-native': arch ~ '-linux'}) -%}
 {%- set specs_cflags = '-specs=/usr/lib/rpm/redhat/redhat-hardened-cc1' -%}
@@ -14,6 +12,7 @@
   '-fPIC -O3 -pipe -fno-plt -fno-semantic-interposition -fstack-clash-protection -fno-omit-frame-pointer -momit-leaf-frame-pointer -ffunction-sections -fdata-sections' ~ arch_flags
 -%}
 {%- set cflags = (using_gcc ? '' : '-flto=thin ') ~ cflags -%}
+{%- if arch == 'aarch64' and using_gcc %}{% set cflags = cflags ~ ' -mtls-size=12' -%}{% endif -%}
 {%- set is_rhel = os in ['7', '8', '9', '10'] and type == 'rpm' -%}
 {%- if using_gcc and is_rhel -%}
     {%- if os == '7' or os == '8' -%}
@@ -28,7 +27,7 @@
 {# extensions #}
 {%- set base_sapi_str = 'cli,cgi,fpm,embed,frankenphp' -%}
 {%- set base_extensions_str = 'calendar,ctype,curl,dom,exif,fileinfo,filter,iconv,libxml,mbregex,mbstring,opcache,openssl,password-argon2,pcntl,phar,posix,readline,session,simplexml,sockets,sodium,tokenizer,xml,xmlreader,xmlwriter,zlib' -%}
-{%- set base_shared_str = 'amqp,apcu,ast,bcmath,brotli,bz2,clickhouse,dba,decimal,deepclone,dio,ds,ev,event,excimer,fastchart,fastjson,ffi,ftp,gd,gettext,gmp,grpc,igbinary,imagick,inotify,intl,ldap,lz4,maxminddb,memcache,memcached,mongodb,msgpack,mysqli,mysqlnd,mysqlnd_ed25519,mysqlnd_parsec,odbc,opentelemetry,parallel,pcov,pdo,pdo_mysql,pdo_odbc,pdo_pgsql,pdo_sqlite,pdo_sqlsrv,pgsql,protobuf,rar,redis,rdkafka,shmop,simdjson,snappy,soap,spx,sqlite3,sqlsrv,ssh2,swoole,swoole-hook-mysql,swoole-hook-pgsql,swoole-hook-sqlite,swoole-hook-odbc,sysvmsg,sysvsem,sysvshm,tidy,trader,uuid,uv,xdebug,xhprof,xlswriter,xsl,xz,yac,yaml,zip,zstd' -%}
+{%- set base_shared_str = 'amqp,apcu,ast,bcmath,brotli,bz2,clickhouse,dba,decimal,deepclone,dio,ds,ev,event,excimer,fastchart,fastjson,ffi,ftp,gd,gearman,gettext,gmp,gmssl,grpc,igbinary,imagick,inotify,intl,ldap,lz4,maxminddb,memcache,memcached,mongodb,msgpack,mysqli,mysqlnd,mysqlnd_ed25519,mysqlnd_parsec,odbc,opentelemetry,parallel,pcov,pdo,pdo_mysql,pdo_odbc,pdo_pgsql,pdo_sqlite,pdo_sqlsrv,pgsql,protobuf,rar,redis,rdkafka,shmop,simdjson,snappy,soap,spx,sqlite3,sqlsrv,ssh2,swoole,swoole-hook-mysql,swoole-hook-pgsql,swoole-hook-sqlite,swoole-hook-odbc,sysvmsg,sysvsem,sysvshm,tidy,trader,uuid,uv,xdebug,xhprof,xlswriter,xsl,xz,yac,yaml,zip,zstd' -%}
 
 {%- set base_extensions = base_extensions_str|split(',')|map(v => v|trim) -%}
 {%- set base_shared = base_shared_str|split(',')|map(v => v|trim) -%}
@@ -55,9 +54,6 @@
 {%- if (os == '8' or type == 'deb') and not using_gcc -%}
 {%-   set shared_ext = shared_ext|filter(v => v != 'excimer') -%}
 {%- endif -%}
-{%- if php_version < '8.3' -%}
-{%-   set shared_ext = shared_ext|filter(v => v != 'fastjson' and v != 'fastchart') -%}
-{%- endif -%}
 
 php-version: {{ php_version }}
 extensions: {{ extensions|join(',') }}
@@ -67,7 +63,6 @@ sapi: {{ sapi_list|join(',') }}
 debug: false
 build-options:
     enable-zts: true
-    with-clean: false
     with-suggested-libs: true
     with-suggested-exts: true
     no-strip: false
@@ -79,6 +74,9 @@ build-options:
     with-hardcoded-ini: [ ]
     # UPX pack the binary (default: false)
     with-upx-pack: false
+    # Maintainer-only: skip PHP buildconf/configure/make when libphp.a/.so already exist.
+    # Frankenphp + shared extensions still rebuild. Flip to true to iterate on frankenphp.
+    maintainer-skip-build: false
 
 download-options:
     prefer-pre-built: false
@@ -92,27 +90,19 @@ craft-options:
 
 extra-env:
     {% if using_gcc -%}
-    SPC_TOOLCHAIN: 'SPC\toolchain\GccNativeToolchain'
+    SPC_TOOLCHAIN: 'StaticPHP\Toolchain\GccNativeToolchain'
     SPC_LIBC: '{{ type == 'apk' ? 'musl' : 'glibc' }}'
     SPC_MUSL_DYNAMIC: 'true'
     {% else -%}
     SPC_TARGET: '{{ target }}'
-    # An __attribute__((ifunc)) in LTO bitcode crashes zig 0.16's lld (LLVM 21) during
-    # thin-link symbol resolution — long-standing upstream bug (llvm-project #45833,
-    # #45694); zig then aborts with no output. Hide only the ifunc attribute from PHP's
-    # configure: ZEND_INTRIN_*_FUNC_PROTO falls back to FUNC_PTR dispatch, which still
-    # compiles the AVX2/SSE fast paths and still selects them at startup via
-    # __builtin_cpu_supports (resolved by spc's libclang_rt.cpu_model.a).
     SPC_EXTRA_PHP_VARS: 'php_cv_preserve_none=yes ax_cv_have_func_attribute_ifunc=no'
-    # zig cc without -O keeps Debug UB traps; bare-built minilua aborts on Lua's 2^32 double->int cast
-    SPC_COMPILER_EXTRA: '-fno-sanitize=undefined'
     {% endif -%}
     EXTENSION_DIR: "{{ moduledir }}"
     SPC_CMD_VAR_PHP_EMBED_TYPE: 'shared'
     SPC_MICRO_PATCHES:
-    SPC_DEFAULT_C_FLAGS: "{{ cflags }}"
-    SPC_DEFAULT_CXX_FLAGS: "{{ cflags }} -fasynchronous-unwind-tables"
-    SPC_DEFAULT_LD_FLAGS: "-Wl,-z,relro -Wl,--as-needed -Wl,-z,now -Wl,-z,noexecstack -Wl,--gc-sections {{ using_gcc and is_rhel ? specs_ldflags : '' }}{{ not using_gcc ? ' -flto=thin' : '' }}"
+    SPC_DEFAULT_CFLAGS: "{{ cflags }}"
+    SPC_DEFAULT_CXXFLAGS: "{{ cflags }} -fasynchronous-unwind-tables"
+    SPC_DEFAULT_LDFLAGS: "-Wl,-z,relro -Wl,--as-needed -Wl,-z,now -Wl,-z,noexecstack -Wl,--gc-sections {{ using_gcc and is_rhel ? specs_ldflags : '' }}{{ not using_gcc ? ' -flto=thin' : '' }}"
     SPC_CMD_VAR_PHP_MAKE_EXTRA_CFLAGS: "{{ cflags }} -g -fno-math-errno -fPIE{{ using_gcc ? '' : ' -flto'}}"
     SPC_CMD_VAR_PHP_MAKE_EXTRA_LDFLAGS: "-Wl,--build-id=sha1 -pie -release {{ release_suffix }}{{ using_gcc ? '' : ' -flto'}}"
     SPC_CMD_PREFIX_PHP_CONFIGURE: "./configure --prefix= --with-valgrind=no --disable-shared --enable-static --disable-all --disable-cgi --disable-phpdbg --disable-debug --with-pic --enable-rtld-now --enable-re2c-cgoto --disable-rpath"

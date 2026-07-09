@@ -62,7 +62,7 @@ class frankenphp implements package
     /**
      * Create FrankenPHP packages (both RPM and DEB)
      */
-    public function createPackages(string $packageType, array $binaryDependencies, ?string $iterationOverride = null, bool $debuginfo = false): void
+    public function createPackages(string $packageType, array $binaryDependencies, ?string $iterationOverride = null, bool $debuginfo = false, bool $bump = false): void
     {
         echo "Creating FrankenPHP package\n";
 
@@ -71,20 +71,36 @@ class frankenphp implements package
         $this->prepareFrankenPhpRepository();
 
         if ($packageType === 'rpm') {
-            $this->createRpmPackage($architecture, $binaryDependencies, $iterationOverride, $debuginfo);
+            $this->createRpmPackage($architecture, $binaryDependencies, $iterationOverride, $debuginfo, $bump);
         }
         if ($packageType === 'deb') {
-            $this->createDebPackage($architecture, $binaryDependencies, $iterationOverride, $debuginfo);
+            $this->createDebPackage($architecture, $binaryDependencies, $iterationOverride, $debuginfo, $bump);
         }
         if ($packageType === 'apk') {
-            $this->createApkPackage($architecture, $binaryDependencies, $iterationOverride, $debuginfo);
+            $this->createApkPackage($architecture, $binaryDependencies, $iterationOverride, $debuginfo, $bump);
         }
+    }
+
+    /**
+     * Resolve iteration for a FrankenPHP package: --iteration override wins, then --bump
+     * (remote query, shared with CreatePackages), then FrankenPHP's own local globber
+     * (which uses a distinct filename layout).
+     */
+    private function resolveIteration(string $name, string $version, string $architecture, string $packageType, ?string $iterationOverride, bool $bump): string
+    {
+        if ($iterationOverride !== null) {
+            return $iterationOverride;
+        }
+        if ($bump) {
+            return (string)\staticphp\step\CreatePackages::getRemoteNextIteration($name, $version, $architecture, $packageType);
+        }
+        return (string)$this->getNextIteration($name, $version, $architecture, $packageType);
     }
 
     /**
      * Create RPM package for FrankenPHP
      */
-    public function createRpmPackage(string $architecture, array $binaryDependencies, ?string $iterationOverride = null, bool $debuginfo = false): void
+    public function createRpmPackage(string $architecture, array $binaryDependencies, ?string $iterationOverride = null, bool $debuginfo = false, bool $bump = false): void
     {
         echo "Creating RPM package for FrankenPHP...\n";
 
@@ -112,8 +128,7 @@ class frankenphp implements package
         $name = $this->getName();
 
         // Calculate iteration for RPM (with possible override)
-        $computed = (string)$this->getNextIteration($name, $rpmVersion, $architecture, 'rpm');
-        $iteration = $iterationOverride ?? $computed;
+        $iteration = $this->resolveIteration($name, $rpmVersion, $architecture, 'rpm', $iterationOverride, $bump);
 
         $versionedConflicts = $this->getVersionedConflicts();
 
@@ -227,7 +242,7 @@ class frankenphp implements package
     /**
      * Create DEB package for FrankenPHP
      */
-    public function createDebPackage(string $architecture, array $binaryDependencies, ?string $iterationOverride = null, bool $debuginfo = false): void
+    public function createDebPackage(string $architecture, array $binaryDependencies, ?string $iterationOverride = null, bool $debuginfo = false, bool $bump = false): void
     {
         echo "Creating DEB package for FrankenPHP...\n";
 
@@ -264,8 +279,7 @@ class frankenphp implements package
         $debVersion = $version . '+php' . $phpVersionSuffix;
 
         // Calculate iteration for DEB (with possible override)
-        $computed = (string)$this->getNextIteration($name, $debVersion, $debArch, 'deb');
-        $iteration = $iterationOverride ?? $computed;
+        $iteration = $this->resolveIteration($name, $debVersion, $debArch, 'deb', $iterationOverride, $bump);
         $debIteration = $iteration;
 
         $versionedConflicts = $this->getVersionedConflicts();
@@ -407,7 +421,7 @@ class frankenphp implements package
     /**
      * Create APK package for FrankenPHP
      */
-    public function createApkPackage(string $architecture, array $binaryDependencies, ?string $iterationOverride = null, bool $debuginfo = false): void
+    public function createApkPackage(string $architecture, array $binaryDependencies, ?string $iterationOverride = null, bool $debuginfo = false, bool $bump = false): void
     {
         echo "Creating APK package for FrankenPHP using nfpm...\n";
 
@@ -437,8 +451,7 @@ class frankenphp implements package
         $apkVersion = $version . 'p' . $phpVersionSuffix;
 
         // Calculate iteration for APK (with possible override)
-        $computed = (string)$this->getNextIteration($name, $apkVersion, $architecture, 'apk');
-        $iteration = $iterationOverride ?? $computed;
+        $iteration = $this->resolveIteration($name, $apkVersion, $architecture, 'apk', $iterationOverride, $bump);
 
         $versionedConflicts = $this->getVersionedConflicts();
 

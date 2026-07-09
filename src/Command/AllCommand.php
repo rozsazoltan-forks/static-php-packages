@@ -20,7 +20,8 @@ class AllCommand extends BaseCommand
         parent::configure();
         $this
             ->addOption('packages', null, InputOption::VALUE_REQUIRED, 'Specify which packages to build (comma-separated)')
-            ->addOption('iteration', null, InputOption::VALUE_REQUIRED, 'Specify iteration number to use for packages (overrides auto-detected)');
+            ->addOption('iteration', null, InputOption::VALUE_REQUIRED, 'Specify iteration number to use for packages (overrides auto-detected)')
+            ->addOption('bump', null, InputOption::VALUE_NONE, 'Bump each package iteration to (latest published on the remote repo) + 1');
     }
 
     protected function execute(InputInterface $input, OutputInterface $output): int
@@ -28,8 +29,13 @@ class AllCommand extends BaseCommand
         $debug = $input->getOption('debug');
         $packagesOpt = $input->getOption('packages');
         $iteration = $input->getOption('iteration');
+        $bump = (bool)$input->getOption('bump');
         $debuginfo = $input->getOption('debuginfo');
         $phpVersion = SPP_PHP_VERSION; // Get from constant
+
+        if ($bump && $iteration !== null && $iteration !== '') {
+            throw new \InvalidArgumentException('--bump and --iteration are mutually exclusive; pass only one.');
+        }
 
         // Process packages option
         $packages = null;
@@ -57,7 +63,7 @@ class AllCommand extends BaseCommand
         }
 
         // All parameters now come from constants set by BaseCommand::initialize()
-        $packageResult = CreatePackages::run($packages, $iteration, $debuginfo);
+        $packageResult = CreatePackages::run($packages, $iteration, $debuginfo, $bump);
 
         if (!$packageResult) {
             $output->writeln("Package creation failed.");

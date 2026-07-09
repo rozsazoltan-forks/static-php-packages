@@ -20,14 +20,16 @@
     "prefer-stable": true,
     "require": {
         "php": ">=8.5",
+        "ext-simplexml": "*",
         "ext-yaml": "*",
         "ext-zlib": "*",
-        "crazywhalecc/static-php-cli": "dev-feat/pgo",
+        "crazywhalecc/static-php-cli": "dev-feat/pgo-v3",
         "laravel/helpers": "^1.7",
         "twig/twig": "^3.0"
     },
     "require-dev": {
-        "roave/security-advisories": "dev-latest"
+        "friendsofphp/php-cs-fixer": "^3.95",
+        "phpstan/phpstan": "^2.1"
     },
     "autoload": {
         "classmap": [
