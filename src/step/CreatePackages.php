@@ -18,10 +18,13 @@ class CreatePackages
     private static $binaryDependencies = [];
     private static string $packageType = 'rpm';
     private static ?string $iterationOverride = null;
+    private static bool $bump = false;
+    /** @var array<string, array{0:int,1:?string}> memoised HTTP GET responses (per run) */
+    private static array $httpCache = [];
     private static string $prefix = '-zts';
     private static bool $debuginfo = false;
 
-    public static function run($packageNames = null, ?string $iteration = null, ?bool $debuginfo = null): true
+    public static function run($packageNames = null, ?string $iteration = null, ?bool $debuginfo = null, ?bool $bump = null): true
     {
         self::loadConfig();
         self::bootstrapSpcGlobals();
@@ -39,6 +42,9 @@ class CreatePackages
         self::$prefix = defined('SPP_PREFIX') ? SPP_PREFIX : '-zts';
         self::$packageType = defined('SPP_TYPE') ? SPP_TYPE : 'rpm';
         self::$iterationOverride = $iteration !== null && $iteration !== '' ? $iteration : null;
+        if ($bump !== null) {
+            self::$bump = $bump;
+        }
 
         // Verify that we're not trying to package a glibc binary as APK
         //if (self::$packageType === 'apk' && file_exists($phpBinary) && self::isGlibcBinary($phpBinary)) {
@@ -167,7 +173,7 @@ class CreatePackages
         // FrankenPHP has a special package creation flow
         if ($sapi === 'frankenphp') {
             $package = new $packageClass();
-            $package->createPackages(self::$packageType, self::$binaryDependencies, self::$iterationOverride, self::$debuginfo);
+            $package->createPackages(self::$packageType, self::$binaryDependencies, self::$iterationOverride, self::$debuginfo, self::$bump);
             return;
         }
 
@@ -392,9 +398,8 @@ class CreatePackages
             $rpmVersion = $phpVersion . '_' . $phpVersionSuffix;
         }
 
-        // Calculate iteration for RPM (with possible override)
-        $computed = (string)self::getNextIteration($name, $rpmVersion, $architecture, 'rpm');
-        $baseIteration = self::$iterationOverride ?? $computed;
+        // Calculate iteration for RPM (--iteration override > --bump remote query > local)
+        $baseIteration = self::resolveIteration($name, $rpmVersion, $architecture, 'rpm');
 
         // Add distribution version to iteration for RPM metadata
         $distVersion = self::getDistVersion();
@@ -590,9 +595,8 @@ class CreatePackages
             $debVersion = $phpVersion . '+php' . $phpVersionSuffix;
         }
 
-        // Calculate iteration for DEB (with possible override)
-        $computed = (string)self::getNextIteration($name, $debVersion, $debArch, 'deb');
-        $iteration = self::$iterationOverride ?? $computed;
+        // Calculate iteration for DEB (--iteration override > --bump remote query > local)
+        $iteration = self::resolveIteration($name, $debVersion, $debArch, 'deb');
 
         //$osRelease = parse_ini_file('/etc/os-release');
         //$distroCodename = $osRelease['VERSION_CODENAME'] ?? null;
@@ -793,9 +797,8 @@ class CreatePackages
             $apkVersion = $phpVersion . 'p' . $phpVersionSuffix;
         }
 
-        // Calculate iteration for APK (with possible override)
-        $computed = (string)self::getNextIteration($name, $apkVersion, $architecture, 'apk');
-        $iteration = self::$iterationOverride ?? $computed;
+        // Calculate iteration for APK (--iteration override > --bump remote query > local)
+        $iteration = self::resolveIteration($name, $apkVersion, $architecture, 'apk');
 
         // APK uses r{iteration} format for revision number
         $apkIteration = $iteration;
@@ -1312,6 +1315,157 @@ class CreatePackages
         }
 
         return $maxIteration + 1;
+    }
+
+    /**
+     * Resolve the iteration to use for a package, honouring the precedence:
+     *   1. explicit --iteration override (same value for every package)
+     *   2. --bump: (max iteration currently published on the remote for this exact
+     *      name+version+arch) + 1, computed per package
+     *   3. default: next iteration derived from locally-present dist files
+     */
+    public static function resolveIteration(string $name, string $version, string $architecture, string $packageType): string
+    {
+        if (self::$iterationOverride !== null) {
+            return self::$iterationOverride;
+        }
+        if (self::$bump) {
+            return (string)self::getRemoteNextIteration($name, $version, $architecture, $packageType);
+        }
+        return (string)self::getNextIteration($name, $version, $architecture, $packageType);
+    }
+
+    /**
+     * Query the hosted repositories for the highest iteration currently published for
+     * {name}-{version} (for RPM: on the given arch/dist) and return it + 1.
+     *
+     * Sources:
+     *   - rpm  -> autoindex at {SPP_RPM_REPO_URL}/{arch}/el{N}/  (createrepo dir listing)
+     *   - deb  -> Forgejo   {SPP_FORGEJO_HOST}/api/v1/packages/{owner}?type=debian
+     *   - apk  -> Forgejo   {SPP_FORGEJO_HOST}/api/v1/packages/{owner}?type=alpine
+     *
+     * A version that is not published yet yields the first release (1 for rpm/deb, 0 for
+     * apk). A transport failure throws, so a --bump build fails loudly instead of silently
+     * emitting a colliding low iteration.
+     */
+    public static function getRemoteNextIteration(string $name, string $version, string $architecture, string $packageType): int
+    {
+        $maxIteration = ($packageType === 'apk') ? -1 : 0;
+
+        if ($packageType === 'rpm') {
+            $dist = self::getDistVersion();
+            if ($dist === '') {
+                throw new RuntimeException("--bump: unable to determine RPM dist version (el8/el9/...) for {$name}");
+            }
+            $baseUrl = getenv('SPP_RPM_REPO_URL') ?: 'https://rpm.henderkes.com';
+            $url = rtrim($baseUrl, '/') . "/{$architecture}/{$dist}/";
+            [$code, $body] = self::httpGet($url);
+            if ($code === 404) {
+                return $maxIteration + 1;
+            }
+            if ($code !== 200 || $body === null) {
+                throw new RuntimeException("--bump: failed to fetch RPM index {$url} (HTTP {$code})");
+            }
+            // {name}-{version}-{iteration}[.{phpSuffix}][.{dist}].{arch}.rpm
+            $pattern = '/' . preg_quote($name, '/') . '-' . preg_quote($version, '/')
+                . '-(\d+)(?:\.[^."/]+){0,2}\.' . preg_quote($architecture, '/') . '\.rpm/';
+            if (preg_match_all($pattern, $body, $matches)) {
+                foreach ($matches[1] as $it) {
+                    $maxIteration = max($maxIteration, (int)$it);
+                }
+            }
+            return $maxIteration + 1;
+        }
+
+        // deb / apk live in the Forgejo package registry
+        $forgeType = $packageType === 'deb' ? 'debian' : 'alpine';
+        $host = getenv('SPP_FORGEJO_HOST') ?: 'https://git.henderkes.com';
+        $owner = self::getForgejoOwner();
+        $url = rtrim($host, '/') . "/api/v1/packages/{$owner}?type={$forgeType}&limit=1000";
+        [$code, $body] = self::httpGet($url);
+        if ($code !== 200 || $body === null) {
+            throw new RuntimeException("--bump: failed to query Forgejo {$url} (HTTP {$code})");
+        }
+        $packages = json_decode($body, true);
+        if (!is_array($packages)) {
+            throw new RuntimeException("--bump: invalid Forgejo response for {$url}");
+        }
+
+        // Debian package names cannot contain underscores, so the registry stores them
+        // dash-normalised (php-zts-pdo_mysql -> php-zts-pdo-mysql), matching the convention
+        // used by bin/forgejo-helper. Alpine keeps underscores as-is.
+        $matchName = $packageType === 'deb' ? str_replace('_', '-', $name) : $name;
+
+        foreach ($packages as $pkg) {
+            if (!is_array($pkg) || ($pkg['name'] ?? null) !== $matchName) {
+                continue;
+            }
+            $remoteVersion = (string)($pkg['version'] ?? '');
+            if ($packageType === 'deb') {
+                // registry version: {version}-{revision}
+                if (str_starts_with($remoteVersion, $version . '-')) {
+                    $revision = substr($remoteVersion, strlen($version) + 1);
+                    if ($revision !== '' && ctype_digit($revision)) {
+                        $maxIteration = max($maxIteration, (int)$revision);
+                    }
+                }
+            }
+            else {
+                // apk registry version: {version}-r{iteration}
+                if (preg_match('/^' . preg_quote($version, '/') . '-r(\d+)$/', $remoteVersion, $m)) {
+                    $maxIteration = max($maxIteration, (int)$m[1]);
+                }
+            }
+        }
+
+        return $maxIteration + 1;
+    }
+
+    /**
+     * Forgejo owner is the PHP major.minor with the dot stripped (e.g. 8.4 -> "84").
+     * Overridable via SPP_FORGEJO_OWNER.
+     */
+    private static function getForgejoOwner(): string
+    {
+        $override = getenv('SPP_FORGEJO_OWNER');
+        if ($override !== false && $override !== '') {
+            return $override;
+        }
+        [$fullPhpVersion] = self::getPhpVersionAndArchitecture();
+        if (preg_match('/^(\d+)\.(\d+)/', $fullPhpVersion, $m)) {
+            return $m[1] . $m[2];
+        }
+        return str_replace('.', '', $fullPhpVersion);
+    }
+
+    /**
+     * Minimal HTTP GET via curl. Returns [httpCode, body]; [0, null] on transport failure.
+     */
+    private static function httpGet(string $url): array
+    {
+        // The RPM index and the Forgejo listing are the same URL for every package in a
+        // job, so memoise to avoid refetching a multi-MB directory index per package.
+        if (isset(self::$httpCache[$url])) {
+            return self::$httpCache[$url];
+        }
+
+        // Request JSON: the RPM repo is served by Caddy's file_server, whose JSON directory
+        // listing is far smaller/faster than the HTML autoindex (e.g. 0.8MB/2s vs 4MB/120s);
+        // the Forgejo API returns JSON regardless. The .rpm filenames appear verbatim in
+        // both payloads, so the same regex extracts iterations either way.
+        $process = new Process(['curl', '-sSL', '--max-time', '90', '-H', 'Accept: application/json', '-w', "\n%{http_code}", $url]);
+        $process->run();
+        if (!$process->isSuccessful()) {
+            return [0, null]; // transport failure: do not cache, allow a retry
+        }
+        $output = $process->getOutput();
+        $nl = strrpos($output, "\n");
+        if ($nl === false) {
+            return [0, null];
+        }
+        $result = [(int)substr($output, $nl + 1), substr($output, 0, $nl)];
+        self::$httpCache[$url] = $result;
+        return $result;
     }
 
     public static function getPrefix(): string

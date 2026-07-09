@@ -20,6 +20,7 @@
     "prefer-stable": true,
     "require": {
         "php": ">=8.5",
+        "ext-simplexml": "*",
         "ext-yaml": "*",
         "ext-zlib": "*",
         "crazywhalecc/static-php-cli": "dev-feat/pgo-v3",
