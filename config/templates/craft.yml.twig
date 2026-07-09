@@ -12,6 +12,7 @@
   '-fPIC -O3 -pipe -fno-plt -fno-semantic-interposition -fstack-clash-protection -fno-omit-frame-pointer -momit-leaf-frame-pointer -ffunction-sections -fdata-sections' ~ arch_flags
 -%}
 {%- set cflags = (using_gcc ? '' : '-flto=thin ') ~ cflags -%}
+{%- if arch == 'aarch64' and using_gcc %}{% set cflags = cflags ~ ' -mtls-size=12' -%}{% endif -%}
 {%- set is_rhel = os in ['7', '8', '9', '10'] and type == 'rpm' -%}
 {%- if using_gcc and is_rhel -%}
     {%- if os == '7' or os == '8' -%}
