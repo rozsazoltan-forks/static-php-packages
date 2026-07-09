@@ -77,7 +77,26 @@ jobs:
                         exit 1
                     fi
 
+            -   name: DIAGNOSE librdkafka
+                run: |
+                    set -uo pipefail
+                    echo "::group::raw curl releases/latest (no auth)"
+                    curl -sS -o /tmp/na.json -w 'no-auth HTTP %{http_code}\n' \
+                        https://api.github.com/repos/confluentinc/librdkafka/releases/latest || true
+                    head -c 200 /tmp/na.json; echo
+                    echo "::endgroup::"
+                    echo "::group::raw curl releases/latest (Bearer GITHUB_TOKEN)"
+                    curl -sS -o /tmp/a.json -w 'auth HTTP %{http_code}\n' \
+                        -H "Authorization: Bearer $GITHUB_TOKEN" \
+                        https://api.github.com/repos/confluentinc/librdkafka/releases/latest || true
+                    jq -r '{tag_name, tarball_url, message}' /tmp/a.json 2>/dev/null || head -c 200 /tmp/a.json; echo
+                    echo "::endgroup::"
+                    echo "::group::spc download librdkafka -vvv"
+                    php vendor/bin/spc download --for-libs=librdkafka -vvv 2>&1 | grep -iE 'librdkafka|curl|authorization|bearer|http|releases/latest|rate|403|429|token' | tail -40 || true
+                    echo "::endgroup::"
+
             -   name: Download extensions
+                if: false
                 run: |
                     set -uo pipefail
                     EXTS=amqp,apcu,ast,bcmath,brotli,bz2,calendar,clickhouse,ctype,curl,dba,decimal,deepclone,dio,dom,ds,ev,event,excimer,exif,fastchart,fastjson,ffi,fileinfo,filter,ftp,gd,gearman,gettext,gmp,gmssl,grpc,iconv,igbinary,imagick,inotify,intl,ldap,libxml,lz4,maxminddb,mbregex,mbstring,memcache,memcached,mongodb,msgpack,mysqli,mysqlnd,mysqlnd_parsec,mysqlnd_ed25519,odbc,opcache,openssl,opentelemetry,parallel,password-argon2,pcov,pcntl,pdo,pdo_mysql,pdo_odbc,pdo_pgsql,pdo_sqlite,pdo_sqlsrv,pgsql,phar,posix,protobuf,rar,rdkafka,readline,redis,session,shmop,simdjson,simplexml,snappy,soap,sockets,sodium,spx,sqlite3,sqlsrv,ssh2,swoole,sysvmsg,sysvsem,sysvshm,tidy,tokenizer,trader,uuid,uv,xdebug,xhprof,xlswriter,xml,xmlreader,xmlwriter,xsl,xz,yac,yaml,zip,zlib,zstd
