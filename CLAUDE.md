@@ -12,7 +12,6 @@ Builds RPM/DEB/APK packages (PHP toolchain, gcc, zig) via GitHub Actions, using 
 - `.github/workflows/`:
   - `build-rpm-modular-packages.yml` — Alma 8/9/10 × x86_64/arm64 × PHP 8.2/8.3/8.4/8.5. Uploads via rsync+SSH then runs `createrepo_c` on the remote.
   - `build-deb-forgejo.yml`, `build-apk-forgejo.yml` — Debian/Alpine builds, push to Forgejo.
-  - `build-zig-packages.yml`, `build-gcc-deb-packages.yml` — toolchain (zig, gcc) packaging.
   - `build-images.yml` — builds the builder containers (libs-only step exists to save build time; uses thin LTO).
   - `spc-download.yml` — produces the `downloads-tarball` artifact that the build workflows pull via `dawidd6/action-download-artifact`.
   - `zizmor.yml` — workflow security audit.
@@ -29,18 +28,12 @@ When editing `Dockerfile.rhel`, remember the per-Alma branches:
 
 ## PHP toolchain selection
 
-Workflows pick the build toolchain by PHP version:
+Toolchain is chosen by **package type**, not PHP version:
 
-- PHP **< 8.5** → `gcc`
-- PHP **>= 8.5** → `zig`
+- **RPM (Alma) and DEB (Debian)** → `gcc` for **all** PHP versions (8.2–8.5). No `--target` is passed, so `craft.yml.twig` sets `using_gcc = not target` → `GccNativeToolchain`.
+- **APK (Alpine)** → `zig` (musl cross). `build-apk-forgejo.yml` passes `--target="native-native-musl -dynamic"`, so `using_gcc` is false.
 
-When parsing or filtering build matrices in jq/bash:
-
-```jq
-(if ($php | startswith("8.5")) then "zig" else "gcc" end) as $tc
-```
-
-The `build-libs` step builds **two** lib sets per (alma, arch) — one for each toolchain — using `phpv: "8.4"` (gcc) and `phpv: "8.5"` (zig) as canonical triggers. The downstream `build` step then maps each PHP version to its toolchain's buildroot artifact (`buildroot-rpm-alma{V}-{arch}-{gcc|zig}`).
+The `build-libs-gcc` job builds one lib set per (alma, arch) with `phpv: "8.4"` as the canonical trigger (libs are PHP-version-independent). The downstream `build` step reuses that single buildroot (`buildroot-rpm-alma{V}-{arch}-gcc` / `buildroot-deb-{arch}-gcc`) for every PHP version. Buildroots ship as `cache-YYYY-WW` GitHub **release** assets via the `.github/actions/buildroot-cache` composite action (pruned by `buildroot-cache-cleanup.yml`).
 
 ## AlmaLinux 8 tar quirk
 
@@ -59,7 +52,7 @@ The deb/apk forgejo workflows still use `tar --zstd` — that is **fine**; they 
 
 Per-Alma failures must not cascade. Pattern used in `build-rpm-modular-packages.yml`:
 
-1. **Fan-out job** uses `strategy.fail-fast: false` and an explicit, parseable `name:` like `Build libs (alma{V} {arch} {toolchain})` or `Build (alma{V} {arch} php{V})`. The name format is the contract — downstream filters parse it.
+1. **Fan-out job** uses `strategy.fail-fast: false` and an explicit, parseable `name:` like `Build libs gcc (alma{V} {arch})` or `Build (alma{V} {arch} php{V})`. The name format is the contract — downstream filters parse it.
 2. **Filter job** runs with `if: ${{ !cancelled() }}` and `permissions: actions: read`. It calls `gh api repos/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID/jobs --paginate --jq …`, filters successful jobs by name regex, sed-extracts the tuple, then jq-builds an `{include: [...]}` matrix and an `any` boolean. Both go to `$GITHUB_OUTPUT`.
 3. **Downstream job** does `needs: [filter-job]`, gates with `if: ${{ !cancelled() && needs.filter-job.outputs.any == 'true' }}`, and uses `matrix: ${{ fromJson(needs.filter-job.outputs.matrix) }}`.
 
@@ -75,14 +68,13 @@ Before pushing, validate YAML and simulate the jq filters:
 # YAML syntax
 python3 -c "import yaml,sys; yaml.safe_load(open(sys.argv[1]))" .github/workflows/build-rpm-modular-packages.yml
 
-# Simulate the compute-build-matrix jq with a mocked "succeeded" string
+# Simulate the compute-build-gcc-matrix jq with a mocked "succeeded" (alma arch) string
 FULL_MATRIX='{"php-version":["8.2","8.3","8.4","8.5"],"alma":["8","9","10"],"arch":["x86_64","arm64"]}'
-succeeded=$'9 x86_64 gcc\n9 arm64 gcc\n9 x86_64 zig\n9 arm64 zig\n10 x86_64 gcc\n10 arm64 gcc\n10 x86_64 zig'
+succeeded=$'9 x86_64\n9 arm64\n10 x86_64\n10 arm64'
 jq -nc --argjson m "$FULL_MATRIX" --arg s "$succeeded" '
   ($s | split("\n") | map(select(length > 0))) as $set |
   [ $m["php-version"][] as $p | $m.alma[] as $a | $m.arch[] as $r |
-    (if ($p | startswith("8.5")) then "zig" else "gcc" end) as $tc |
-    select($set | index("\($a) \($r) \($tc)")) |
+    select($set | index("\($a) \($r)")) |
     {"php-version": $p, alma: $a, arch: $r}
   ]'
 ```
