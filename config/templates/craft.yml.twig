@@ -82,6 +82,10 @@ download-options:
     prefer-pre-built: false
     no-alt: false
     shallow-clone: true
+    # Retry transient GitHub API / network failures instead of aborting the whole
+    # build. spc defaults retry to 0, so a single flaky tags/release API call (e.g.
+    # a slow api.github.com response) would otherwise kill the entire libs build.
+    retry: 3
     ignore-cache-sources: '{{ ci ? 'php-src' : '' }}'
 craft-options:
     doctor: true
