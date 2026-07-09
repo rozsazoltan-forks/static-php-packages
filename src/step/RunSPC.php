@@ -41,24 +41,30 @@ class RunSPC
             $process->setTty(true); // Interactive mode
         }
 
-        // Run the process
         try {
-            $process->mustRun(function ($type, $buffer) {
+            $exitCode = $process->run(function ($type, $buffer) {
                 echo $buffer;
             });
-
-            echo "Static PHP CLI build completed successfully.\n";
-
-            // Copy the built files to our build directory (only when we actually built PHP)
-            if (!$libsOnly) {
-                self::copyBuiltFiles($phpVersion);
-            }
-
-            return true;
         } catch (Exception $e) {
-            echo "Error running static-php-cli with: " . $e->getMessage() . "\n";
+            // run() only throws for failures to *launch* the process, not for a
+            // non-zero exit, so the message here is short and safe to print.
+            echo "Error launching static-php-cli: " . $e->getMessage() . "\n";
             return false;
         }
+
+        if ($exitCode !== 0) {
+            echo "Static PHP CLI build failed (exit code {$exitCode}). See the streamed output above.\n";
+            return false;
+        }
+
+        echo "Static PHP CLI build completed successfully.\n";
+
+        // Copy the built files to our build directory (only when we actually built PHP)
+        if (!$libsOnly) {
+            self::copyBuiltFiles($phpVersion);
+        }
+
+        return true;
     }
 
     private static function copyBuiltFiles(string $phpVersion): void
