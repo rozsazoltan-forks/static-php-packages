@@ -1,0 +1,241 @@
+# Debug helper for the intermittent silent "Aborted (core dumped) zig-cc" during
+# the LTO link of sapi/cli/php (zig ld.lld child dies, zig aborts without output).
+# Dispatch manually; does not run on push/schedule.
+name: Debug zig crash
+
+on:
+    workflow_dispatch:
+        inputs:
+            cache-week:
+                description: 'Buildroot cache week (YYYY-WW)'
+                default: '2026-27'
+            craft-ref:
+                description: 'Commit whose craft.yml.twig to build with (empty = current checkout; use cbab85e7b488cee383bb69412701998d80486a48 for the known-crashing template)'
+                default: ''
+            iterations:
+                description: 'Link attempts after a failure'
+                default: '2'
+
+jobs:
+    repro:
+        runs-on: ubuntu-24.04
+        container:
+            image: ghcr.io/static-php/packages-builder-debian:latest
+            # privileged so we can point kernel.core_pattern at a plain file; the
+            # default host pattern pipes cores to a helper we cannot reach from here
+            options: --privileged
+        permissions:
+            contents: read
+            packages: read
+        env:
+            GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        steps:
+            -   name: Checkout code
+                uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+                with:
+                    persist-credentials: false
+
+            -   name: Host info
+                run: |
+                    uname -a
+                    cat /proc/sys/vm/mmap_rnd_bits 2>/dev/null || true
+                    cat /proc/sys/kernel/core_pattern || true
+                    nproc
+                    ulimit -a
+                    grep -m1 'model name' /proc/cpuinfo || true
+                    grep -m1 'flags' /proc/cpuinfo | md5sum || true
+                    grep MemTotal /proc/meminfo || true
+                    /opt/spc-pkgroot/zig/zig version
+
+            -   name: Use requested craft template
+                if: ${{ inputs.craft-ref != '' }}
+                run: |
+                    git config --global --add safe.directory "$GITHUB_WORKSPACE"
+                    git fetch --depth=1 origin ${{ inputs.craft-ref }}
+                    git checkout ${{ inputs.craft-ref }} -- config/templates/craft.yml.twig
+
+            -   name: Install vendor
+                run: composer install --no-interaction --prefer-dist --no-progress
+
+            -   name: Download artifact from spc-download.yml
+                uses: dawidd6/action-download-artifact@ac66b43f0e6a346234dd65d4d0c8fbb31cb316e5 # v11
+                with:
+                    workflow: spc-download.yml
+                    name: downloads-tarball
+                    branch: master
+                    search_artifacts: true
+
+            -   name: Extract downloads
+                run: |
+                    mkdir -p downloads
+                    tar -xzf downloads.tar.gz -C downloads
+                    rm downloads.tar.gz
+
+            -   name: Restore buildroot (fixed week)
+                run: |
+                    curl -fsSL "https://github.com/${{ github.repository }}/releases/download/cache-${{ inputs.cache-week }}/buildroot-deb-amd64-zig.tar.zst" -o buildroot.tar.zst
+                    tar --zstd -xf buildroot.tar.zst
+                    rm buildroot.tar.zst
+
+            -   name: Install debug tools
+                run: apt-get update -qq && apt-get install -y -qq gdb strace procps
+
+            -   name: Build (crash expected at the cli link)
+                id: build
+                continue-on-error: true
+                run: |
+                    ulimit -c unlimited
+                    bin/spp build --phpv=8.5 --type=deb --packages=cli
+
+            -   name: Hash link inputs
+                if: ${{ always() && steps.build.outcome != 'cancelled' }}
+                shell: bash
+                run: |
+                    mkdir -p diag
+                    find source/php-src -name '*.o' -type f 2>/dev/null | sort | xargs -r sha256sum > diag/object-hashes.txt || true
+                    sha256sum buildroot/lib/*.a >> diag/object-hashes.txt 2>/dev/null || true
+                    wc -l diag/object-hashes.txt
+
+            -   name: Re-run failing make with diagnostics
+                if: ${{ steps.build.outcome == 'failure' }}
+                shell: bash
+                run: |
+                    set -x
+                    ulimit -c unlimited
+                    ulimit -n 2048
+                    export PATH="/opt/spc-pkgroot/zig:/opt/spc-pkgroot/bin:$PATH"
+                    export SPC_TARGET=x86_64-linux-gnu
+                    export SPC_COMPILER_EXTRA='-fno-sanitize=undefined'
+                    export BUILD_INCLUDE_PATH="$GITHUB_WORKSPACE/buildroot/include"
+                    mkdir -p diag
+                    # make cores land as plain files in the crashing process's cwd; the host
+                    # default pipes them to a helper that is unreachable from this container
+                    sysctl -w kernel.core_pattern='core.%e.%p' || echo "WARN: cannot set core_pattern; no cores will be captured"
+                    MAKE_CMD=$(grep -m1 -o 'Failed command: make .*' log/spc.output.log | sed 's/^Failed command: //') || true
+                    if [ -z "$MAKE_CMD" ]; then echo "no failed make command found"; exit 0; fi
+                    echo "$MAKE_CMD" > diag/make-cmd.txt
+                    cd source/php-src
+                    # re-run the failed make once, harvesting the `zig ld.lld` child argv from /proc
+                    # so the link can be replayed without zig cc in the way (zig cc rejects lld args
+                    # like --threads/--lto-O*, and swallows the child's crash entirely)
+                    rm -f core.* sapi/cli/php ../../diag/lld-cmdline ../../diag/harvest-stop
+                    (
+                        while [ ! -f ../../diag/harvest-stop ]; do
+                            for p in /proc/[0-9]*/cmdline; do
+                                if tr '\0' '\n' < "$p" 2>/dev/null | sed -n 2p | grep -qx 'ld.lld'; then
+                                    # copy to a temp first: reading /proc of a dying pid yields an
+                                    # empty file, which must not clobber an earlier good capture
+                                    cp "$p" ../../diag/lld-cmdline.tmp 2>/dev/null || true
+                                    if [ -s ../../diag/lld-cmdline.tmp ]; then
+                                        mv ../../diag/lld-cmdline.tmp ../../diag/lld-cmdline
+                                    fi
+                                fi
+                            done
+                            sleep 0.05
+                        done
+                    ) &
+                    HARVEST=$!
+                    if eval "$MAKE_CMD" > ../../diag/make.out 2> ../../diag/make.err; then
+                        touch ../../diag/harvest-stop; wait $HARVEST || true
+                        echo "crash did not re-reproduce in diagnostics"; exit 0
+                    fi
+                    touch ../../diag/harvest-stop; wait $HARVEST || true
+                    tail -3 ../../diag/make.err || true
+                    # cores show the re-raise site, not the original fault: lld's crash handler
+                    # catches the SIGSEGV, resets handlers and rt_tgsigqueueinfo()s itself
+                    for c in core.*; do
+                        [ -f "$c" ] || continue
+                        gdb -q -batch -ex 'set pagination off' -ex 'info registers rip' -ex 'thread apply all bt' \
+                            /opt/spc-pkgroot/zig/zig "$c" > "../../diag/gdb-$c.txt" 2>&1 || true
+                    done
+                    rm -f core.*
+                    ulimit -c 0
+                    if [ ! -s ../../diag/lld-cmdline ]; then echo "failed to harvest lld argv"; exit 0; fi
+                    readarray -t -d '' LLD < ../../diag/lld-cmdline
+                    tr '\0' '\n' < ../../diag/lld-cmdline > ../../diag/lld-args.txt
+                    echo "harvested ${#LLD[@]} lld args"
+                    # 1) the original fault: gdb sees the first SIGSEGV before the handler re-raises
+                    rm -f sapi/cli/php
+                    gdb -q -batch -ex 'set pagination off' -ex run -ex 'info registers' -ex 'x/8i $rip' \
+                        -ex bt -ex 'thread apply all bt' --args "${LLD[@]}" > ../../diag/gdb-live.txt 2>&1 || true
+                    tail -40 ../../diag/gdb-live.txt || true
+                    # 2) pack a byte-exact reproducer: lld streams every input it opens into the
+                    # tar, so it survives the crash; replaying it locally settles whether the
+                    # trigger is in the inputs or in the runner environment
+                    rm -f sapi/cli/php
+                    "${LLD[@]}" --reproduce=../../lld-repro.tar > /dev/null 2>&1 || true
+                    ls -la ../../lld-repro.tar || true
+                    zstd -T0 --rm ../../lld-repro.tar -o ../../lld-repro.tar.zst || true
+                    # 3) environment discriminators on the affected VM
+                    rm -f sapi/cli/php
+                    if env -i PATH=/usr/bin:/bin HOME=/tmp "${LLD[@]}" > /dev/null 2>&1 && [ -f sapi/cli/php ]; then
+                        echo "ENV-I REPLAY OK   (crash depends on environment variables)" | tee -a ../../diag/mitigations.txt
+                    else
+                        echo "ENV-I REPLAY FAIL (environment variables ruled out)" | tee -a ../../diag/mitigations.txt
+                    fi
+                    rm -f sapi/cli/php
+                    if taskset -c 0 "${LLD[@]}" > /dev/null 2>&1 && [ -f sapi/cli/php ]; then
+                        echo "TASKSET-1CPU REPLAY OK   (crash depends on thread scheduling)" | tee -a ../../diag/mitigations.txt
+                    else
+                        echo "TASKSET-1CPU REPLAY FAIL (single-cpu still crashes)" | tee -a ../../diag/mitigations.txt
+                    fi
+                    # 4) which LLVM pass dies: opt-bisect logs every pass to stderr until the crash
+                    rm -f sapi/cli/php
+                    "${LLD[@]}" -mllvm -opt-bisect-limit=2147483647 2>&1 >/dev/null | tail -n 500 > ../../diag/bisect-tail.txt || true
+                    tail -3 ../../diag/bisect-tail.txt || true
+                    # 5) lld-level mitigations (for --lto-O*/--threads the last occurrence wins)
+                    for extra in '--lto-O2' '--lto-O1' '--lto-O0' '--threads=1'; do
+                        rm -f sapi/cli/php
+                        if "${LLD[@]}" $extra > /dev/null 2>&1 && [ -f sapi/cli/php ]; then
+                            echo "LLD MITIGATION OK:   $extra" | tee -a ../../diag/mitigations.txt
+                        else
+                            echo "LLD MITIGATION FAIL: $extra" | tee -a ../../diag/mitigations.txt
+                        fi
+                    done
+                    # 6) production-path candidate: -O0 on the link line only; zig cc maps the link-time
+                    # -O level to lld's --lto-O, and EXTRA_LDFLAGS_PROGRAM lands after EXTRA_CFLAGS' -O3
+                    MAKE_O0=$(printf '%s' "$MAKE_CMD" | sed "s|EXTRA_LDFLAGS_PROGRAM='\([^']*\)'|EXTRA_LDFLAGS_PROGRAM='\1 -O0'|")
+                    rm -f sapi/cli/php
+                    if eval "$MAKE_O0" > /dev/null 2> ../../diag/make-o0.err && [ -f sapi/cli/php ]; then
+                        echo "MAKE MITIGATION OK:   EXTRA_LDFLAGS_PROGRAM += -O0" | tee -a ../../diag/mitigations.txt
+                    else
+                        echo "MAKE MITIGATION FAIL: EXTRA_LDFLAGS_PROGRAM += -O0" | tee -a ../../diag/mitigations.txt
+                    fi
+                    # 7) the mixed-LTO hypothesis: buildroot libs are ThinLTO bitcode (-flto=thin) but
+                    # the trailing -flto makes PHP objects full-LTO bitcode; the crash sits in LLVM's
+                    # prevailing-symbol resolution that reconciles the two. Rebuild PHP thin-only.
+                    MAKE_THIN=$(printf '%s' "$MAKE_CMD" | sed "s/ -flto\([ ']\)/\1/g")
+                    echo "$MAKE_THIN" > ../../diag/make-thin-cmd.txt
+                    find . \( -name '*.o' -o -name '*.lo' \) -delete
+                    rm -f sapi/cli/php
+                    if eval "$MAKE_THIN" > /dev/null 2> ../../diag/make-thin.err && [ -f sapi/cli/php ]; then
+                        echo "MAKE MITIGATION OK:   thin-only rebuild (standalone -flto removed)" | tee -a ../../diag/mitigations.txt
+                    else
+                        echo "MAKE MITIGATION FAIL: thin-only rebuild (standalone -flto removed)" | tee -a ../../diag/mitigations.txt
+                    fi
+
+            -   name: Upload diagnostics
+                if: ${{ always() }}
+                uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+                with:
+                    name: zig-crash-diag
+                    path: |
+                        diag
+                        log
+
+            -   name: Upload lld reproducer
+                if: ${{ always() }}
+                uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+                with:
+                    name: lld-repro
+                    path: lld-repro.tar.zst
+                    if-no-files-found: ignore
+
+            -   name: Report result
+                if: ${{ always() }}
+                run: |
+                    if [ "${{ steps.build.outcome }}" = "failure" ]; then
+                        echo "::error::zig crash REPRODUCED — see the zig-crash-diag artifact"
+                        exit 1
+                    fi
+                    echo "no crash this run (clean VM); re-dispatch to try another runner"
