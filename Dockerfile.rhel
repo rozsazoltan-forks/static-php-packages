@@ -64,8 +64,9 @@ RUN curl -o cmake.tar.gz -fsSL "https://github.com/Kitware/CMake/releases/downlo
     tar -xzf cmake.tar.gz -C /usr/local --strip-components=1 && \
     rm cmake.tar.gz
 
-ARG GITHUB_TOKEN=
-RUN RPM_ARCH=$(cat /tmp/rpm_arch) && \
+RUN --mount=type=secret,id=github_token \
+    GITHUB_TOKEN="$(cat /run/secrets/github_token 2>/dev/null || true)" && \
+    RPM_ARCH=$(cat /tmp/rpm_arch) && \
     curl -L "https://files.henderkes.com/${RPM_ARCH}-linux/php" -o /usr/local/bin/php && \
     chmod +x /usr/local/bin/php && \
     COMPOSER_INSTALLER_SHA=f3108f64b4e1c1ce6eb462b159956461592b3e3e && \
@@ -84,11 +85,11 @@ RUN U=$(id -un 1000 2>/dev/null || echo "") && \
     echo "$U ALL=(ALL) NOPASSWD: ALL" > /etc/sudoers.d/builder
 
 # Pre-install SPC's go-xcaddy and zig packages so workflows don't redownload them.
-ARG GITHUB_TOKEN=
 ENV PKG_ROOT_PATH=/opt/spc-pkgroot
 COPY composer.json composer.lock /tmp/spc-bootstrap/
-RUN cd /tmp/spc-bootstrap && \
-    export GITHUB_TOKEN="${GITHUB_TOKEN}" && \
+RUN --mount=type=secret,id=github_token \
+    cd /tmp/spc-bootstrap && \
+    export GITHUB_TOKEN="$(cat /run/secrets/github_token 2>/dev/null || true)" && \
     mkdir -p src && \
     composer install --no-interaction --prefer-dist --no-progress --no-scripts && \
     php vendor/bin/spc install-pkg go-xcaddy && \

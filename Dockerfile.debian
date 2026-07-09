@@ -38,11 +38,11 @@ RUN U=$(id -un 1000 2>/dev/null || echo "") && \
     echo "$U ALL=(ALL) NOPASSWD: ALL" > /etc/sudoers.d/builder
 
 # Pre-install SPC's go-xcaddy and zig packages so workflows don't redownload them.
-ARG GITHUB_TOKEN=
 ENV PKG_ROOT_PATH=/opt/spc-pkgroot
 COPY composer.json composer.lock /tmp/spc-bootstrap/
-RUN cd /tmp/spc-bootstrap && \
-    export GITHUB_TOKEN="${GITHUB_TOKEN}" && \
+RUN --mount=type=secret,id=github_token \
+    cd /tmp/spc-bootstrap && \
+    export GITHUB_TOKEN="$(cat /run/secrets/github_token 2>/dev/null || true)" && \
     mkdir -p src && \
     composer install --no-interaction --prefer-dist --no-progress --no-scripts && \
     php vendor/bin/spc install-pkg go-xcaddy && \
