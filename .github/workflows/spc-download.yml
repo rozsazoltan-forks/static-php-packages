@@ -59,47 +59,42 @@ jobs:
                     [[ -f .download-state/lock.prev.json ]] || echo '{}' > .download-state/lock.prev.json
                     [[ -f .download-state/meta.prev.json ]] || echo '{}' > .download-state/meta.prev.json
 
-            -   name: Verify GitHub API auth on runner
-                run: |
-                    set -uo pipefail
-                    echo "GITHUB_TOKEN length: ${#GITHUB_TOKEN}"
-                    http=$(curl -sS -o /tmp/rl.json -w '%{http_code}' \
-                        -H "Authorization: Bearer $GITHUB_TOKEN" \
-                        -H "Accept: application/vnd.github+json" \
-                        https://api.github.com/rate_limit || echo "curl-failed")
-                    echo "authenticated /rate_limit HTTP: $http"
-                    jq -r '.resources.core | "core rate limit: remaining=\(.remaining)/\(.limit)"' /tmp/rl.json || cat /tmp/rl.json
-                    # A limit of 60 means the token is NOT being accepted (unauthenticated);
-                    # an authenticated GITHUB_TOKEN gives 1000+ (typically 15000).
-                    lim=$(jq -r '.resources.core.limit // 0' /tmp/rl.json 2>/dev/null || echo 0)
-                    if [ "$lim" -le 60 ]; then
-                        echo "::error::GitHub token is not authenticating on this runner (core limit=$lim). Downloads will be rate-limited."
-                        exit 1
-                    fi
-
-            -   name: DIAGNOSE librdkafka
-                run: |
-                    set -uo pipefail
-                    echo "::group::raw curl releases/latest (no auth)"
-                    curl -sS -o /tmp/na.json -w 'no-auth HTTP %{http_code}\n' \
-                        https://api.github.com/repos/confluentinc/librdkafka/releases/latest || true
-                    head -c 200 /tmp/na.json; echo
-                    echo "::endgroup::"
-                    echo "::group::raw curl releases/latest (Bearer GITHUB_TOKEN)"
-                    curl -sS -o /tmp/a.json -w 'auth HTTP %{http_code}\n' \
-                        -H "Authorization: Bearer $GITHUB_TOKEN" \
-                        https://api.github.com/repos/confluentinc/librdkafka/releases/latest || true
-                    jq -r '{tag_name, tarball_url, message}' /tmp/a.json 2>/dev/null || head -c 200 /tmp/a.json; echo
-                    echo "::endgroup::"
-                    echo "::group::spc download librdkafka -vvv"
-                    php vendor/bin/spc download --for-libs=librdkafka -vvv 2>&1 | grep -iE 'librdkafka|curl|authorization|bearer|http|releases/latest|rate|403|429|token' | tail -40 || true
-                    echo "::endgroup::"
-
             -   name: Download extensions
-                if: false
                 run: |
                     set -uo pipefail
                     EXTS=amqp,apcu,ast,bcmath,brotli,bz2,calendar,clickhouse,ctype,curl,dba,decimal,deepclone,dio,dom,ds,ev,event,excimer,exif,fastchart,fastjson,ffi,fileinfo,filter,ftp,gd,gearman,gettext,gmp,gmssl,grpc,iconv,igbinary,imagick,inotify,intl,ldap,libxml,lz4,maxminddb,mbregex,mbstring,memcache,memcached,mongodb,msgpack,mysqli,mysqlnd,mysqlnd_parsec,mysqlnd_ed25519,odbc,opcache,openssl,opentelemetry,parallel,password-argon2,pcov,pcntl,pdo,pdo_mysql,pdo_odbc,pdo_pgsql,pdo_sqlite,pdo_sqlsrv,pgsql,phar,posix,protobuf,rar,rdkafka,readline,redis,session,shmop,simdjson,simplexml,snappy,soap,sockets,sodium,spx,sqlite3,sqlsrv,ssh2,swoole,sysvmsg,sysvsem,sysvshm,tidy,tokenizer,trader,uuid,uv,xdebug,xhprof,xlswriter,xml,xmlreader,xmlwriter,xsl,xz,yac,yaml,zip,zlib,zstd
+
+                    # confluentinc (librdkafka's GitHub org) has an IP allow list enabled.
+                    # It rejects AUTHENTICATED api.github.com requests coming from GitHub
+                    # Actions runner IPs with HTTP 403 ("...IP address is not permitted..."),
+                    # while ANONYMOUS requests to the same public endpoints return 200. spc
+                    # always attaches GITHUB_TOKEN to GitHub sources, so its librdkafka fetch
+                    # 403s. Fetch librdkafka first WITHOUT a token; the main authenticated
+                    # pass below then finds it cached and skips the blocked API call.
+                    # (curl --retry does not retry 403, so this must be fixed, not retried.)
+                    if ! env -u GITHUB_TOKEN -u GH_TOKEN php vendor/bin/spc download librdkafka --retry=5; then
+                        echo "::error::failed to fetch librdkafka anonymously"
+                        exit 1
+                    fi
+
+                    # spc's per-request retry uses `curl --retry`, which does not retry HTTP
+                    # 403. Wrap the main download in an outer retry-with-backoff loop; spc
+                    # skips already-cached sources, so each retry only re-fetches the artifacts
+                    # that failed and gives transient rate-limit windows time to reset.
+                    attempt=1
+                    max=6
+                    until php vendor/bin/spc download --shallow-clone --retry=5 -e "$EXTS"; do
+                        rc=$?
+                        if [ "$attempt" -ge "$max" ]; then
+                            echo "::error::spc download failed after ${attempt} attempts (last exit ${rc})"
+                            exit "$rc"
+                        fi
+                        wait=$((attempt * 30))
+                        echo "spc download attempt ${attempt} failed (exit ${rc}); retrying in ${wait}s (cached sources are skipped) ..."
+                        sleep "$wait"
+                        attempt=$((attempt + 1))
+                    done
+                    echo "spc download completed on attempt ${attempt}"
                     # spc's per-request retry uses `curl --retry`, which does NOT retry HTTP 403
                     # (GitHub's rate-limit response). Wrap the whole download in an outer
                     # retry-with-backoff loop: spc skips already-cached sources, so each retry
