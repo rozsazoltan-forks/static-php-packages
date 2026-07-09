@@ -90,6 +90,7 @@ COPY composer.json composer.lock /tmp/spc-bootstrap/
 RUN --mount=type=secret,id=github_token \
     cd /tmp/spc-bootstrap && \
     export GITHUB_TOKEN="$(cat /run/secrets/github_token 2>/dev/null || true)" && \
+    export SSL_CERT_FILE=/etc/pki/tls/certs/ca-bundle.crt && \
     mkdir -p src && \
     composer install --no-interaction --prefer-dist --no-progress --no-scripts && \
     php vendor/bin/spc install-pkg go-xcaddy && \
