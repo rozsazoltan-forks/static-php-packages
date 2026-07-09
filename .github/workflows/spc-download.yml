@@ -10,11 +10,6 @@ on:
                 type: boolean
                 required: false
                 default: false
-    # TEMPORARY: self-trigger on changes to this workflow file to validate the
-    # download hardening end-to-end. Remove once verified.
-    push:
-        branches: [master]
-        paths: ['.github/workflows/spc-download.yml']
 
 permissions:
     contents: read
@@ -266,7 +261,7 @@ jobs:
                     retention-days: 14
 
             -   name: Trigger downstream workflows
-                if: steps.diff.outputs.any_change == 'true' && github.event_name != 'push'
+                if: steps.diff.outputs.any_change == 'true'
                 env:
                     GH_TOKEN: ${{ secrets.GH_PAT }}
                     FULL_PHP: ${{ steps.diff.outputs.full_php }}
