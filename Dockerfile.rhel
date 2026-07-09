@@ -64,10 +64,17 @@ RUN curl -o cmake.tar.gz -fsSL "https://github.com/Kitware/CMake/releases/downlo
     tar -xzf cmake.tar.gz -C /usr/local --strip-components=1 && \
     rm cmake.tar.gz
 
+ARG GITHUB_TOKEN=
 RUN RPM_ARCH=$(cat /tmp/rpm_arch) && \
     curl -L "https://files.henderkes.com/${RPM_ARCH}-linux/php" -o /usr/local/bin/php && \
     chmod +x /usr/local/bin/php && \
-    curl -sS https://raw.githubusercontent.com/composer/getcomposer.org/f3108f64b4e1c1ce6eb462b159956461592b3e3e/web/installer | php -- --quiet && \
+    COMPOSER_INSTALLER_SHA=f3108f64b4e1c1ce6eb462b159956461592b3e3e && \
+    if [ -n "${GITHUB_TOKEN}" ]; then \
+        curl -sS -H "Authorization: Bearer ${GITHUB_TOKEN}" -H "Accept: application/vnd.github.raw" \
+            "https://api.github.com/repos/composer/getcomposer.org/contents/web/installer?ref=${COMPOSER_INSTALLER_SHA}" | php -- --quiet; \
+    else \
+        curl -sS "https://raw.githubusercontent.com/composer/getcomposer.org/${COMPOSER_INSTALLER_SHA}/web/installer" | php -- --quiet; \
+    fi && \
     mv composer.phar /usr/bin/composer
 
 RUN U=$(id -un 1000 2>/dev/null || echo "") && \
