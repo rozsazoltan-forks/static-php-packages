@@ -152,33 +152,25 @@ jobs:
                 run: |
                     set -euo pipefail
 
-                    EXT_JSON=vendor/crazywhalecc/static-php-cli/config/ext.json
-                    ext_map=$(jq -c '
-                        to_entries
-                        | map(select(.value.source != null))
-                        | map({(.value.source): .key})
-                        | add // {}
-                    ' "$EXT_JSON")
-
-                    # frankenphp is a SAPI source; map it 1:1 to its package name.
-                    src_to_pkg=$(jq -nc --argjson e "$ext_map" '$e + {"frankenphp":"frankenphp"}')
-
-                    changed_sources=$(jq -nc \
+                    # spc v3 writes downloads/.cache.json, keyed by artifact/package name,
+                    # with a source's hash at .<key>.source.hash. The craft package names
+                    # (--packages) are the short ext names without the "ext-" prefix; library
+                    # and SAPI/target keys (e.g. frankenphp) pass through unchanged, and any
+                    # key that isn't a craft package (php-src, bare libs) is ignored downstream
+                    # by the twig `filter(v => v in filter_packages)`.
+                    changed_pkgs=$(jq -nc \
                         --slurpfile prev .download-state/lock.prev.json \
-                        --slurpfile cur downloads/.lock.json '
+                        --slurpfile cur downloads/.cache.json '
                         ($prev[0] // {}) as $p | ($cur[0] // {}) as $c |
                         [ ($c | keys[]) as $k
-                          | select(($p[$k].hash // "") != ($c[$k].hash // ""))
-                          | $k ]
+                          | select(($p[$k].source.hash // "") != ($c[$k].source.hash // ""))
+                          | ($k | sub("^ext-"; "")) ]
+                        | unique
                     ')
-                    echo "Changed source keys: $(jq -c . <<< "$changed_sources")"
-
-                    changed_pkgs=$(jq -nc --argjson s "$changed_sources" --argjson m "$src_to_pkg" '
-                        $s | map($m[.]) | map(select(. != null)) | unique
-                    ')
+                    echo "Changed packages: $(jq -c . <<< "$changed_pkgs")"
 
                     # pie is downloaded outside SPC (src/package/pie.php pulls from
-                    # github.com/php/pie releases), so it never appears in lock.json.
+                    # github.com/php/pie releases), so it never appears in .cache.json.
                     # Detect bumps via the version stashed in .spc-meta.json by probe-upstream.
                     prev_pie=$(jq -r '.pie_version // ""' .download-state/meta.prev.json)
                     cur_pie=$(jq -r '.pie_version // ""'  downloads/.spc-meta.json)
@@ -237,14 +229,14 @@ jobs:
                     } >> "$GITHUB_STEP_SUMMARY"
 
             -   name: Persist current state for next run
-                if: hashFiles('downloads/.lock.json') != ''
+                if: hashFiles('downloads/.cache.json') != ''
                 run: |
                     set -euo pipefail
-                    cp downloads/.lock.json     .download-state/lock.prev.json
+                    cp downloads/.cache.json    .download-state/lock.prev.json
                     cp downloads/.spc-meta.json .download-state/meta.prev.json
 
             -   name: Delete previous state cache
-                if: hashFiles('downloads/.lock.json') != ''
+                if: hashFiles('downloads/.cache.json') != ''
                 continue-on-error: true
                 env:
                     GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -254,7 +246,7 @@ jobs:
                         2>/dev/null || true
 
             -   name: Save state cache
-                if: hashFiles('downloads/.lock.json') != ''
+                if: hashFiles('downloads/.cache.json') != ''
                 uses: actions/cache/save@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
                 with:
                     path: .download-state
