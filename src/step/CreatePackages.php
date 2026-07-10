@@ -1367,8 +1367,8 @@ class CreatePackages
                 throw new RuntimeException("--bump: failed to fetch RPM index {$url} (HTTP {$code})");
             }
             // {name}-{version}-{iteration}[.{phpSuffix}][.{dist}].{arch}.rpm
-            $pattern = '/' . preg_quote($name, '/') . '-' . preg_quote($version, '/')
-                . '-(\d+)(?:\.[^."/]+){0,2}\.' . preg_quote($architecture, '/') . '\.rpm/';
+            $pattern = '#' . preg_quote($name, '#') . '-' . preg_quote($version, '#')
+                . '-(\d+)(?:\.[^."/]+){0,2}\.' . preg_quote($architecture, '#') . '\.rpm#';
             if (preg_match_all($pattern, $body, $matches)) {
                 foreach ($matches[1] as $it) {
                     $maxIteration = max($maxIteration, (int)$it);
