@@ -148,17 +148,22 @@ jobs:
                     set -euo pipefail
 
                     # spc v3 writes downloads/.cache.json, keyed by artifact/package name,
-                    # with a source's hash at .<key>.source.hash. The craft package names
-                    # (--packages) are the short ext names without the "ext-" prefix; library
-                    # and SAPI/target keys (e.g. frankenphp) pass through unchanged, and any
-                    # key that isn't a craft package (php-src, bare libs) is ignored downstream
-                    # by the twig `filter(v => v in filter_packages)`.
+                    # with a source's hash at .<key>.source.hash. Only a subset of these keys
+                    # are valid `--packages` values for bin/spp: PHP extensions (keyed "ext-<name>",
+                    # emitted without the prefix) and the frankenphp SAPI. Every other key is a
+                    # bare library/toolchain source (libaom, openssl, zlib, …), php-src, or
+                    # php-micro — none of which are craft packages. Passing those to bin/spp
+                    # produces "Package X not found in configuration" warnings and wasteful
+                    # partial rebuilds, so they are dropped here. php-src bumps are handled
+                    # separately via full_versions below; a library-only bump intentionally
+                    # triggers nothing and gets folded into the tarball on the next real trigger.
                     changed_pkgs=$(jq -nc \
                         --slurpfile prev .download-state/lock.prev.json \
                         --slurpfile cur downloads/.cache.json '
                         ($prev[0] // {}) as $p | ($cur[0] // {}) as $c |
                         [ ($c | keys[]) as $k
                           | select(($p[$k].source.hash // "") != ($c[$k].source.hash // ""))
+                          | select(($k | startswith("ext-")) or $k == "frankenphp")
                           | ($k | sub("^ext-"; "")) ]
                         | unique
                     ')
