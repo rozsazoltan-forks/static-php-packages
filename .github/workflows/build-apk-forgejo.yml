@@ -139,7 +139,7 @@ jobs:
                 if: steps.cache.outputs.cache-hit != 'true'
                 run: |
                     mkdir -p downloads
-                    tar -xzf downloads.tar.gz -C downloads
+                    tar --no-same-owner -xzf downloads.tar.gz -C downloads
                     rm downloads.tar.gz
 
             -   name: Build libs
@@ -268,7 +268,7 @@ jobs:
             -   name: Extract with permissions
                 run: |
                     mkdir -p downloads
-                    tar -xzf downloads.tar.gz -C downloads
+                    tar --no-same-owner -xzf downloads.tar.gz -C downloads
                     rm downloads.tar.gz
 
             -   name: Compute buildroot cache key
