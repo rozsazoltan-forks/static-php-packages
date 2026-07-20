@@ -58,7 +58,8 @@
 php-version: {{ php_version }}
 extensions: {{ extensions|join(',') }}
 shared-extensions: {{ shared_ext|join(',') }}
-libs: []
+{# craft's libs-only stage only resolves extensions, not sapi targets — list frankenphp's suggests explicitly #}
+libs: {{ 'frankenphp' in sapi_list ? '[brotli, watcher]' : '[]' }}
 sapi: {{ sapi_list|join(',') }}
 debug: false
 build-options:
