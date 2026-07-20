@@ -63,8 +63,7 @@ sapi: {{ sapi_list|join(',') }}
 debug: false
 build-options:
     enable-zts: true
-    with-suggested-libs: true
-    with-suggested-exts: true
+    with-suggests: true
     no-strip: false
     with-added-patch: ['{{ patch_file }}']
     with-config-file-path: '/etc/{{ prefix }}'
