@@ -78,25 +78,7 @@ jobs:
                     # that failed and gives transient rate-limit windows time to reset.
                     attempt=1
                     max=6
-                    until php vendor/bin/spc download --shallow-clone --retry=5 -e "$EXTS"; do
-                        rc=$?
-                        if [ "$attempt" -ge "$max" ]; then
-                            echo "::error::spc download failed after ${attempt} attempts (last exit ${rc})"
-                            exit "$rc"
-                        fi
-                        wait=$((attempt * 30))
-                        echo "spc download attempt ${attempt} failed (exit ${rc}); retrying in ${wait}s (cached sources are skipped) ..."
-                        sleep "$wait"
-                        attempt=$((attempt + 1))
-                    done
-                    echo "spc download completed on attempt ${attempt}"
-                    # spc's per-request retry uses `curl --retry`, which does NOT retry HTTP 403
-                    # (GitHub's rate-limit response). Wrap the whole download in an outer
-                    # retry-with-backoff loop: spc skips already-cached sources, so each retry
-                    # only re-fetches the artifacts that failed and gives rate limits time to reset.
-                    attempt=1
-                    max=6
-                    until php vendor/bin/spc download --shallow-clone --retry=5 -e "$EXTS"; do
+                    until php vendor/bin/spc download --shallow-clone --retry=5 -e "$EXTS" --for-packages=frankenphp; do
                         rc=$?
                         if [ "$attempt" -ge "$max" ]; then
                             echo "::error::spc download failed after ${attempt} attempts (last exit ${rc})"
