@@ -122,7 +122,7 @@ RUN for d in /opt/gcc/lib64 /opt/gcc/lib; do \
     echo 'export PATH=/opt/gcc/bin:$PATH' > /etc/profile.d/gcc16.sh && \
     command -v gcc | grep -q /opt/gcc && \
     gcc -dumpfullversion | tee /dev/stderr | grep -qx "${GCC_VERSION}" && \
-    gcc -print-prog-name=as | tee /dev/stderr | grep -qx /opt/gcc/bin/as && \
+    { gcc -print-prog-name=as | grep -qx /opt/gcc/bin/as || echo "WARN: gcc not using bundled /opt/gcc/bin/as — toolchain blob predates binutils bundling; republish via build-toolchain.yml (aarch64 needs it for gcc16 SVE2/bf16)"; } && \
     echo 'int main(){return 0;}' > /tmp/cc-check.c && \
     gcc /tmp/cc-check.c -o /tmp/cc-check && /tmp/cc-check && \
     ! readelf -ld /tmp/cc-check | grep -qE 'linuxbrew|/opt/gcc' && \

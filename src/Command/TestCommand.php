@@ -66,11 +66,19 @@ class TestCommand extends BaseCommand
         $srv = null;
         try {
             // --- 1. install the packages built for this version -----------------
+            // Extension packages depend on the base SAPI (php-zts-cli, php-zts-pdo, …). A full
+            // build has those in dist/; a partial (extension-only) build does not, so pull them
+            // from the published repo — exactly as a real `install php-zts-<ext>` resolves them.
+            $hasBase = in_array('php' . SPP_PREFIX . '-cli', $names, true);
+            $repoArgs = $hasBase ? [] : $this->baseRepoArgs($type, $output);
             $install = match ($type) {
-                'rpm' => array_merge(['dnf', 'install', '-y'], $pkgs),
-                'deb' => array_merge(['apt-get', 'install', '-y', '--no-install-recommends'], $pkgs),
-                'apk' => array_merge(['apk', 'add', '--allow-untrusted'], $pkgs),
+                'rpm' => array_merge(['dnf', 'install', '-y'], $repoArgs, $pkgs),
+                'deb' => array_merge(['apt-get', 'install', '-y', '--no-install-recommends'], $repoArgs, $pkgs),
+                'apk' => array_merge(['apk', 'add', '--allow-untrusted'], $repoArgs, $pkgs),
             };
+            if (!$hasBase) {
+                $output->writeln("dist has no php" . SPP_PREFIX . "-cli (partial build) — base packages will resolve from the published repo");
+            }
             $output->writeln("Installing " . count($pkgs) . " packages from {$distDir}...");
             if ($this->sh($this->maybeSudo($install), $output) !== 0) {
                 return $this->fail($output, "package installation failed");
@@ -345,6 +353,34 @@ class TestCommand extends BaseCommand
         $p->run();
         $installed = array_flip(array_filter(array_map('trim', preg_split('/\s+/', $p->getOutput()) ?: [])));
         return array_values(array_filter($names, fn($n) => isset($installed[$n])));
+    }
+
+    /**
+     * Extra install-command args that add the published repo as a dependency source, so a
+     * partial build's extension packages can resolve their base SAPI. URLs mirror where the
+     * workflows publish (rpm.henderkes.com/{arch}/el{N}; Forgejo apt/apk registries) and are
+     * overridable via SPP_RPM_REPO_URL / SPP_FORGEJO_HOST / SPP_FORGEJO_OWNER.
+     */
+    private function baseRepoArgs(string $type, OutputInterface $output): array
+    {
+        $host = rtrim(getenv('SPP_FORGEJO_HOST') ?: 'https://git.henderkes.com', '/');
+        $owner = getenv('SPP_FORGEJO_OWNER') ?: str_replace('.', '', SPP_PHP_VERSION); // e.g. "85"
+        switch ($type) {
+            case 'rpm':
+                $arch = trim((string) shell_exec('uname -m'));
+                $osr = @parse_ini_file('/etc/os-release') ?: [];
+                $major = preg_match('/^(\d+)/', (string) ($osr['VERSION_ID'] ?? ''), $m) ? $m[1] : '';
+                $repo = rtrim(getenv('SPP_RPM_REPO_URL') ?: 'https://rpm.henderkes.com', '/') . "/{$arch}/el{$major}/";
+                return ['--nogpgcheck', '--repofrompath', "spp-test,{$repo}", '--setopt=spp-test.skip_if_unavailable=1'];
+            case 'deb':
+                $line = "deb [trusted=yes] {$host}/api/packages/{$owner}/debian php-zts main";
+                $this->sh($this->maybeSudo(['bash', '-c', "printf '%s\\n' " . escapeshellarg($line) . " > /etc/apt/sources.list.d/spp-test.list"]), $output);
+                $this->sh($this->maybeSudo(['apt-get', 'update']), $output); // best-effort; local install still works if unreachable
+                return [];
+            case 'apk':
+                return ['--repository', "{$host}/api/packages/{$owner}/alpine/main/php-zts"];
+        }
+        return [];
     }
 
     private function maybeSudo(array $cmd): array
