@@ -393,6 +393,9 @@ jobs:
                 env:
                     MATRIX_PHP_VERSION: ${{ matrix.php-version }}
 
+            -   name: Test packages
+                run: php bin/spp test --type=rpm --phpv=${{ matrix.php-version }}
+
             -   name: Prepare rpm signing
                 run: |
                     export GNUPGHOME="${HOME}/.gnupg"

@@ -306,6 +306,9 @@ jobs:
                     fi
                     php bin/spp all --target="native-native-musl -dynamic" --phpv=${{ matrix.php-version }} --prefix="-zts" --type=apk $ITERATION_FLAG $BUMP_FLAG $PACKAGES_FLAG
 
+            -   name: Test packages
+                run: php bin/spp test --phpv=${{ matrix.php-version }} --prefix="-zts" --type=apk
+
             -   name: Upload logs on failure
                 if: ${{ failure() }}
                 uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
