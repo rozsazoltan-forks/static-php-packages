@@ -21,6 +21,8 @@ class CreatePackages
     private static bool $bump = false;
     /** @var array<string, array{0:int,1:?string}> memoised HTTP GET responses (per run) */
     private static array $httpCache = [];
+    /** @var array<string,string> resolved iteration per base package (name|version|arch|type) */
+    private static array $resolvedIterations = [];
     private static string $prefix = '-zts';
     private static bool $debuginfo = false;
 
@@ -1329,10 +1331,27 @@ class CreatePackages
         if (self::$iterationOverride !== null) {
             return self::$iterationOverride;
         }
-        if (self::$bump) {
-            return (string)self::getRemoteNextIteration($name, $version, $architecture, $packageType);
+        // A -debuginfo package pins its base with a strict (= version-iteration) dependency,
+        // so the pair must resolve to ONE iteration. Resolve per base package and memoise:
+        // the debuginfo call hits the cache instead of re-querying (remote registries can
+        // have drifted base/debuginfo iterations from past partial publishes, and a local
+        // dist scan after the base file exists would be off by one).
+        $base = preg_replace('/-debuginfo$/', '', $name);
+        $key = "{$base}|{$version}|{$architecture}|{$packageType}";
+        if (!isset(self::$resolvedIterations[$key])) {
+            if (self::$bump) {
+                $next = self::getRemoteNextIteration($base, $version, $architecture, $packageType);
+                if (self::$debuginfo) {
+                    // Heal existing drift: jump past the highest published iteration of either
+                    // half, so neither upload collides with an orphaned counterpart.
+                    $next = max($next, self::getRemoteNextIteration($base . '-debuginfo', $version, $architecture, $packageType));
+                }
+            } else {
+                $next = self::getNextIteration($base, $version, $architecture, $packageType);
+            }
+            self::$resolvedIterations[$key] = (string)$next;
         }
-        return (string)self::getNextIteration($name, $version, $architecture, $packageType);
+        return self::$resolvedIterations[$key];
     }
 
     /**
