@@ -67,11 +67,11 @@ jobs:
             -   name: Upload to release
                 env:
                     GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+                    RELEASE_TAG: ${{ inputs.release_tag }}
+                    BLOB: linuxbrew-gcc-16.1.0-${{ matrix.family.name }}-${{ matrix.platform.arch }}.tar.zst
                 run: |
-                    TAG="${{ inputs.release_tag }}"
-                    gh release view "$TAG" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1 || \
-                        gh release create "$TAG" --repo "$GITHUB_REPOSITORY" --latest=false \
+                    gh release view "$RELEASE_TAG" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1 || \
+                        gh release create "$RELEASE_TAG" --repo "$GITHUB_REPOSITORY" --latest=false \
                             --title "Toolchain: Homebrew GCC 16.1.0" \
                             --notes "Prebuilt linuxbrew GCC toolchains targeting the system glibc."
-                    gh release upload "$TAG" --repo "$GITHUB_REPOSITORY" --clobber \
-                        linuxbrew-gcc-16.1.0-${{ matrix.family.name }}-${{ matrix.platform.arch }}.tar.zst
+                    gh release upload "$RELEASE_TAG" --repo "$GITHUB_REPOSITORY" --clobber "$BLOB"
