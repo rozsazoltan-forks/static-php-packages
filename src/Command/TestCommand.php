@@ -94,7 +94,15 @@ class TestCommand extends BaseCommand
             $asked = $this->askedExtensions($confd);   // [shortName => .so basename]
             $output->writeln("Packaged shared extensions (" . count($asked) . "): " . implode(', ', array_keys($asked)));
             if (!$asked) {
-                return $this->fail($output, "no active extension= directives in {$confd} — packages did not install their ini files");
+                // A SAPI-only build legitimately installs no conf.d drop-ins. Only fail if
+                // packages actually shipped .so files that then have no extension= directive.
+                $ed = new Process([$bin, '-r', 'echo ini_get("extension_dir");']);
+                $ed->run();
+                $sos = glob(trim($ed->getOutput()) . '/*.so') ?: [];
+                if ($sos) {
+                    return $this->fail($output, count($sos) . " .so files in extension_dir but no extension= directives in {$confd} — packages did not install their ini files");
+                }
+                $output->writeln("No shared extensions packaged — verifying SAPIs only");
             }
 
             $cli = new Process([$bin, '-d', 'display_errors=stderr', '-d', 'error_reporting=-1', '-r', 'echo implode(",", get_loaded_extensions());']);
