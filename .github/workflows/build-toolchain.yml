@@ -1,0 +1,77 @@
+name: Build toolchain blobs
+
+# Builds the linuxbrew GCC toolchain from source (TOOLCHAIN_URL= forces the Dockerfiles'
+# source path) and publishes /home/linuxbrew as a release asset per (family, arch).
+# The blob is built on the oldest supported glibc of each family (el8, debian11) so it
+# works on every newer member; Dockerfile.rhel/Dockerfile.debian fetch it by default.
+# Dispatch this when bumping the gcc version, then update TOOLCHAIN_URL in the Dockerfiles.
+
+on:
+    workflow_dispatch:
+        inputs:
+            release_tag:
+                description: "Release tag to upload blobs to"
+                required: false
+                default: "toolchain-gcc-16.1.0"
+
+permissions:
+    contents: read
+
+jobs:
+    build-toolchain:
+        name: Build toolchain (${{ matrix.family.name }} ${{ matrix.platform.arch }})
+        permissions:
+            contents: write
+        strategy:
+            fail-fast: false
+            matrix:
+                family:
+                    -   name: rhel
+                        dockerfile: Dockerfile.rhel
+                        build-args: "ALMA_VERSION=8"
+                    -   name: debian
+                        dockerfile: Dockerfile.debian
+                        build-args: ""
+                platform:
+                    -   arch: x86_64
+                        runs-on: ubuntu-24.04
+                    -   arch: aarch64
+                        runs-on: ubuntu-24.04-arm
+        runs-on: ${{ matrix.platform.runs-on }}
+        steps:
+            -   name: Checkout
+                uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+                with:
+                    persist-credentials: false
+
+            -   name: Build image with toolchain from source
+                env:
+                    GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+                run: |
+                    printf '%s' "$GH_TOKEN" > /tmp/github_token
+                    docker build -f ${{ matrix.family.dockerfile }} \
+                        --build-arg TOOLCHAIN_URL= \
+                        ${{ matrix.family.build-args != '' && format('--build-arg {0}', matrix.family.build-args) || '' }} \
+                        --secret id=github_token,src=/tmp/github_token \
+                        -t toolchain-build .
+                    rm -f /tmp/github_token
+
+            -   name: Extract toolchain blob
+                run: |
+                    BLOB="linuxbrew-gcc-16.1.0-${{ matrix.family.name }}-${{ matrix.platform.arch }}.tar.zst"
+                    docker run --rm toolchain-build bash -c \
+                        'rm -f /home/linuxbrew/.linuxbrew/bin/brew && tar -C / -cf - --exclude=home/linuxbrew/.linuxbrew/Homebrew home/linuxbrew' \
+                        | zstd -12 -T0 -o "$BLOB"
+                    ls -la "$BLOB"
+
+            -   name: Upload to release
+                env:
+                    GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+                run: |
+                    TAG="${{ inputs.release_tag }}"
+                    gh release view "$TAG" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1 || \
+                        gh release create "$TAG" --repo "$GITHUB_REPOSITORY" --latest=false \
+                            --title "Toolchain: Homebrew GCC 16.1.0" \
+                            --notes "Prebuilt linuxbrew GCC toolchains targeting the system glibc."
+                    gh release upload "$TAG" --repo "$GITHUB_REPOSITORY" --clobber \
+                        linuxbrew-gcc-16.1.0-${{ matrix.family.name }}-${{ matrix.platform.arch }}.tar.zst

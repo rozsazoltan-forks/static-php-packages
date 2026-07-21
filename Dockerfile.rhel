@@ -16,10 +16,8 @@ RUN if [ -z "${RPM_ARCH}" ]; then \
         esac; \
     else echo "${RPM_ARCH}" > /tmp/rpm_arch; fi
 
-ENV PATH=/opt/rh/gcc-toolset-15/root/usr/bin:/usr/lib/gcc-toolset-15/root/usr/bin:${PATH}
-ENV LD_LIBRARY_PATH=/opt/rh/gcc-toolset-15/root/usr/lib64:/usr/lib/gcc-toolset-15/root/usr/lib64:/opt/rh/gcc-toolset-15/root/usr/lib:/usr/lib/gcc-toolset-15/root/usr/lib
-ENV PKG_CONFIG_PATH=/opt/rh/gcc-toolset-15/root/usr/lib64/pkgconfig:/usr/lib/gcc-toolset-15/root/usr/lib64/pkgconfig
-ENV MANPATH=/opt/rh/gcc-toolset-15/root/usr/share/man:/usr/lib/gcc-toolset-15/root/usr/share/man
+ENV HOMEBREW_NO_ANALYTICS=1 HOMEBREW_NO_AUTO_UPDATE=1 HOMEBREW_NO_ENV_HINTS=1 HOMEBREW_NO_INSTALL_CLEANUP=1
+ENV PATH=/home/linuxbrew/.linuxbrew/bin:/home/linuxbrew/.linuxbrew/sbin:${PATH}
 
 RUN dnf -y install epel-release dnf-plugins-core && \
     if [[ "${ALMA_VERSION}" == "8" ]]; then \
@@ -33,10 +31,7 @@ RUN dnf -y install epel-release dnf-plugins-core && \
         git jq gzip which sudo xz tar zstd curl \
         python3 python3-requests \
         bison flex autoconf automake gettext-devel libtool pkgconfig \
-        gcc-toolset-15 llvm nasm gperf && \
-    mkdir -p /usr/lib/bfd-plugins && \
-    PLUGIN=$(find /usr/lib /usr/lib64 -name LLVMgold.so 2>/dev/null | head -1) && \
-    [ -n "$PLUGIN" ] && ln -sf "$PLUGIN" /usr/lib/bfd-plugins/LLVMgold.so
+        gcc gcc-c++ glibc-devel zlib-devel xz-devel lz4-devel nasm gperf
 
 RUN if [[ "${ALMA_VERSION}" == "8" || "${ALMA_VERSION}" == "9" ]]; then \
         dnf -y install '@ruby:3.3' rubygems ruby-devel; \
@@ -52,13 +47,6 @@ RUN if [[ "${ALMA_VERSION}" == "9" || "${ALMA_VERSION}" == "10" ]]; then \
         curl -L https://github.com/skvadrik/re2c/releases/download/4.3/re2c-4.3.tar.xz | tar xJ && \
         cd re2c-4.3 && ./configure && make -j"$(nproc)" && make install && cd .. && rm -rf re2c-4.3; \
     fi
-
-RUN if [[ "${ALMA_VERSION}" == "8" || "${ALMA_VERSION}" == "9" ]]; then \
-        echo 'source /opt/rh/gcc-toolset-15/enable' > /etc/profile.d/gcc-toolset.sh; \
-    else \
-        echo 'source /usr/lib/gcc-toolset/15-env.source' > /etc/profile.d/gcc-toolset.sh; \
-    fi && \
-    chmod +x /etc/profile.d/gcc-toolset.sh
 
 RUN curl -o cmake.tar.gz -fsSL "https://github.com/Kitware/CMake/releases/download/v3.31.4/cmake-3.31.4-linux-$(uname -m).tar.gz" && \
     tar -xzf cmake.tar.gz -C /usr/local --strip-components=1 && \
@@ -84,7 +72,68 @@ RUN U=$(id -un 1000 2>/dev/null || echo "") && \
     fi && \
     echo "$U ALL=(ALL) NOPASSWD: ALL" > /etc/sudoers.d/builder
 
-# Pre-install SPC's go-xcaddy and zig packages so workflows don't redownload them.
+# Homebrew gcc 16 toolchain. The bottled gcc targets Homebrew's own glibc 2.35+ (interpreter,
+# rpath and GLIBC_2.34+ symbol deps all point into /home/linuxbrew), so packages built with it
+# would not run on stock systems. Instead, gcc is built from source with the brewed-glibc
+# dependency excluded; libstdc++/libgcc then get configured against the system glibc.
+# By default a prebuilt blob (built on el8 = oldest glibc, works on all Alma versions) is
+# fetched from the toolchain release; .github/workflows/build-toolchain.yml builds and
+# publishes the blobs by passing TOOLCHAIN_URL= (empty) to force the source path.
+# zstd is source-built there too (its bottle needs GLIBC_2.34); gmp/mpfr/libmpc/isl bottles
+# are clean (<= GLIBC_2.14). brew refuses to run as root, hence sudo to the builder user.
+ARG TOOLCHAIN_URL=https://github.com/static-php/packages/releases/download/toolchain-gcc-16.1.0/linuxbrew-gcc-16.1.0-rhel-%ARCH%.tar.zst
+RUN if [ -n "${TOOLCHAIN_URL}" ]; then \
+        curl -fsSL "$(echo "${TOOLCHAIN_URL}" | sed "s/%ARCH%/$(uname -m)/")" | zstd -dc | tar -xf - -C / && \
+        chown -R ${UID}:${GID} /home/linuxbrew; \
+    else \
+        git clone --depth=1 https://github.com/Homebrew/brew /home/linuxbrew/.linuxbrew/Homebrew && \
+        mkdir -p /home/linuxbrew/.linuxbrew/bin && \
+        ln -s ../Homebrew/bin/brew /home/linuxbrew/.linuxbrew/bin/brew && \
+        chown -R ${UID}:${GID} /home/linuxbrew && \
+        ln -sf /usr/local/bin/cmake /usr/local/bin/ctest /usr/bin/ && \
+        ln -sf /usr/lib64/*crt*.o /usr/lib/ && \
+        sudo -u "#${UID}" -H env PATH="/home/linuxbrew/.linuxbrew/bin:$PATH" \
+            HOMEBREW_NO_ANALYTICS=1 HOMEBREW_NO_AUTO_UPDATE=1 HOMEBREW_NO_ENV_HINTS=1 HOMEBREW_NO_INSTALL_CLEANUP=1 \
+            bash -c 'brew install --ignore-dependencies gmp mpfr libmpc isl && \
+                     brew install -s --ignore-dependencies zstd gcc@16'; \
+    fi
+
+# Fixups (idempotent — already applied inside the blob, needed after a source build) and
+# assertions. crt symlinks are re-pointed per distro: the blob bakes the builder's system
+# gcc dir (e.g. .../x86_64-redhat-linux/8/...) which does not exist on other Alma versions.
+# De-brewed specs = system dynamic linker, no linuxbrew rpath; libstdc++.so dev-symlink is
+# a linker script INPUT(libstdc++.a) so -lstdc++ links gcc 16's runtime statically and
+# shipped artifacts depend only on the system glibc/libgcc_s.
+RUN LIBGCC="$(dirname "$(gcc-16 -print-libgcc-file-name)")" && \
+    for f in crt1.o crti.o crtn.o Scrt1.o Mcrt1.o gcrt1.o grcrt1.o rcrt1.o; do \
+        if [ -e "/usr/lib64/$f" ]; then ln -sf "/usr/lib64/$f" "$LIBGCC/$f"; else rm -f "$LIBGCC/$f"; fi; \
+    done && \
+    SPECS="$LIBGCC/specs" && \
+    if grep -q -- '--dynamic-linker /home/linuxbrew' "$SPECS"; then \
+        sed -i -e '/^\*link:$/{N;/\n+ --dynamic-linker \/home\/linuxbrew/{N;d}}' \
+               -e '/^\*homebrew_rpath:$/{n;s|^-rpath /home/linuxbrew.*$||}' "$SPECS"; \
+    fi && \
+    ! grep -q -- '--dynamic-linker /home/linuxbrew' "$SPECS" && \
+    for d in /home/linuxbrew/.linuxbrew/opt/gcc/lib/gcc/current /home/linuxbrew/.linuxbrew/lib/gcc/current; do \
+        if [ -e "$d/libstdc++.a" ]; then \
+            rm -f "$d/libstdc++.so" && \
+            printf 'INPUT(libstdc++.a)\n' > "$d/libstdc++.so"; \
+        fi; \
+    done && \
+    cd /home/linuxbrew/.linuxbrew/bin && \
+    for t in gcc g++ cpp gcc-ar gcc-nm gcc-ranlib; do ln -sf "${t}-16" "$t"; done && \
+    ln -sf gcc-16 cc && ln -sf g++-16 c++ && \
+    echo 'export PATH=/home/linuxbrew/.linuxbrew/bin:/home/linuxbrew/.linuxbrew/sbin:$PATH' > /etc/profile.d/homebrew-gcc.sh && \
+    gcc -dumpfullversion | tee /dev/stderr | grep -q '^16\.' && \
+    echo 'int main(){return 0;}' > /tmp/cc-check.c && \
+    gcc /tmp/cc-check.c -o /tmp/cc-check && /tmp/cc-check && \
+    ! readelf -ld /tmp/cc-check | grep -q linuxbrew && \
+    printf '#include <string>\nint main(){ return std::string("x").size() != 1; }\n' > /tmp/cxx-check.cpp && \
+    g++ /tmp/cxx-check.cpp -o /tmp/cxx-check && /tmp/cxx-check && \
+    ! readelf -ld /tmp/cxx-check | grep -qE 'linuxbrew|libstdc\+\+' && \
+    rm -f /tmp/cc-check* /tmp/cxx-check*
+
+# Pre-install SPC's go-xcaddy package so workflows don't redownload it.
 ENV PKG_ROOT_PATH=/opt/spc-pkgroot
 COPY composer.json composer.lock /tmp/spc-bootstrap/
 RUN --mount=type=secret,id=github_token \
@@ -94,9 +143,7 @@ RUN --mount=type=secret,id=github_token \
     mkdir -p src && \
     composer install --no-interaction --prefer-dist --no-progress --no-scripts && \
     php vendor/bin/spc install-pkg go-xcaddy && \
-    SPC_TARGET="$(uname -m)-linux-musl" php vendor/bin/spc install-pkg zig && \
-    php vendor/bin/spc install-pkg llvm-tools && \
-    SPC_TARGET=native-native-musl php vendor/bin/spc doctor --auto-fix --debug && \
+    SPC_TOOLCHAIN='StaticPHP\Toolchain\GccNativeToolchain' SPC_LIBC=glibc php vendor/bin/spc doctor --auto-fix --debug && \
     cp /tmp/spc-bootstrap/downloads/.cache.json "$PKG_ROOT_PATH/.cache.json" && \
     rm -rf /tmp/spc-bootstrap /root/.composer /root/.cache && \
     chown -R ${UID}:${GID} "$PKG_ROOT_PATH"
