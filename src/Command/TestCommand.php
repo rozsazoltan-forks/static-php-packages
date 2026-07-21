@@ -367,10 +367,9 @@ class TestCommand extends BaseCommand
     }
 
     /**
-     * Extra install-command args that add the published repo as a dependency source, so a
-     * partial build's extension packages can resolve their base SAPI. URLs mirror where the
-     * workflows publish (rpm.henderkes.com/{arch}/el{N}; Forgejo apt/apk registries) and are
-     * overridable via SPP_RPM_REPO_URL / SPP_FORGEJO_HOST / SPP_FORGEJO_OWNER.
+     * Configures the published repo as a dependency source (side effects) and returns any
+     * extra install-command args, so a partial build's extension packages can resolve their
+     * base SAPI. Overridable via SPP_RPM_REPO_URL / SPP_FORGEJO_HOST / SPP_FORGEJO_OWNER.
      */
     private function baseRepoArgs(string $type, OutputInterface $output): array
     {
@@ -378,11 +377,15 @@ class TestCommand extends BaseCommand
         $owner = getenv('SPP_FORGEJO_OWNER') ?: str_replace('.', '', SPP_PHP_VERSION); // e.g. "85"
         switch ($type) {
             case 'rpm':
-                $arch = trim((string) shell_exec('uname -m'));
-                $osr = @parse_ini_file('/etc/os-release') ?: [];
-                $major = preg_match('/^(\d+)/', (string) ($osr['VERSION_ID'] ?? ''), $m) ? $m[1] : '';
-                $repo = rtrim(getenv('SPP_RPM_REPO_URL') ?: 'https://rpm.henderkes.com', '/') . "/{$arch}/el{$major}/";
-                return ['--nogpgcheck', '--repofrompath', "spp-test,{$repo}", '--setopt=spp-test.skip_if_unavailable=1'];
+                // The repo is a modular DNF repo. The release RPM configures it with the right
+                // $releasever; enabling this PHP version's stream makes the base packages
+                // resolvable on el8/el9 (el10 dropped modularity, so module-enable is best-effort).
+                $base = rtrim(getenv('SPP_RPM_REPO_URL') ?: 'https://rpm.henderkes.com', '/');
+                $mm = preg_match('/^(\d+\.\d+)/', SPP_PHP_VERSION, $m) ? $m[1] : SPP_PHP_VERSION;
+                $stream = 'php' . SPP_PREFIX . ':static-' . $mm; // e.g. php-zts:static-8.2
+                $this->sh($this->maybeSudo(['dnf', 'install', '-y', '--nogpgcheck', "{$base}/static-php-1-1.noarch.rpm"]), $output);
+                $this->sh($this->maybeSudo(['dnf', 'module', 'enable', '-y', $stream]), $output);
+                return ['--nogpgcheck'];
             case 'deb':
                 $line = "deb [trusted=yes] {$host}/api/packages/{$owner}/debian php-zts main";
                 $this->sh($this->maybeSudo(['bash', '-c', "printf '%s\\n' " . escapeshellarg($line) . " > /etc/apt/sources.list.d/spp-test.list"]), $output);
