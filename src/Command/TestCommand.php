@@ -111,8 +111,19 @@ class TestCommand extends BaseCommand
             $output->writeln("<info>CLI: all " . count($asked) . " packaged extensions loaded</info>" . $note);
 
             // --- 3. frankenphp serves the phpinfo script over HTTP --------------
+            // frankenphp is a standalone package, not a dependency of the extensions, so a
+            // partial build won't have pulled it — install it from the repo like the base.
             if (!is_executable($franken)) {
-                return $this->fail($output, "{$franken} not installed");
+                $output->writeln("frankenphp not in this build — installing it from the repo...");
+                $frInstall = match ($type) {
+                    'rpm' => array_merge(['dnf', 'install', '-y'], $repoArgs, ['frankenphp']),
+                    'deb' => array_merge(['apt-get', 'install', '-y', '--no-install-recommends'], ['frankenphp']),
+                    'apk' => array_merge(['apk', 'add', '--allow-untrusted'], $repoArgs, ['frankenphp']),
+                };
+                $this->sh($this->maybeSudo($frInstall), $output);
+            }
+            if (!is_executable($franken)) {
+                return $this->fail($output, "{$franken} not installed (not built, and not available from the repo)");
             }
             $webroot = sys_get_temp_dir() . '/spp-test-web';
             @mkdir($webroot, 0755, true);
