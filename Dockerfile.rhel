@@ -78,16 +78,30 @@ RUN U=$(id -un 1000 2>/dev/null || echo "") && \
 # from the toolchain release; .github/workflows/build-toolchain.yml publishes the blobs
 # by passing TOOLCHAIN_URL= (empty) to force this source path.
 ARG GCC_VERSION=16.1.0
+# binutils is bundled into /opt/gcc and gcc is pinned to it (--with-as/--with-ld). The el8
+# system assembler is 2.30, which predates the aarch64 armv9 extensions (bf16, sve2-aes,
+# …) gcc 16 emits for per-target SIMD dispatch (e.g. highway in libjxl) — assembling that
+# fails with "unknown architectural extension". Carrying our own binutils keeps the
+# toolchain self-contained across every Alma version and arch (a gcc-toolset path can't be
+# hardcoded: Alma 10 lays it out differently). Bump alongside GCC_VERSION as needed.
+ARG BINUTILS_VERSION=2.44
 ARG TOOLCHAIN_URL=https://github.com/static-php/packages/releases/download/toolchain-gcc-${GCC_VERSION}/gcc-${GCC_VERSION}-rhel-%ARCH%.tar.zst
 RUN if [ -n "${TOOLCHAIN_URL}" ]; then \
         curl -fsSL --retry 5 "$(echo "${TOOLCHAIN_URL}" | sed "s/%ARCH%/$(uname -m)/")" | zstd -dc | tar -xf - -C /; \
     else \
+        curl -fsSL --retry 5 https://ftp.gnu.org/gnu/binutils/binutils-${BINUTILS_VERSION}.tar.xz | tar -xJ -C /tmp && \
+        cd /tmp/binutils-${BINUTILS_VERSION} && mkdir build && cd build && \
+        ../configure --prefix=/opt/gcc --disable-multilib --disable-nls --with-system-zlib \
+            --enable-plugins --enable-ld=default --disable-gprofng && \
+        make -j"$(nproc)" && make install-strip && \
+        cd / && rm -rf /tmp/binutils-${BINUTILS_VERSION} && \
         curl -fsSL --retry 5 https://ftp.gnu.org/gnu/gcc/gcc-${GCC_VERSION}/gcc-${GCC_VERSION}.tar.xz | tar -xJ -C /tmp && \
         cd /tmp/gcc-${GCC_VERSION} && \
         contrib/download_prerequisites && \
         mkdir build && cd build && \
         ../configure --prefix=/opt/gcc --disable-multilib --disable-bootstrap --disable-nls \
             --enable-checking=release --enable-languages=c,c++ --with-system-zlib \
+            --with-as=/opt/gcc/bin/as --with-ld=/opt/gcc/bin/ld \
             --enable-default-pie --with-pkgversion="static-php GCC" && \
         make -j"$(nproc)" && \
         make install-strip && \
@@ -108,6 +122,7 @@ RUN for d in /opt/gcc/lib64 /opt/gcc/lib; do \
     echo 'export PATH=/opt/gcc/bin:$PATH' > /etc/profile.d/gcc16.sh && \
     command -v gcc | grep -q /opt/gcc && \
     gcc -dumpfullversion | tee /dev/stderr | grep -qx "${GCC_VERSION}" && \
+    gcc -print-prog-name=as | tee /dev/stderr | grep -qx /opt/gcc/bin/as && \
     echo 'int main(){return 0;}' > /tmp/cc-check.c && \
     gcc /tmp/cc-check.c -o /tmp/cc-check && /tmp/cc-check && \
     ! readelf -ld /tmp/cc-check | grep -qE 'linuxbrew|/opt/gcc' && \
