@@ -29,6 +29,9 @@ services:
         UID: "${UID:-1000}"
         GID: "${GID:-1000}"
         GITHUB_TOKEN: "${GITHUB_TOKEN:-}"
+        # Empty by default → build GCC from source (no alpine toolchain blob published yet).
+        # Once build-toolchain.yml publishes one, `export TOOLCHAIN_URL=<blob-url>` to fetch it.
+        TOOLCHAIN_URL: "${TOOLCHAIN_URL-}"
     container_name: packages-alpine
 
   rhel-8:
