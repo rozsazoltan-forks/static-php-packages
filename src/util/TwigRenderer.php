@@ -83,13 +83,14 @@ class TwigRenderer
         }
 
         if ($majorOsVersion === null || $majorOsVersion === '') {
-            if (str_contains(SPP_TARGET, '.2.17')) {
+            $sppTarget = (string) SPP_TARGET; // null when no --target (gcc toolchain path)
+            if (str_contains($sppTarget, '.2.17')) {
                 $majorOsVersion = '7';
-            } elseif (str_contains(SPP_TARGET, '.2.28')) {
+            } elseif (str_contains($sppTarget, '.2.28')) {
                 $majorOsVersion = '8';
-            } elseif (str_contains(SPP_TARGET, '.2.34')) {
+            } elseif (str_contains($sppTarget, '.2.34')) {
                 $majorOsVersion = '9';
-            } elseif (str_contains(SPP_TARGET, '.2.39')) {
+            } elseif (str_contains($sppTarget, '.2.39')) {
                 $majorOsVersion = '10';
             } else {
                 $majorOsVersion = '99'; // other OS = pretend we're on el10

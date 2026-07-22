@@ -1,32 +1,28 @@
-FROM ubuntu:24.04
+FROM alpine:3.21
 
 ARG TARGETARCH
 ARG RPM_ARCH
 ARG UID=1000
 ARG GID=1000
 
-ENV DEBIAN_FRONTEND=noninteractive
+ENV PATH=/opt/gcc/bin:${PATH}
 
 RUN if [ -z "${RPM_ARCH}" ]; then \
-        case "${TARGETARCH:-$(dpkg --print-architecture 2>/dev/null || uname -m)}" in \
+        case "${TARGETARCH:-$(uname -m)}" in \
             arm64|aarch64) echo aarch64 > /tmp/rpm_arch ;; \
             *) echo x86_64 > /tmp/rpm_arch ;; \
         esac; \
     else echo "${RPM_ARCH}" > /tmp/rpm_arch; fi
 
-RUN apt-get update && \
-    apt-get install -y curl build-essential tar zstd python3 python3-requests jq gzip xz-utils sudo git gnupg llvm \
-        bison re2c flex autoconf automake autopoint libtool pkg-config unzip cmake nasm && \
-    apt-get upgrade -y && \
-    mkdir -p /usr/lib/bfd-plugins && \
-    PLUGIN=$(find /usr/lib /usr/lib64 -name LLVMgold.so 2>/dev/null | head -1) && \
-    [ -n "$PLUGIN" ] && ln -sf "$PLUGIN" /usr/lib/bfd-plugins/LLVMgold.so
+RUN apk add --no-cache bash build-base linux-headers curl tar zstd xz gzip jq sudo git gnupg \
+        python3 py3-requests bison re2c flex autoconf automake gettext-dev libtool pkgconf \
+        nasm gperf cmake patch perl unzip zlib-dev
 
 RUN RPM_ARCH=$(cat /tmp/rpm_arch) && \
-    NFPM_ARCH=$(case "$RPM_ARCH" in aarch64) echo arm64 ;; *) echo amd64 ;; esac) && \
-    curl -L -o nfpm.deb "https://github.com/goreleaser/nfpm/releases/download/v2.44.0/nfpm_2.44.0_${NFPM_ARCH}.deb" && \
-    dpkg -i nfpm.deb && \
-    rm nfpm.deb
+    NFPM_ARCH=$(case "$RPM_ARCH" in aarch64) echo arm64 ;; *) echo x86_64 ;; esac) && \
+    curl -L -o nfpm.tar.gz "https://github.com/goreleaser/nfpm/releases/download/v2.44.0/nfpm_2.44.0_Linux_${NFPM_ARCH}.tar.gz" && \
+    tar -xzf nfpm.tar.gz -C /usr/local/bin nfpm && \
+    rm nfpm.tar.gz
 
 RUN RPM_ARCH=$(cat /tmp/rpm_arch) && \
     curl -L "https://files.henderkes.com/${RPM_ARCH}-linux/php" -o /usr/local/bin/php && \
@@ -34,13 +30,69 @@ RUN RPM_ARCH=$(cat /tmp/rpm_arch) && \
     curl -sS https://raw.githubusercontent.com/composer/getcomposer.org/f3108f64b4e1c1ce6eb462b159956461592b3e3e/web/installer | php -- --quiet && \
     mv composer.phar /usr/local/bin/composer
 
-RUN U=$(id -un 1000 2>/dev/null || echo "") && \
-    if [ -z "$U" ]; then \
-        groupadd -g 1000 builder && useradd -m -u 1000 -g 1000 -s /bin/bash builder && U=builder; \
-    fi && \
-    echo "$U ALL=(ALL) NOPASSWD: ALL" > /etc/sudoers.d/builder
+RUN addgroup -g ${GID} builder && \
+    adduser -D -u ${UID} -G builder -s /bin/bash builder && \
+    echo "builder ALL=(ALL) NOPASSWD: ALL" > /etc/sudoers.d/builder
 
-# Pre-install SPC's go-xcaddy and zig packages so workflows don't redownload them.
+# GCC 16 toolchain, vanilla source build into /opt/gcc against the system musl.
+# By default a prebuilt blob is fetched from the toolchain release;
+# .github/workflows/build-toolchain.yml publishes the blobs by passing TOOLCHAIN_URL=
+# (empty) to force this source path.
+ARG GCC_VERSION=16.1.0
+# binutils is bundled into /opt/gcc and gcc is pinned to it (--with-as/--with-ld): the
+# distro assembler predates the aarch64 armv9 extensions (bf16, sve2-aes, …) gcc 16 emits
+# for per-target SIMD dispatch (e.g. highway in libjxl), which otherwise fails to assemble.
+# Bump alongside GCC_VERSION as needed.
+ARG BINUTILS_VERSION=2.44
+ARG TOOLCHAIN_URL=https://github.com/static-php/packages/releases/download/toolchain-gcc-${GCC_VERSION}/gcc-${GCC_VERSION}-alpine-%ARCH%.tar.zst
+# --disable-libsanitizer: upstream libsanitizer does not build against musl (Alpine
+# carries patches for it); nothing here needs asan.
+RUN if [ -n "${TOOLCHAIN_URL}" ]; then \
+        curl -fsSL --retry 5 "$(echo "${TOOLCHAIN_URL}" | sed "s/%ARCH%/$(uname -m)/")" | zstd -dc | tar -xf - -C /; \
+    else \
+        curl -fsSL --retry 5 https://ftp.gnu.org/gnu/binutils/binutils-${BINUTILS_VERSION}.tar.xz | tar -xJ -C /tmp && \
+        cd /tmp/binutils-${BINUTILS_VERSION} && mkdir build && cd build && \
+        ../configure --prefix=/opt/gcc --disable-multilib --disable-nls --with-system-zlib \
+            --enable-plugins --enable-ld=default --disable-gprofng && \
+        make -j"$(nproc)" && make install-strip && \
+        cd / && rm -rf /tmp/binutils-${BINUTILS_VERSION} && \
+        curl -fsSL --retry 5 https://ftp.gnu.org/gnu/gcc/gcc-${GCC_VERSION}/gcc-${GCC_VERSION}.tar.xz | tar -xJ -C /tmp && \
+        cd /tmp/gcc-${GCC_VERSION} && \
+        contrib/download_prerequisites && \
+        mkdir build && cd build && \
+        ../configure --prefix=/opt/gcc --disable-multilib --disable-bootstrap --disable-nls \
+            --enable-checking=release --enable-languages=c,c++ --with-system-zlib \
+            --with-as=/opt/gcc/bin/as --with-ld=/opt/gcc/bin/ld \
+            --enable-default-pie --disable-libsanitizer --with-pkgversion="static-php GCC" && \
+        make -j"$(nproc)" && \
+        make install-strip && \
+        cd / && rm -rf /tmp/gcc-${GCC_VERSION}; \
+    fi
+
+# libstdc++.so dev-symlink becomes a linker script INPUT(libstdc++.a) so -lstdc++ links
+# gcc 16's C++ runtime statically: shipped artifacts then depend only on the system
+# musl/libgcc_s (built on the oldest supported Alpine, so no too-new symbols can leak in).
+# The assertions fail the image build if the toolchain regresses.
+RUN for d in /opt/gcc/lib64 /opt/gcc/lib; do \
+        if [ -e "$d/libstdc++.a" ]; then \
+            rm -f "$d/libstdc++.so" && \
+            printf 'INPUT(libstdc++.a)\n' > "$d/libstdc++.so"; \
+        fi; \
+    done && \
+    ln -sf gcc /opt/gcc/bin/cc && \
+    echo 'export PATH=/opt/gcc/bin:$PATH' > /etc/profile.d/gcc16.sh && \
+    command -v gcc | grep -q /opt/gcc && \
+    gcc -dumpfullversion | tee /dev/stderr | grep -qx "${GCC_VERSION}" && \
+    { gcc -print-prog-name=as | grep -qx /opt/gcc/bin/as || echo "WARN: gcc not using bundled /opt/gcc/bin/as — toolchain blob predates binutils bundling; republish via build-toolchain.yml (aarch64 needs it for gcc16 SVE2/bf16)"; } && \
+    echo 'int main(){return 0;}' > /tmp/cc-check.c && \
+    gcc /tmp/cc-check.c -o /tmp/cc-check && /tmp/cc-check && \
+    ! readelf -ld /tmp/cc-check | grep -qE 'linuxbrew|/opt/gcc' && \
+    printf '#include <string>\nint main(){ return std::string("x").size() != 1; }\n' > /tmp/cxx-check.cpp && \
+    g++ /tmp/cxx-check.cpp -o /tmp/cxx-check && /tmp/cxx-check && \
+    ! readelf -ld /tmp/cxx-check | grep -qE 'linuxbrew|/opt/gcc|libstdc\+\+' && \
+    rm -f /tmp/cc-check* /tmp/cxx-check*
+
+# Pre-install SPC's go-xcaddy package so workflows don't redownload it.
 ENV PKG_ROOT_PATH=/opt/spc-pkgroot
 COPY composer.json composer.lock /tmp/spc-bootstrap/
 RUN --mount=type=secret,id=github_token \
@@ -50,9 +102,7 @@ RUN --mount=type=secret,id=github_token \
     mkdir -p src && \
     composer install --no-interaction --prefer-dist --no-progress --no-scripts && \
     php vendor/bin/spc install-pkg go-xcaddy && \
-    SPC_TARGET="$(uname -m)-linux-musl" php vendor/bin/spc install-pkg zig && \
-    php vendor/bin/spc install-pkg llvm-tools && \
-    SPC_TARGET=native-native-musl php vendor/bin/spc doctor --auto-fix --debug && \
+    SPC_TOOLCHAIN='StaticPHP\Toolchain\GccNativeToolchain' SPC_LIBC=musl SPC_MUSL_DYNAMIC=true php vendor/bin/spc doctor --auto-fix --debug && \
     cp /tmp/spc-bootstrap/downloads/.cache.json "$PKG_ROOT_PATH/.cache.json" && \
     rm -rf /tmp/spc-bootstrap /root/.composer /root/.cache && \
     chown -R ${UID}:${GID} "$PKG_ROOT_PATH"

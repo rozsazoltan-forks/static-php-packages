@@ -1,6 +1,6 @@
 # Packages repo
 
-Builds RPM/DEB/APK packages (PHP toolchain, gcc, zig) via GitHub Actions, using reproducible Dockerfile-driven builders.
+Builds RPM/DEB/APK packages (PHP toolchain, gcc) via GitHub Actions, using reproducible Dockerfile-driven builders.
 
 ## Layout
 
@@ -12,7 +12,7 @@ Builds RPM/DEB/APK packages (PHP toolchain, gcc, zig) via GitHub Actions, using 
 - `.github/workflows/`:
   - `build-rpm-modular-packages.yml` — Alma 8/9/10 × x86_64/arm64 × PHP 8.2/8.3/8.4/8.5. Uploads via rsync+SSH then runs `createrepo_c` on the remote.
   - `build-deb-forgejo.yml`, `build-apk-forgejo.yml` — Debian/Alpine builds, push to Forgejo.
-  - `build-images.yml` — builds the builder containers (libs-only step exists to save build time; uses thin LTO).
+  - `build-images.yml` — builds the builder containers (libs-only step exists to save build time).
   - `spc-download.yml` — produces the `downloads-tarball` artifact that the build workflows pull via `dawidd6/action-download-artifact`.
   - `zizmor.yml` — workflow security audit.
 
@@ -30,10 +30,9 @@ When editing `Dockerfile.rhel`, remember the per-Alma branches:
 
 Toolchain is chosen by **package type**, not PHP version:
 
-- **RPM (Alma) and DEB (Debian)** → `gcc` for **all** PHP versions (8.2–8.5). No `--target` is passed, so `craft.yml.twig` sets `using_gcc = not target` → `GccNativeToolchain`.
-- **APK (Alpine)** → `zig` (musl cross). `build-apk-forgejo.yml` passes `--target="native-native-musl -dynamic"`, so `using_gcc` is false.
+- **RPM (Alma), DEB (Debian), and APK (Alpine)** → `gcc` 16 for **all** PHP versions (8.2–8.5). No `--target` is passed, so `craft.yml.twig` sets `using_gcc = not target` → `GccNativeToolchain`. For apk the template additionally sets `SPC_LIBC: musl` + `SPC_MUSL_DYNAMIC` — `Dockerfile.alpine` is a real `alpine:3.21` image (native musl gcc, not zig cross), so `bin/spp test` (`apk add`) runs in real Alpine.
 
-The `build-libs-gcc` job builds one lib set per (alma, arch) with `phpv: "8.4"` as the canonical trigger (libs are PHP-version-independent). The downstream `build` step reuses that single buildroot (`buildroot-rpm-alma{V}-{arch}-gcc` / `buildroot-deb-{arch}-gcc`) for every PHP version. Buildroots ship as `cache-YYYY-WW` GitHub **release** assets via the `.github/actions/buildroot-cache` composite action (pruned by `buildroot-cache-cleanup.yml`).
+The `build-libs-gcc` job builds one lib set per (alma, arch) with `phpv: "8.4"` as the canonical trigger (libs are PHP-version-independent). The downstream `build` step reuses that single buildroot (`buildroot-rpm-alma{V}-{arch}-gcc` / `buildroot-deb-{arch}-gcc` / `buildroot-apk-{arch}-gcc`) for every PHP version. Buildroots ship as `cache-YYYY-WW` GitHub **release** assets via the `.github/actions/buildroot-cache` composite action (pruned by `buildroot-cache-cleanup.yml`).
 
 ## AlmaLinux 8 tar quirk
 
