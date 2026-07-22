@@ -32,7 +32,9 @@ Toolchain is chosen by **package type**, not PHP version:
 
 - **RPM (Alma), DEB (Debian), and APK (Alpine)** → `gcc` 16 for **all** PHP versions (8.2–8.5). No `--target` is passed, so `craft.yml.twig` sets `using_gcc = not target` → `GccNativeToolchain`. For apk the template additionally sets `SPC_LIBC: musl` + `SPC_MUSL_DYNAMIC` — `Dockerfile.alpine` is a real `alpine:3.21` image (native musl gcc, not zig cross), so `bin/spp test` (`apk add`) runs in real Alpine.
 
-The `build-libs-gcc` job builds one lib set per (alma, arch) with `phpv: "8.4"` as the canonical trigger (libs are PHP-version-independent). The downstream `build` step reuses that single buildroot (`buildroot-rpm-alma{V}-{arch}-gcc` / `buildroot-deb-{arch}-gcc` / `buildroot-apk-{arch}-gcc`) for every PHP version. Buildroots ship as `cache-YYYY-WW` GitHub **release** assets via the `.github/actions/buildroot-cache` composite action (pruned by `buildroot-cache-cleanup.yml`).
+**Alpine jobs do NOT use `container:` — they run on the glibc host and invoke the image via `docker run`.** A musl `container:` breaks JavaScript actions (checkout/cache/download-artifact/tmate) on **arm64**: GitHub only ships a musl Node for x64, so an arm64 musl container errors with "JavaScript Actions in Alpine containers are only supported on x64 Linux runners." So `build-apk-forgejo.yml` keeps checkout/cache/artifact steps on the host and wraps only the build/test/forgejo steps in `docker run --rm -v "$GITHUB_WORKSPACE":/build … "$IMAGE" bash -lc '…'` (as root — `bin/spp`'s `maybeSudo` no-ops at euid 0, so `apk add` works). A GHCR `docker login` step is required since manual `docker run` isn't auto-authenticated the way `container:` is. The rpm/deb jobs still use `container:` — their images are glibc, so this doesn't apply; don't convert them.
+
+The `build-libs-gcc` job builds one lib set per (alma, arch) with `phpv: "8.4"` as the canonical trigger (libs are PHP-version-independent). The downstream `build` step reuses that single buildroot (`buildroot-rpm-alma{V}-{arch}-gcc` / `buildroot-deb-{arch}-gcc` / `buildroot-apk-{arch}`) for every PHP version. Buildroots ship as `cache-YYYY-WW` GitHub **release** assets via the `.github/actions/buildroot-cache` composite action (pruned by `buildroot-cache-cleanup.yml`).
 
 ## AlmaLinux 8 tar quirk
 
@@ -113,5 +115,6 @@ When the user asks to "rerun for X only", they mean these inputs.
 
 - Don't switch `tar --zstd` to pipes in the deb/apk workflows — they don't run on Alma.
 - Don't skip pinning new actions to SHAs.
+- Don't add `container: <alpine image>` to the apk jobs — musl containers can't run JS actions on arm64. Keep the host + `docker run` pattern.
 - Don't replace the dynamic-matrix filter pattern with `if: needs.X.result == 'success'` — that fails closed for the whole matrix when any entry fails.
 - Don't `git push` or `gh pr create` unless explicitly asked.

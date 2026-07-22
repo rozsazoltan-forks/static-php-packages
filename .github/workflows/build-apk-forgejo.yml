@@ -75,8 +75,6 @@ jobs:
         needs: setup-matrix
         name: Build libs (${{ matrix.arch }})
         runs-on: ${{ matrix.arch == 'x86_64' && 'ubuntu-24.04' || 'ubuntu-24.04-arm' }}
-        container:
-            image: ghcr.io/static-php/packages-builder-alpine:latest
         permissions:
             contents: write
             packages: read
@@ -86,8 +84,12 @@ jobs:
         strategy:
             fail-fast: false
             matrix: ${{ fromJson(needs.setup-matrix.outputs.libs-pairs) }}
+        # The builder image is real Alpine (musl). A musl `container:` can't run JavaScript
+        # actions (checkout/cache/…) on arm64 — GitHub only ships a musl Node for x64 — so the
+        # job runs on the glibc host and the build itself runs in the image via `docker run`.
         env:
             GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+            IMAGE: ghcr.io/static-php/packages-builder-alpine:latest
         steps:
             -   name: Checkout code
                 uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
@@ -108,9 +110,13 @@ jobs:
                     mode: restore
                     key: ${{ steps.cache-key.outputs.key }}
 
-            -   name: Prepare cache directories
+            -   name: Log in to GHCR
                 if: steps.cache.outputs.cache-hit != 'true'
-                run: composer config -g cache-dir
+                run: echo "$GITHUB_TOKEN" | docker login ghcr.io -u "${{ github.actor }}" --password-stdin
+
+            -   name: Prepare Composer cache dir
+                if: steps.cache.outputs.cache-hit != 'true'
+                run: mkdir -p ~/.cache/composer
 
             -   name: Cache Composer downloads
                 if: steps.cache.outputs.cache-hit != 'true'
@@ -120,10 +126,6 @@ jobs:
                     key: composer-${{ hashFiles('**/composer.lock') }}
                     restore-keys: |
                         composer-
-
-            -   name: Install vendor
-                if: steps.cache.outputs.cache-hit != 'true'
-                run: composer install --no-interaction --prefer-dist --no-progress
 
             -   name: Download artifact from spc-download.yml
                 if: steps.cache.outputs.cache-hit != 'true'
@@ -143,7 +145,17 @@ jobs:
 
             -   name: Build libs
                 if: steps.cache.outputs.cache-hit != 'true'
-                run: bin/spp build --phpv=8.5 --type=apk --libs-only
+                run: |
+                    docker run --rm \
+                        -v "$GITHUB_WORKSPACE":/build -w /build \
+                        -v "$HOME/.cache/composer":/composer-cache \
+                        -e GITHUB_TOKEN -e COMPOSER_CACHE_DIR=/composer-cache \
+                        "$IMAGE" \
+                        bash -lc '
+                            set -e
+                            composer install --no-interaction --prefer-dist --no-progress
+                            bin/spp build --phpv=8.5 --type=apk --libs-only
+                        '
 
             -   name: Pack buildroot
                 if: steps.cache.outputs.cache-hit != 'true'
@@ -212,8 +224,6 @@ jobs:
         if: ${{ !cancelled() && needs.compute-build-matrix.outputs.any == 'true' }}
         name: Build for ${{ matrix.arch }} PHP ${{ matrix.php-version }}
         runs-on: ${{ matrix.arch == 'x86_64' && 'ubuntu-24.04' || 'ubuntu-24.04-arm' }}
-        container:
-            image: ghcr.io/static-php/packages-builder-alpine:latest
         permissions:
             contents: read
             packages: read
@@ -223,8 +233,11 @@ jobs:
         strategy:
             fail-fast: false
             matrix: ${{ fromJson(needs.compute-build-matrix.outputs.matrix) }}
+        # Real-Alpine (musl) builder: run on the glibc host and build via `docker run`, because
+        # a musl `container:` can't run JavaScript actions on arm64 (no musl arm64 Node).
         env:
             GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+            IMAGE: ghcr.io/static-php/packages-builder-alpine:latest
             ITERATION: ${{ inputs.iteration || '' }}
             BUMP: ${{ inputs.bump || false }}
             PACKAGES: ${{ inputs.packages || '' }}
@@ -241,8 +254,11 @@ jobs:
                     PHP_VERSION_SHORT=$(echo "${{ matrix.php-version }}" | tr -d '.')
                     echo "PHP_VERSION_SHORT=$PHP_VERSION_SHORT" >> $GITHUB_ENV
 
-            -   name: Prepare cache directories
-                run: composer config -g cache-dir
+            -   name: Log in to GHCR
+                run: echo "$GITHUB_TOKEN" | docker login ghcr.io -u "${{ github.actor }}" --password-stdin
+
+            -   name: Prepare Composer cache dir
+                run: mkdir -p ~/.cache/composer
 
             -   name: Cache Composer downloads
                 uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
@@ -251,9 +267,6 @@ jobs:
                     key: composer-${{ hashFiles('**/composer.lock') }}
                     restore-keys: |
                         composer-
-
-            -   name: Install vendor
-                run: composer install --no-interaction --prefer-dist --no-progress
 
             -   name: Download artifact from spc-download.yml
                 uses: dawidd6/action-download-artifact@ac66b43f0e6a346234dd65d4d0c8fbb31cb316e5 # v11
@@ -290,22 +303,29 @@ jobs:
 
             -   name: Build PHP packages
                 run: |
-                    PACKAGES_FLAG=""
-                    if [[ -n "${{ env.PACKAGES }}" ]]; then
-                      PACKAGES_FLAG="--packages=${{ env.PACKAGES }}"
-                    fi
-                    ITERATION_FLAG=""
-                    if [[ -n "${ITERATION}" ]]; then
-                      ITERATION_FLAG="--iteration=${ITERATION}"
-                    fi
-                    BUMP_FLAG=""
-                    if [[ "${BUMP}" == "true" ]]; then
-                      BUMP_FLAG="--bump"
-                    fi
-                    php bin/spp all --phpv=${{ matrix.php-version }} --prefix="-zts" --type=apk $ITERATION_FLAG $BUMP_FLAG $PACKAGES_FLAG
+                    docker run --rm \
+                        -v "$GITHUB_WORKSPACE":/build -w /build \
+                        -v "$HOME/.cache/composer":/composer-cache \
+                        -e GITHUB_TOKEN -e COMPOSER_CACHE_DIR=/composer-cache \
+                        -e ITERATION -e BUMP -e PACKAGES \
+                        -e PHPV="${{ matrix.php-version }}" \
+                        "$IMAGE" \
+                        bash -lc '
+                            set -e
+                            composer install --no-interaction --prefer-dist --no-progress
+                            PACKAGES_FLAG=""; [ -n "$PACKAGES" ] && PACKAGES_FLAG="--packages=$PACKAGES"
+                            ITERATION_FLAG=""; [ -n "$ITERATION" ] && ITERATION_FLAG="--iteration=$ITERATION"
+                            BUMP_FLAG=""; [ "$BUMP" = "true" ] && BUMP_FLAG="--bump"
+                            php bin/spp all --phpv="$PHPV" --prefix=-zts --type=apk $ITERATION_FLAG $BUMP_FLAG $PACKAGES_FLAG
+                        '
 
             -   name: Test packages
-                run: php bin/spp test --phpv=${{ matrix.php-version }} --prefix="-zts" --type=apk
+                run: |
+                    docker run --rm \
+                        -v "$GITHUB_WORKSPACE":/build -w /build \
+                        -e PHPV="${{ matrix.php-version }}" \
+                        "$IMAGE" \
+                        bash -lc 'php bin/spp test --phpv="$PHPV" --prefix=-zts --type=apk'
 
             -   name: Upload logs on failure
                 if: ${{ failure() }}
@@ -315,21 +335,35 @@ jobs:
                     path: log
 
             -   name: Upload to Forgejo Host 1
-                working-directory: dist/apk
+                env:
+                    FORGEJO_PASSWORD: ${{ secrets.FORGEJO_PASSWORD }}
                 run: |
-                    echo "listing from host 1"
-                    ../../bin/forgejo-helper list alpine "${{ env.PHP_VERSION_SHORT }}" "${{ secrets.FORGEJO_PASSWORD }}" "*.apk"
-                    echo "uploading to host 1"
-                    ../../bin/forgejo-helper upload alpine "${{ env.PHP_VERSION_SHORT }}" "${{ secrets.FORGEJO_PASSWORD }}" "*.apk"
+                    docker run --rm \
+                        -v "$GITHUB_WORKSPACE":/build -w /build/dist/apk \
+                        -e FORGEJO_PASSWORD -e PHP_VERSION_SHORT \
+                        "$IMAGE" \
+                        bash -lc '
+                            echo "listing from host 1"
+                            ../../bin/forgejo-helper list alpine "$PHP_VERSION_SHORT" "$FORGEJO_PASSWORD" "*.apk"
+                            echo "uploading to host 1"
+                            ../../bin/forgejo-helper upload alpine "$PHP_VERSION_SHORT" "$FORGEJO_PASSWORD" "*.apk"
+                        '
 
             -   name: Upload to Forgejo Host 2
-                working-directory: dist/apk
                 continue-on-error: true
+                env:
+                    FORGEJO_PASSWORD: ${{ secrets.FORGEJO_PASSWORD }}
                 run: |
-                    echo "listing from host 2"
-                    ../../bin/forgejo-helper --host=2 list alpine "${{ env.PHP_VERSION_SHORT }}" "${{ secrets.FORGEJO_PASSWORD }}" "*.apk"
-                    echo "uploading to host 2"
-                    ../../bin/forgejo-helper --host=2 upload alpine "${{ env.PHP_VERSION_SHORT }}" "${{ secrets.FORGEJO_PASSWORD }}" "*.apk"
+                    docker run --rm \
+                        -v "$GITHUB_WORKSPACE":/build -w /build/dist/apk \
+                        -e FORGEJO_PASSWORD -e PHP_VERSION_SHORT \
+                        "$IMAGE" \
+                        bash -lc '
+                            echo "listing from host 2"
+                            ../../bin/forgejo-helper --host=2 list alpine "$PHP_VERSION_SHORT" "$FORGEJO_PASSWORD" "*.apk"
+                            echo "uploading to host 2"
+                            ../../bin/forgejo-helper --host=2 upload alpine "$PHP_VERSION_SHORT" "$FORGEJO_PASSWORD" "*.apk"
+                        '
 
             -   name: Setup tmate session
                 if: ${{ failure() && inputs.debug_tmate == true }}
