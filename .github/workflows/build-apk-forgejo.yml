@@ -155,6 +155,10 @@ jobs:
                         "$IMAGE" \
                         bash -lc '
                             set -e
+                            # Tarball is extracted on the host (runner uid); this build runs as
+                            # root, so git rejects the cached source repos ("dubious ownership")
+                            # and SPC re-clones every git source. Trust them.
+                            git config --global --add safe.directory "*"
                             composer install --no-interaction --prefer-dist --no-progress
                             bin/spp build --phpv=8.5 --type=apk --libs-only
                         '
@@ -316,6 +320,10 @@ jobs:
                         "$IMAGE" \
                         bash -lc '
                             set -e
+                            # Tarball is extracted on the host (runner uid); this build runs as
+                            # root, so git rejects the cached source repos ("dubious ownership")
+                            # and SPC re-clones every git source. Trust them.
+                            git config --global --add safe.directory "*"
                             composer install --no-interaction --prefer-dist --no-progress
                             PACKAGES_FLAG=""; [ -n "$PACKAGES" ] && PACKAGES_FLAG="--packages=$PACKAGES"
                             ITERATION_FLAG=""; [ -n "$ITERATION" ] && ITERATION_FLAG="--iteration=$ITERATION"
