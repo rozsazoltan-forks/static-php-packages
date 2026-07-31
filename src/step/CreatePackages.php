@@ -259,22 +259,19 @@ class CreatePackages
         }
         $args[] = '-d';
         $args[] = "extension={$extension}";
-        $versionProcess = new Process([$phpBinary, ...$args, '-r', "echo phpversion('{$extension}');"]);
-        $versionProcess->run();
-        $rawExtensionVersion = trim($versionProcess->getOutput());
-        $rawExtensionVersion = trim(preg_replace('/^Warning:.*$/m', '', $rawExtensionVersion));
+        // No try/catch: an extension that dies on a signal here is a broken package, and
+        // Process::wait()'s ProcessSignaledException is the only thing that surfaces it.
+        $probe = static function (?array $env) use ($phpBinary, $args, $extension): string {
+            $p = new Process([$phpBinary, ...$args, '-r', "echo phpversion('{$extension}');"], env: $env);
+            $p->run();
+            return trim(preg_replace('/^Warning:.*$/m', '', trim($p->getOutput())));
+        };
 
-        // Some shared extensions need libphp-zts-NN.so via LD_LIBRARY_PATH to dlopen, and may
-        // still segfault from symbol collisions with the static CLI; tolerate both.
+        $rawExtensionVersion = $probe(null);
+
+        // Some shared extensions need libphp-zts-NN.so via LD_LIBRARY_PATH to dlopen.
         if ($rawExtensionVersion === '' && is_dir(BUILD_LIB_PATH)) {
-            try {
-                $versionProcess = new Process([$phpBinary, ...$args, '-r', "echo phpversion('{$extension}');"], env: ['LD_LIBRARY_PATH' => BUILD_LIB_PATH]);
-                $versionProcess->run();
-                $rawExtensionVersion = trim($versionProcess->getOutput());
-                $rawExtensionVersion = trim(preg_replace('/^Warning:.*$/m', '', $rawExtensionVersion));
-            } catch (\Throwable) {
-                $rawExtensionVersion = '';
-            }
+            $rawExtensionVersion = $probe(['LD_LIBRARY_PATH' => BUILD_LIB_PATH]);
         }
         if ($rawExtensionVersion === '') {
             $rawExtensionVersion = self::detectExtensionVersionFromSource($extension);
