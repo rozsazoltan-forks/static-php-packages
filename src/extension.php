@@ -97,7 +97,10 @@ class extension implements package
             if (ExtMeta::get($name) === null) {
                 return;
             }
-            if (!ExtMeta::isAddon($name)) {
+            if (CreatePackages::isSkipped($name)) {
+                echo "Warning: dropping suggested dependency {$prefix}-{$name} from {$prefix}-{$this->name}: " . CreatePackages::getSkippedExtensions()[$name] . "\n";
+            }
+            elseif (!ExtMeta::isAddon($name)) {
                 $ordered[] = $prefix . '-' . $name;
             }
             foreach (ExtMeta::extDependencies($name) as $dep) {

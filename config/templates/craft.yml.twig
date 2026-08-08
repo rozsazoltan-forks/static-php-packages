@@ -31,7 +31,7 @@
 
 {%- set base_extensions = base_extensions_str|split(',')|map(v => v|trim) -%}
 {%- set base_shared = base_shared_str|split(',')|map(v => v|trim) -%}
-{%- set base_shared = php_version >= '8.5' ? base_shared|filter(v => v != 'memcache') : base_shared -%}
+{%- set base_shared = drop_memcache ? base_shared|filter(v => v != 'memcache') : base_shared -%}
 {%- set base_sapi = base_sapi_str|split(',')|map(v => v|trim) -%}
 
 {# Apply optional filtering #}
@@ -75,6 +75,10 @@ build-options:
     # Maintainer-only: skip PHP buildconf/configure/make when libphp.a/.so already exist.
     # Frankenphp + shared extensions still rebuild. Flip to true to iterate on frankenphp.
     maintainer-skip-build: false
+{% if allow_shared_ext_failure %}    # Pre-release PHP only: skip a shared extension that fails to build or load instead of
+    # aborting the run, and record it in buildroot/skipped-shared-extensions.json.
+    allow-shared-ext-failure: true
+{% endif %}
 
 download-options:
     prefer-pre-built: false

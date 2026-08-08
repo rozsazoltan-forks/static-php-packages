@@ -10,15 +10,15 @@ Builds RPM/DEB/APK packages (PHP toolchain, gcc) via GitHub Actions, using repro
 - `craft.yml` — top-level static-php-cli config: extensions list, build options, SPC_* env (CFLAGS, LDFLAGS, etc.). When toolchain/optimization questions come up, look here before guessing.
 - `Dockerfile.{rhel,debian,alpine}` — builders. Built by `.github/workflows/build-images.yml`.
 - `.github/workflows/`:
-  - `build-rpm-modular-packages.yml` — Alma 8/9/10 × x86_64/arm64 × PHP 8.2/8.3/8.4/8.5. Uploads via rsync+SSH then runs `createrepo_c` on the remote.
-  - `build-deb-forgejo.yml`, `build-apk-forgejo.yml` — Debian/Alpine builds, push to Forgejo.
+  - `build-rpm-modular-packages.yml` — Alma 8/9/10 × x86_64/arm64 × PHP 8.2/8.3/8.4/8.5/8.6. Uploads via rsync+SSH then runs `createrepo_c` on the remote.
+  - `build-deb-forgejo.yml`, `build-apk-forgejo.yml` — Debian/Alpine builds, push to Forgejo. Still PHP 8.2–8.5: 8.6 is RPM-only for now (apk's version grammar has no `~`, and the Forgejo owner `86` does not exist yet).
   - `build-images.yml` — builds the builder containers (libs-only step exists to save build time).
   - `spc-download.yml` — produces the `downloads-tarball` artifact that the build workflows pull via `dawidd6/action-download-artifact`.
   - `zizmor.yml` — workflow security audit.
 
 ## Builder containers
 
-`Dockerfile.rhel` is matrix-built per Alma version into `ghcr.io/static-php/packages-builder-rhel-{8,9,10}`. It installs `tar`, `zstd`, `gcc-toolset-15`, `cmake` 3.31, `re2c`, `fpm`, and a prebuilt `php` from `files.henderkes.com`.
+`Dockerfile.rhel` is matrix-built per Alma version into `ghcr.io/static-php/packages-builder-rhel-{8,9,10}`. It installs `tar`, `zstd`, `gcc-toolset-15`, `cmake` 3.31, `re2c`, `bison`, `autoconf`/`automake`/`libtool`, `fpm`, and a prebuilt `php` from `files.henderkes.com`. The autotools trio matters for pre-release PHP: a `php-8.6.0*` tag archive ships no generated `configure`, so spc runs `./buildconf --force`.
 
 When editing `Dockerfile.rhel`, remember the per-Alma branches:
 
@@ -30,11 +30,36 @@ When editing `Dockerfile.rhel`, remember the per-Alma branches:
 
 Toolchain is chosen by **package type**, not PHP version:
 
-- **RPM (Alma), DEB (Debian), and APK (Alpine)** → `gcc` 16 for **all** PHP versions (8.2–8.5). No `--target` is passed, so `craft.yml.twig` sets `using_gcc = not target` → `GccNativeToolchain`. For apk the template additionally sets `SPC_LIBC: musl` + `SPC_MUSL_DYNAMIC` — `Dockerfile.alpine` is a real `alpine:3.21` image (native musl gcc, not zig cross), so `bin/spp test` (`apk add`) runs in real Alpine.
+- **RPM (Alma), DEB (Debian), and APK (Alpine)** → `gcc` 16 for **all** PHP versions (8.2–8.6). No `--target` is passed, so `craft.yml.twig` sets `using_gcc = not target` → `GccNativeToolchain`. For apk the template additionally sets `SPC_LIBC: musl` + `SPC_MUSL_DYNAMIC` — `Dockerfile.alpine` is a real `alpine:3.21` image (native musl gcc, not zig cross), so `bin/spp test` (`apk add`) runs in real Alpine.
 
 **Alpine jobs do NOT use `container:` — they run on the glibc host and invoke the image via `docker run`.** A musl `container:` breaks JavaScript actions (checkout/cache/download-artifact/tmate) on **arm64**: GitHub only ships a musl Node for x64, so an arm64 musl container errors with "JavaScript Actions in Alpine containers are only supported on x64 Linux runners." So `build-apk-forgejo.yml` keeps checkout/cache/artifact steps on the host and wraps only the build/test/forgejo steps in `docker run --rm -v "$GITHUB_WORKSPACE":/build … "$IMAGE" bash -lc '…'` (as root — `bin/spp`'s `maybeSudo` no-ops at euid 0, so `apk add` works). A GHCR `docker login` step is required since manual `docker run` isn't auto-authenticated the way `container:` is. The rpm/deb jobs still use `container:` — their images are glibc, so this doesn't apply; don't convert them.
 
 The `build-libs-gcc` job builds one lib set per (alma, arch) with `phpv: "8.4"` as the canonical trigger (libs are PHP-version-independent). The downstream `build` step reuses that single buildroot (`buildroot-rpm-alma{V}-{arch}-gcc` / `buildroot-deb-{arch}-gcc` / `buildroot-apk-{arch}`) for every PHP version. Buildroots ship as `cache-YYYY-WW` GitHub **release** assets via the `.github/actions/buildroot-cache` composite action (pruned by `buildroot-cache-cleanup.yml`).
+
+## Pre-release PHP and `allow-shared-ext-failure`
+
+PHP 8.6 is still a pre-release, so upstream resolves to whatever `php-8.6.0*` tag is newest (alpha/beta/RC). Two consequences:
+
+- **Version strings carry a tilde.** `8.6.0alpha3` is normalized to `8.6.0~alpha3` before it reaches any packager, because `rpmvercmp` orders `8.6.0alpha3 > 8.6.0` but `8.6.0~alpha3 < 8.6.0`. `bin/createrepo_static` parses the `~` in both the base-package and extension regexes. Never hardcode a specific pre-release marker — the scheme must work for alpha/beta/RC alike. APK has no `~` in its version grammar, so `createApkPackage` translates it to `_`; that translation is still incomplete for `~dev` and for the `p<NN>` extension suffix, which is one reason 8.6 is not in the apk matrix (the other is the missing Forgejo owner `86`).
+- **Not every shared extension compiles or loads yet.** `craft.yml`'s `build-options.allow-shared-ext-failure` tells static-php-cli to skip such an extension instead of aborting the whole build.
+
+The flag is emitted by exactly one condition, in `src/util/TwigRenderer.php`: `'allow_shared_ext_failure' => version_compare($phpVersion, '8.6', '>=')`, consumed by `{% if allow_shared_ext_failure %}` inside `build-options:` in `config/templates/craft.yml.twig`. For ≤ 8.5 the key is simply absent, so spc's own default (`false`) applies and a shared-extension failure stays fatal exactly as before. Keep the comparison in PHP — Twig's `>=` on strings is lexical and breaks at `8.10`. Do not add the version rule to the workflows; they stay version-agnostic.
+
+**Manifest contract.** When the option is honoured, spc writes `buildroot/skipped-shared-extensions.json` on **every** run, even when nothing was skipped — an absent file means "spc too old", an empty `skipped` array means "nothing failed":
+
+```json
+{
+  "schema": 1,
+  "generated_at": "2026-08-07T22:00:00+00:00",
+  "php_version_id": 80600,
+  "allow_shared_ext_failure": true,
+  "skipped": [
+    {"package": "ext-imagick", "extension": "imagick", "phase": "build", "exception": "StaticPHP\\Exception\\ExecutionException", "message": "…"}
+  ]
+}
+```
+
+No leading dot in the filename: `src/step/RunSPC.php` now copies the buildroot with `cp -a src/. dst/` (dotfiles included, symlinks preserved), but the manifest is deliberately not a dotfile so it survives a copy that isn't. Key on `extension` (short name), not `package`. The packaging step subtracts these from the shared-extension list, and a shared extension with no `.so` and no skip record is still a hard error: **no `.so` ⇒ no subpackage ⇒ no `conf.d` drop-in**.
 
 ## AlmaLinux 8 tar quirk
 
@@ -70,7 +95,7 @@ Before pushing, validate YAML and simulate the jq filters:
 python3 -c "import yaml,sys; yaml.safe_load(open(sys.argv[1]))" .github/workflows/build-rpm-modular-packages.yml
 
 # Simulate the compute-build-gcc-matrix jq with a mocked "succeeded" (alma arch) string
-FULL_MATRIX='{"php-version":["8.2","8.3","8.4","8.5"],"alma":["8","9","10"],"arch":["x86_64","arm64"]}'
+FULL_MATRIX='{"php-version":["8.2","8.3","8.4","8.5","8.6"],"alma":["8","9","10"],"arch":["x86_64","arm64"]}'
 succeeded=$'9 x86_64\n9 arm64\n10 x86_64\n10 arm64'
 jq -nc --argjson m "$FULL_MATRIX" --arg s "$succeeded" '
   ($s | split("\n") | map(select(length > 0))) as $set |
@@ -110,6 +135,12 @@ When the user asks to "rerun for X only", they mean these inputs.
 - RPM signing: GPG key from `secrets.DEB_GPG_PRIVATE_KEY` + passphrase `DEB_GPG_PASSWORD`, loaded into `~/.rpmmacros` and used by `rpmsign --addsign`.
 - Cache: composer cache is the only persistent cache (`actions/cache` keyed on `composer.lock`).
 - `buildroot-*` artifacts are uploaded with `retention-days: 1` — they're cheap intermediates.
+
+## Comments
+
+Match the comment density of the file you are editing. Both repos are sparsely commented: a comment earns its place only when it records something the code cannot say — an upstream bug, a non-obvious ordering constraint, why a workaround exists.
+
+Don't narrate. No comment restating the line below it, no explaining what a well-named call does, no multi-line rationale on a one-line change, and no "changed X to Y" or "fixed Z" notes — that belongs in the commit message. When in doubt, leave it out; the diff and the commit message carry the reasoning.
 
 ## Don'ts
 

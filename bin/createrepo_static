@@ -28,7 +28,8 @@ def parse_rpm_info(filename):
 
     # Match standard php-zts RPMs (including debuginfo)
     # Format: php-zts-cli-8.5.1-1.el10.x86_64.rpm or php-zts-cli-debuginfo-8.5.1-1.el10.x86_64.rpm
-    match_php = re.match(r'(?P<name>php-zts-[^-]+(?:-debuginfo)?)-(?P<version>\d+\.\d+\.\d+)-(?P<release>[^.]+(?:\.[^.]+)?)\.(?P<arch>x86_64|aarch64|noarch)\.rpm', basename)
+    # Pre-releases carry a tilde suffix: php-zts-cli-8.6.0~beta1-1.el10.x86_64.rpm
+    match_php = re.match(r'(?P<name>php-zts-[^-]+(?:-debuginfo)?)-(?P<version>\d+\.\d+\.\d+(?:~[a-z0-9]+)?)-(?P<release>[^.]+(?:\.[^.]+)?)\.(?P<arch>x86_64|aarch64|noarch)\.rpm', basename)
     if match_php:
         name = match_php.group("name")
         version = match_php.group("version")

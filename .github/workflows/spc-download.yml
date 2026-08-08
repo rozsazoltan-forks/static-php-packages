@@ -24,7 +24,7 @@ jobs:
         env:
             GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
             FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
-            PHP_MINORS: "8.2 8.3 8.4 8.5"
+            PHP_MINORS: "8.2 8.3 8.4 8.5 8.6"
         steps:
             -   name: Install PHP and composer
                 run: |
@@ -97,8 +97,25 @@ jobs:
                     set -euo pipefail
                     new='{}'
                     for v in $PHP_MINORS; do
+                        # php.net answers an unreleased minor with HTTP 200 and {"error":"Unknown
+                        # version"}, so `keys[0]` yields the literal string "error". Only accept a
+                        # key that actually looks like a version.
                         latest=$(curl -fsSL "https://www.php.net/releases/index.php?json=&max=1&version=${v}" \
-                            | jq -r 'keys[0] // empty')
+                            | jq -r 'to_entries | map(select(.key | test("^[0-9]+\\.[0-9]+\\.[0-9]+"))) | .[0].key // empty')
+                        if [[ -z "$latest" ]]; then
+                            # pre-GA minor: php.net has no entry yet, so mirror what spc downloads
+                            # (StaticPHP\Artifact\Downloader\Type\PhpRelease resolves the newest tag).
+                            # Rank with version_compare, not `sort -V`: byte order puts the uppercase
+                            # "RC" tags *before* lowercase "alpha"/"beta", so a freshly tagged RC1
+                            # would lose to beta1 and never trigger a rebuild.
+                            latest=$(curl -fsSL \
+                                -H "Authorization: Bearer $GITHUB_TOKEN" \
+                                -H "Accept: application/vnd.github+json" \
+                                "https://api.github.com/repos/php/php-src/git/matching-refs/tags/php-${v}." \
+                                | jq -r '.[].ref | sub("^refs/tags/php-"; "")' \
+                                | grep -E "^${v}\.[0-9]+((alpha|beta|RC)[0-9]+)?$" \
+                                | php -r '$t = array_values(array_filter(array_map("trim", file("php://stdin")))); usort($t, "version_compare"); echo end($t) ?: "";' || true)
+                        fi
                         if [[ -z "$latest" ]]; then
                             echo "::error::Failed to fetch latest PHP version for ${v}"
                             exit 1

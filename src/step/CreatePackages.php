@@ -6,6 +6,7 @@ use RuntimeException;
 use staticphp\extension;
 use staticphp\package;
 use staticphp\util\ExtMeta;
+use staticphp\util\SkippedExtensions;
 use Symfony\Component\Process\Process;
 use staticphp\CraftConfig;
 
@@ -14,6 +15,8 @@ class CreatePackages
     private static array $versionArch = [];
     private static $extensions = [];
     private static $sharedExtensions = [];
+    /** @var array<string,string> shared extensions dropped from this build [name => reason] */
+    private static array $skippedExtensions = [];
     private static $sapis = [];
     private static $binaryDependencies = [];
     private static string $packageType = 'rpm';
@@ -28,8 +31,9 @@ class CreatePackages
 
     public static function run($packageNames = null, ?string $iteration = null, ?bool $debuginfo = null, ?bool $bump = null): true
     {
-        self::loadConfig();
+        // Skip propagation reads extension metadata, so the package configs must be registered first.
         self::bootstrapSpcGlobals();
+        self::loadConfig();
 
         if (!defined('DOWNLOAD_PATH')) {
             define('DOWNLOAD_PATH', BUILD_ROOT_PATH . '/download');
@@ -76,8 +80,8 @@ class CreatePackages
                 elseif ($packageName === 'devel') {
                     self::createSapiPackage($packageName);
                 }
-                elseif (in_array($packageName, self::$sharedExtensions)) {
-                    self::createExtensionPackage($packageName);
+                elseif (in_array($packageName, self::$sharedExtensions) || isset(self::$skippedExtensions[$packageName])) {
+                    self::createExtensionPackage($packageName, true);
                 }
                 else {
                     $genericClass = "\\staticphp\\package\\{$packageName}";
@@ -148,10 +152,34 @@ class CreatePackages
         self::$sharedExtensions = $craftConfig->getSharedExtensions();
         self::$sapis = $craftConfig->getSapis();
 
+        self::$skippedExtensions = SkippedExtensions::resolveFor(self::$sharedExtensions);
+        if (self::$skippedExtensions !== []) {
+            self::$sharedExtensions = array_values(array_diff(self::$sharedExtensions, array_keys(self::$skippedExtensions)));
+        }
+
         echo "Loaded configuration:\n";
         echo "- SAPIs: " . implode(', ', self::$sapis) . "\n";
         echo "- Extensions: " . implode(', ', self::$extensions) . "\n";
         echo "- Shared Extensions: " . implode(', ', self::$sharedExtensions) . "\n";
+
+        if (self::$skippedExtensions !== []) {
+            echo "=== SKIPPED SHARED EXTENSIONS (allow-shared-ext-failure) ===\n";
+            foreach (self::$skippedExtensions as $extension => $reason) {
+                echo '  ' . str_pad($extension, 22) . $reason . "\n";
+            }
+            echo str_repeat('=', 60) . "\n";
+        }
+    }
+
+    /** @return array<string,string> [extension => reason] */
+    public static function getSkippedExtensions(): array
+    {
+        return self::$skippedExtensions;
+    }
+
+    public static function isSkipped(string $extension): bool
+    {
+        return isset(self::$skippedExtensions[$extension]);
     }
 
     private static function createSapiPackages(): void
@@ -206,8 +234,33 @@ class CreatePackages
         }
     }
 
-    private static function createExtensionPackage(string $extension): void
+    /**
+     * @param bool $explicit the caller named this extension on --packages, so a recorded
+     *                       skip is an error rather than something to pass over quietly
+     */
+    private static function createExtensionPackage(string $extension, bool $explicit = false): void
     {
+        if (isset(self::$skippedExtensions[$extension])) {
+            if ($explicit) {
+                throw new RuntimeException("Extension {$extension} was requested explicitly but the build skipped it: " . self::$skippedExtensions[$extension]);
+            }
+            echo "SKIPPED: not packaging {$extension} — " . self::$skippedExtensions[$extension] . "\n";
+            return;
+        }
+
+        // Addons are configure flags of their parent and ship inside its .so; only --packages names one.
+        if (ExtMeta::isAddon($extension)) {
+            echo "Not packaging {$extension}: it is an addon of another extension and ships with that extension's package.\n";
+            return;
+        }
+
+        // Unreachable in allow-failure mode: spc deletes the .so and records the skip. Reaching
+        // it means the two mechanisms drifted, so it stays fatal regardless of the manifest.
+        $sharedObject = BUILD_MODULES_PATH . '/' . $extension . getSharedLibrarySuffix() . '.so';
+        if (!file_exists($sharedObject)) {
+            throw new RuntimeException("Shared object missing for extension {$extension}: {$sharedObject} — refusing to create a content-less package");
+        }
+
         [$phpVersion, $architecture] = self::getPhpVersionAndArchitecture();
         $extensionVersion = self::getExtensionVersion($extension, $phpVersion);
 
@@ -277,29 +330,9 @@ class CreatePackages
             $rawExtensionVersion = self::detectExtensionVersionFromSource($extension);
         }
 
-        // Parse the extension version preserving a possible pre-release suffix
-        // Examples of inputs we want to support:
-        //  - 1.2.3
-        //  - 1.2.3RC2 / 1.2.3-rc2 / 1.2.3.rc2
-        //  - 1.2.3beta1 / 1.2.3-alpha2 / 1.2.3dev
-        // We must transform them to:
-        //  - 1.2.3
-        //  - 1.2.3~rc2 (tilde separator, lowercase suffix)
-        //  - 1.2.3~beta1 / 1.2.3~alpha2 / 1.2.3~dev
         $extensionVersion = null;
-        $suffix = null;
-        if (preg_match('/(\d+\.\d+(?:\.\d+)?)(?:[.-]?((?:alpha|beta|rc|dev)\d*))?/i', $rawExtensionVersion, $m)) {
-            $extensionVersion = $m[1];
-            if (!empty($m[2])) {
-                $suffix = strtolower($m[2]) . (isset($m[3]) ? $m[3] : '');
-            }
-        }
-        // Fallback: try to extract just the numeric part if the above fails
-        if ($extensionVersion === null && preg_match('/(\d+\.\d+(?:\.\d+)?)/', $rawExtensionVersion, $m2)) {
-            $extensionVersion = $m2[1];
-        }
-        if ($extensionVersion !== null && $suffix) {
-            $extensionVersion .= "~{$suffix}";
+        if (preg_match('/\d+\.\d+(?:\.\d+)?(?:[.-]?(?:alpha|beta|rc|dev)\d*)?/i', $rawExtensionVersion, $m)) {
+            $extensionVersion = self::normalizeVersion($m[0]);
         }
 
         if (empty($extensionVersion)) {
@@ -311,8 +344,23 @@ class CreatePackages
         return $extensionVersion;
     }
 
+    /**
+     * Turn an upstream PHP/extension version string into a package-orderable one:
+     *   8.6.0beta1 / 8.6.0-beta1 / 8.6.0RC1 / 8.6.0-dev  ->  8.6.0~beta1 / 8.6.0~rc1 / 8.6.0~dev
+     * Plain releases pass through untouched. Without the tilde a pre-release outranks its
+     * own GA release (rpmvercmp reads 8.6.0beta1 > 8.6.0); with it the chain is
+     *   8.5.4 < 8.6.0~alpha3 < 8.6.0~beta1 < 8.6.0~rc1 < 8.6.0
+     */
+    public static function normalizeVersion(string $raw): string
+    {
+        if (preg_match('/^(\d+\.\d+(?:\.\d+)?)(?:[.-]?((?:alpha|beta|rc|dev)\d*))?$/i', trim($raw), $m)) {
+            return $m[1] . (empty($m[2]) ? '' : '~' . strtolower($m[2]));
+        }
+        return trim($raw);
+    }
+
     /** Pull SPC's internal-env constants and package configs in after BaseCommand has set BUILD_ROOT_PATH. */
-    private static function bootstrapSpcGlobals(): void
+    public static function bootstrapSpcGlobals(): void
     {
         static $done = false;
         if ($done) {
@@ -525,7 +573,7 @@ class CreatePackages
                     $fpmArgs[] = $source . '=' . $dest;
                 }
                 else {
-                    echo "Warning: Source file not found: {$source}\n";
+                    self::requireSourceFile($source, $dest);
                 }
             }
         }
@@ -740,7 +788,7 @@ class CreatePackages
                     $fpmArgs[] = $source . '=' . $dest;
                 }
                 else {
-                    echo "Warning: Source file not found: {$source}\n";
+                    self::requireSourceFile($source, $dest);
                 }
             }
         }
@@ -795,6 +843,11 @@ class CreatePackages
             }
             $apkVersion = $phpVersion . 'p' . $phpVersionSuffix;
         }
+
+        // apk spells pre-releases _alpha/_beta/_pre/_rc; nfpm passes a tilde straight through and
+        // apk add then rejects it. Still incomplete: apk has no _dev, and a post-suffix needs its
+        // own underscore, so '2.2.0~dev' and '6.2.0~rc2' + 'p86' remain invalid. RPM and DEB keep ~.
+        $apkVersion = str_replace('~', '_', $apkVersion);
 
         // Calculate iteration for APK (--iteration override > --bump remote query > local)
         $iteration = self::resolveIteration($name, $apkVersion, $architecture, 'apk');
@@ -954,7 +1007,7 @@ class CreatePackages
                     }
                     $contents[] = $contentItem;
                 } else {
-                    echo "Warning: Source file not found: {$source}\n";
+                    self::requireSourceFile($source, $dest);
                 }
             }
         }
@@ -1013,6 +1066,20 @@ class CreatePackages
         @unlink($nfpmConfigFile);
     }
 
+    /**
+     * A file missing from BUILD_MODULES_PATH is the .so the package exists for: shipping
+     * the package anyway leaves an "extension=" drop-in pointing at nothing, which is how
+     * a build failure used to turn into a published, broken package. Everything else
+     * (optional asset trees, e.g. spx's web-ui) stays a warning.
+     */
+    private static function requireSourceFile(string $source, string $dest): void
+    {
+        if (str_starts_with($source, BUILD_MODULES_PATH . '/')) {
+            throw new RuntimeException("Source file not found: {$source} (required for {$dest})");
+        }
+        echo "Warning: Source file not found: {$source}\n";
+    }
+
     private static function getPhpVersionAndArchitecture(): array
     {
         if (!empty(self::$versionArch)) {
@@ -1029,7 +1096,10 @@ class CreatePackages
         $detectedVersion = trim($versionProcess->getOutput());
 
         if (!empty($detectedVersion)) {
-            $fullPhpVersion = $detectedVersion;
+            $fullPhpVersion = self::normalizeVersion($detectedVersion);
+            if ($fullPhpVersion !== $detectedVersion) {
+                echo "Normalized pre-release PHP version {$detectedVersion} -> {$fullPhpVersion}\n";
+            }
             echo "Detected full PHP version from binary: {$fullPhpVersion}\n";
         }
         else {

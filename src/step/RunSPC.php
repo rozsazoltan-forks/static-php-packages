@@ -114,9 +114,14 @@ class RunSPC
             return;
         }
 
-        // Clean and copy files
-        exec("rm -rf {$buildDir}/*");
-        exec("cp -r {$sourceDir}/* {$buildDir}");
+        // Globs miss dotfiles, so spc's .build.json never arrives and stale ones never leave;
+        // cp -a also preserves the <ext>.so -> <ext>-zts-NN.so symlinks that cp -r dereferences.
+        exec('rm -rf ' . escapeshellarg($buildDir));
+        if (!is_dir($buildDir) && !mkdir($buildDir, 0755, true) && !is_dir($buildDir)) {
+            echo "Failed to create directory: {$buildDir}\n";
+            return;
+        }
+        exec('cp -a ' . escapeshellarg($sourceDir) . '/. ' . escapeshellarg($buildDir) . '/');
 
         echo "Copied PHP {$phpVersion} files to {$buildDir}\n";
     }

@@ -2,6 +2,9 @@
 
 namespace staticphp\Command;
 
+use staticphp\CraftConfig;
+use staticphp\step\CreatePackages;
+use staticphp\util\SkippedExtensions;
 use Symfony\Component\Console\Attribute\AsCommand;
 use Symfony\Component\Console\Input\InputInterface;
 use Symfony\Component\Console\Input\InputOption;
@@ -11,8 +14,9 @@ use Symfony\Component\Process\Process;
 /**
  * Install the packages just built into dist/<type>/ and prove the runtime works:
  *   1. php -v runs (via the suffixed /usr/bin/php-zts, not the container's own php)
- *   2. every shared extension we packaged loads under the CLI SAPI (no load warnings)
- *   3. frankenphp serves a phpinfo script and loads the *same* extension set
+ *   2. every shared extension craft.yml declared was packaged, or is on the recorded skip list
+ *   3. every shared extension we packaged loads under the CLI SAPI (no load warnings)
+ *   4. frankenphp serves a phpinfo script and loads the *same* extension set
  *
  * The check is mapping-free: PHP is told (via conf.d) to load each packaged .so and
  * either loads it or prints "Unable to load dynamic library" to stderr — its absence
@@ -70,6 +74,8 @@ class TestCommand extends BaseCommand
             // build has those in dist/; a partial (extension-only) build does not, so pull them
             // from the published repo — exactly as a real `install php-zts-<ext>` resolves them.
             $hasBase = in_array('php' . SPP_PREFIX . '-cli', $names, true);
+            // A --packages run deliberately produces a subset, so it has nothing to cross-check.
+            $crossCheck = $hasBase && !(is_string($packagesOpt) && $packagesOpt !== '');
             $repoArgs = $hasBase ? [] : $this->baseRepoArgs($type, $output);
             $install = match ($type) {
                 'rpm' => array_merge(['dnf', 'install', '-y'], $repoArgs, $pkgs),
@@ -93,6 +99,11 @@ class TestCommand extends BaseCommand
 
             $asked = $this->askedExtensions($confd);   // [shortName => .so basename]
             $output->writeln("Packaged shared extensions (" . count($asked) . "): " . implode(', ', array_keys($asked)));
+
+            if ($crossCheck && ($fail = $this->crossCheckDeclared($asked, $output)) !== null) {
+                return $fail;
+            }
+
             if (!$asked) {
                 // A SAPI-only build legitimately installs no conf.d drop-ins. Only fail if
                 // packages actually shipped .so files that then have no extension= directive.
@@ -232,6 +243,55 @@ class TestCommand extends BaseCommand
     }
 
     /**
+     * askedExtensions() only sees what actually installed, so an extension that vanished
+     * from the build is invisible to it and the test would pass without noticing. Compare
+     * against what craft.yml declared: every shared extension with an ini template must be
+     * installed or be on the recorded skip list. The skip list is empty unless the build
+     * ran with allow-shared-ext-failure, so for PHP 8.5 and earlier this is a plain
+     * "everything declared must be here".
+     *
+     * The skip list comes from SkippedExtensions::resolveFor(), the same call packaging
+     * makes, so both sides see the manifest *and* the extensions that hard-depend on a
+     * skipped one — deriving it separately would fail the build over a dependent that
+     * CreatePackages deliberately left out.
+     *
+     * @param  array<string,string> $asked [shortName => .so basename]
+     * @return int|null exit code on failure, null when the check passed
+     */
+    private function crossCheckDeclared(array $asked, OutputInterface $output): ?int
+    {
+        // resolveFor() propagates skips along dependency edges declared in SPC's package configs.
+        CreatePackages::bootstrapSpcGlobals();
+
+        $craftConfig = CraftConfig::getInstance();
+        // No ini template means no package; same test as CreatePackages::createExtensionPackage().
+        $declared = array_filter(
+            array_diff($craftConfig->getSharedExtensions(), $craftConfig->getStaticExtensions()),
+            fn($e) => file_exists(INI_PATH . '/extension/' . $e . '.ini'),
+        );
+
+        $skipped = SkippedExtensions::resolveFor($craftConfig->getSharedExtensions());
+        if ($skipped) {
+            $output->writeln("<comment>Skipped shared extensions (" . count($skipped) . "):</comment>");
+            foreach ($skipped as $ext => $reason) {
+                $output->writeln("  {$ext}: {$reason}");
+            }
+        }
+
+        // The manifest says this .so was dropped, so anything installed for it is stale.
+        $stale = array_values(array_intersect(array_keys($asked), array_keys($skipped)));
+        if ($stale) {
+            return $this->fail($output, count($stale) . " extension(s) installed although this build skipped them (stale package in dist/ from an earlier run): " . implode(', ', $stale));
+        }
+
+        $missing = array_values(array_diff($declared, array_keys($asked), array_keys($skipped)));
+        if ($missing) {
+            return $this->fail($output, count($missing) . " declared shared extension(s) neither packaged nor recorded as skipped: " . implode(', ', $missing));
+        }
+        return null;
+    }
+
+    /**
      * Check each packaged extension against the loaded-module list. An extension that is
      * neither a loaded module nor named in a load/init warning loaded as a sub-extension
      * (e.g. the mysqlnd auth plugins register no standalone module) — reported, not failed.
@@ -272,25 +332,39 @@ class TestCommand extends BaseCommand
         $mm = $v[1];
         $cli = 'php' . SPP_PREFIX . '-cli';
         $re = '/' . preg_quote($cli, '/') . '\s*\(?\s*>=\s*(\d+\.\d+)/';
+        $marker = str_replace('.', '', $mm);
 
+        // php-zts-cli and frankenphp carry no php-cli bound — the first IS the PHP version,
+        // the second marks it as _86 / +php86 / p86. Without this both minors would be kept.
+        $matchesVersion = static function (array $x) use ($re, $mm, $marker, $cli): bool {
+            if (preg_match($re, $x['deps'], $m)) {
+                return $m[1] === $mm;
+            }
+            if (preg_match('/(?:_|\+php|p)(\d{2,3})$/', $x['version'], $m)) {
+                return $m[1] === $marker;
+            }
+            if (str_starts_with($x['name'], $cli) && preg_match('/^(\d+\.\d+)/', $x['version'], $m)) {
+                return $m[1] === $mm;
+            }
+            return true;
+        };
+
+        // Keyed by version too, or an 8.5 debuginfo rides in on the 8.6 base of the same name.
         $keptBase = [];
         foreach ($metas as $x) {
-            $dbg = str_ends_with($x['name'], '-debuginfo');
-            $lb = preg_match($re, $x['deps'], $m) ? $m[1] : null;
-            if (!$dbg && ($lb === null || $lb === $mm)) {
-                $keptBase[$x['name']] = true;
+            if (!str_ends_with($x['name'], '-debuginfo') && $matchesVersion($x)) {
+                $keptBase[$x['name'] . '|' . $x['version']] = true;
             }
         }
 
         $keep = $skip = $names = [];
         foreach ($metas as $x) {
             $dbg = str_ends_with($x['name'], '-debuginfo');
-            $lb = preg_match($re, $x['deps'], $m) ? $m[1] : null;
             $ok = $dbg
-                ? isset($keptBase[preg_replace('/-debuginfo$/', '', $x['name'])])
-                : ($lb === null || $lb === $mm);
+                ? isset($keptBase[preg_replace('/-debuginfo$/', '', $x['name']) . '|' . $x['version']])
+                : $matchesVersion($x);
             if ($ok) {
-                $keep[] = $x['file'];
+                $keep[] = $x;
                 if ($x['name'] !== '') {
                     $names[] = $x['name'];
                 }
@@ -298,29 +372,51 @@ class TestCommand extends BaseCommand
                 $skip[] = $x['file'];
             }
         }
-        return [$keep, $skip, array_values(array_unique($names))];
+
+        // Rebuilding bumps the iteration, leaving -1 and -2 in dist/; the installer refuses both.
+        $newest = [];
+        foreach ($keep as $x) {
+            $cur = $newest[$x['name']] ?? null;
+            if ($cur === null
+                || version_compare($x['version'], $cur['version'], '>')
+                || ($x['version'] === $cur['version'] && strnatcmp($x['release'], $cur['release']) > 0)) {
+                if ($cur !== null) {
+                    $skip[] = $cur['file'];
+                }
+                $newest[$x['name']] = $x;
+            } else {
+                $skip[] = $x['file'];
+            }
+        }
+
+        return [array_column($newest, 'file'), $skip, array_values(array_unique(array_column($newest, 'name')))];
     }
 
-    /** @return array{file:string,name:string,deps:string} name + raw dependency string for a package file */
+    /** @return array{file:string,name:string,version:string,deps:string} name + version + raw dependency string for a package file */
     private function packageMeta(string $type, string $file): array
     {
         $name = '';
+        $version = '';
+        // rpm only: deb Version and apk pkgver already carry the revision.
+        $release = '';
         $deps = '';
         switch ($type) {
             case 'rpm':
-                $n = new Process(['rpm', '-qp', '--nosignature', '--qf', '%{NAME}', $file]);
+                $n = new Process(['rpm', '-qp', '--nosignature', '--qf', '%{NAME}|%{VERSION}|%{RELEASE}', $file]);
                 $n->run();
-                $name = trim($n->getOutput());
+                [$name, $version, $release] = array_pad(explode('|', trim($n->getOutput()), 3), 3, '');
                 $d = new Process(['rpm', '-qpR', '--nosignature', $file]);
                 $d->run();
                 $deps = $d->getOutput();
                 break;
             case 'deb':
-                $p = new Process(['dpkg-deb', '-f', $file, 'Package', 'Depends']);
+                $p = new Process(['dpkg-deb', '-f', $file, 'Package', 'Version', 'Depends']);
                 $p->run();
                 foreach (explode("\n", $p->getOutput()) as $line) {
                     if (stripos($line, 'Package:') === 0) {
                         $name = trim(substr($line, 8));
+                    } elseif (stripos($line, 'Version:') === 0) {
+                        $version = trim(substr($line, 8));
                     } elseif (stripos($line, 'Depends:') === 0) {
                         $deps = trim(substr($line, 8));
                     }
@@ -333,11 +429,14 @@ class TestCommand extends BaseCommand
                 if (preg_match('/^pkgname\s*=\s*(\S+)/m', $info, $nm)) {
                     $name = $nm[1];
                 }
+                if (preg_match('/^pkgver\s*=\s*(\S+)/m', $info, $vm)) {
+                    $version = $vm[1];
+                }
                 preg_match_all('/^depend\s*=\s*(\S+)/m', $info, $dp);
                 $deps = implode(' ', $dp[1] ?? []);
                 break;
         }
-        return ['file' => $file, 'name' => $name, 'deps' => $deps];
+        return ['file' => $file, 'name' => $name, 'version' => $version, 'release' => $release, 'deps' => $deps];
     }
 
     /** Remove the packages this test installed. Best-effort: a cleanup hiccup must not mask the test result. */
