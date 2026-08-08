@@ -48,7 +48,7 @@ jobs:
             -   name: Set up matrix
                 id: set-matrix
                 run: |
-                    default_php='["8.2","8.3","8.4","8.5"]'
+                    default_php='["8.2","8.3","8.4","8.5","8.6"]'
                     default_arch='["x86_64","aarch64"]'
 
                     if [[ -n "${INPUTS_PHP_VERSIONS}" ]]; then
@@ -338,6 +338,52 @@ jobs:
                         -e PHPV="${{ matrix.php-version }}" \
                         "$IMAGE" \
                         bash -lc 'php bin/spp test --phpv="$PHPV" --prefix=-zts --type=apk'
+
+            -   name: Report skipped shared extensions
+                if: ${{ !cancelled() }}
+                run: |
+                    set -uo pipefail
+                    LABEL="${MATRIX_ARCH} php${MATRIX_PHP_VERSION}"
+                    MANIFEST=""
+                    for candidate in "build/${MATRIX_PHP_VERSION}/skipped-shared-extensions.json" "buildroot/skipped-shared-extensions.json"; do
+                      if [[ -f "$candidate" ]]; then
+                        MANIFEST="$candidate"
+                        break
+                      fi
+                    done
+
+                    if [[ -z "$MANIFEST" ]]; then
+                      echo "No skipped-shared-extensions manifest for ${LABEL}; nothing to report."
+                      exit 0
+                    fi
+
+                    if ! tolerant=$(jq -r 'if .allow_shared_ext_failure == true then "true" else "false" end' "$MANIFEST"); then
+                      echo "::warning::unreadable skipped-extension manifest at ${MANIFEST} (${LABEL})"
+                      exit 0
+                    fi
+
+                    entries=$(jq -r '(.skipped // [])[] | [(.extension // "?"), (.phase // "unknown"), ((.message // "") | gsub("[\r\n|]"; " "))] | @tsv' "$MANIFEST")
+                    if [[ -z "$entries" ]]; then
+                      echo "No shared extensions were skipped for ${LABEL} (allow_shared_ext_failure=${tolerant})."
+                      exit 0
+                    fi
+
+                    {
+                      echo "### Skipped shared extensions — ${LABEL}"
+                      echo ""
+                      echo "Manifest: \`${MANIFEST}\` (allow_shared_ext_failure=${tolerant})"
+                      echo ""
+                      echo "| Extension | Phase | Reason |"
+                      echo "| --- | --- | --- |"
+                    } >> "$GITHUB_STEP_SUMMARY"
+
+                    while IFS=$'\t' read -r ext phase message; do
+                      echo "| ${ext} | ${phase} | ${message} |" >> "$GITHUB_STEP_SUMMARY"
+                      echo "::warning::${LABEL}: skipped shared extension ${ext} (${phase}): ${message}"
+                    done <<< "$entries"
+                env:
+                    MATRIX_ARCH: ${{ matrix.arch }}
+                    MATRIX_PHP_VERSION: ${{ matrix.php-version }}
 
             -   name: Upload logs on failure
                 if: ${{ failure() }}

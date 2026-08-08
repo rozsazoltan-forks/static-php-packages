@@ -2,12 +2,17 @@
 
 import os
 import re
+import sys
 import glob
 import yaml
 from datetime import datetime, timezone
 from collections import defaultdict
 
 yaml.Dumper.ignore_aliases = lambda *args: True
+
+# Published for opt-in only, never as the stream dnf installs unasked. Users pick it up with
+# `dnf module switch-to php-zts:static-8.6`. Drop the entry once the stream goes GA.
+PRERELEASE_STREAMS = {"8.6"}
 
 def detect_platform():
     cwd = os.getcwd()
@@ -149,6 +154,10 @@ def build_module_structure(rpm_map, platform, arch):
         documents.append(doc)
     return documents
 
+def stream_sort_key(stream):
+    # Numeric, so 8.10 outranks 8.9 — a string sort puts it before 8.2.
+    return tuple(int(p) if p.isdigit() else -1 for p in stream.split('.'))
+
 def build_defaults_document(default_stream):
     return {
         'document': 'modulemd-defaults',
@@ -180,12 +189,17 @@ for rpm in rpm_files:
 # Build modules.yaml
 modules_yaml = build_module_structure(rpm_map, platform, arch)
 
-# Determine highest stream for default (exclude "common")
+# Pick the default stream, i.e. the one dnf installs without being asked.
 if rpm_map:
-    streams = [s for s in rpm_map.keys() if s != "common"]
+    streams = [s for s in rpm_map.keys() if s != "common" and s not in PRERELEASE_STREAMS]
+    for s in sorted(PRERELEASE_STREAMS & rpm_map.keys(), key=stream_sort_key):
+        print(f"stream {s} is pre-release, not eligible as the default", file=sys.stderr)
     if streams:
-        default_stream = sorted(streams)[-1]
+        default_stream = max(streams, key=stream_sort_key)
+        print(f"default stream: static-{default_stream}", file=sys.stderr)
         modules_yaml.append(build_defaults_document(default_stream))
+    else:
+        print("no GA stream found, publishing no modulemd-defaults", file=sys.stderr)
 
 output_path = os.path.join(os.getcwd(), "modules.yaml")
 with open(output_path, "w") as f:
