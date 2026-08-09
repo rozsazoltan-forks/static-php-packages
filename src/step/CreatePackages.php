@@ -841,13 +841,16 @@ class CreatePackages
             } else {
                 $phpVersionSuffix = str_replace('.', '', $fullPhpVersion);
             }
-            $apkVersion = $phpVersion . 'p' . $phpVersionSuffix;
+            // apk only accepts a post-suffix behind its own underscore once a pre-release
+            // suffix is present: '6.2.0_rc2p86' is rejected, '6.2.0_rc2_p86' is not.
+            $separator = str_contains($phpVersion, '~') ? '_p' : 'p';
+            $apkVersion = $phpVersion . $separator . $phpVersionSuffix;
         }
 
         // apk spells pre-releases _alpha/_beta/_pre/_rc; nfpm passes a tilde straight through and
-        // apk add then rejects it. Still incomplete: apk has no _dev, and a post-suffix needs its
-        // own underscore, so '2.2.0~dev' and '6.2.0~rc2' + 'p86' remain invalid. RPM and DEB keep ~.
-        $apkVersion = str_replace('~', '_', $apkVersion);
+        // apk add then rejects it. apk has no _dev, so a dev snapshot maps to _pre — it sorts
+        // below the release it precedes, same as ~dev does. RPM and DEB keep ~.
+        $apkVersion = str_replace(['~dev', '~'], ['_pre', '_'], $apkVersion);
 
         // Calculate iteration for APK (--iteration override > --bump remote query > local)
         $iteration = self::resolveIteration($name, $apkVersion, $architecture, 'apk');

@@ -36,7 +36,7 @@
 
 {%- set base_extensions = base_extensions_str|split(',')|map(v => v|trim) -%}
 {%- set base_shared = base_shared_str|split(',')|map(v => v|trim) -%}
-{%- set base_shared = drop_memcache ? base_shared|filter(v => v != 'memcache') : base_shared -%}
+{%- set base_shared = php_version >= '8.5' ? base_shared|filter(v => v != 'memcache') : base_shared -%}
 {%- set base_sapi = base_sapi_str|split(',')|map(v => v|trim) -%}
 
 {# Apply optional filtering #}
@@ -92,6 +92,13 @@ download-options:
     retry: 5
     parallel: 5
     ignore-cache-sources: '{{ ci ? 'php-src' : '' }}'
+{% if php_version >= '8.6' %}
+    custom-git:
+        - 'ext-apcu:master:https://github.com/krakjoe/apcu.git'
+        - 'ext-ast:master:https://github.com/nikic/php-ast.git'
+        - 'ext-memcached:master:https://github.com/php-memcached-dev/php-memcached.git'
+        - 'ext-xdebug:master:https://github.com/xdebug/xdebug.git'
+{% endif %}
 craft-options:
     doctor: true
     download: true
