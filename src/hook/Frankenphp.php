@@ -11,6 +11,7 @@ use StaticPHP\Exception\WrongUsageException;
 use StaticPHP\Package\TargetPackage;
 use StaticPHP\Registry\ArtifactLoader;
 use StaticPHP\Util\FileSystem;
+use StaticPHP\Util\SourcePatcher;
 
 #[Target('frankenphp')]
 class Frankenphp
@@ -66,5 +67,12 @@ class Frankenphp
         FileSystem::writeFile($file, str_replace(self::OLD_OUTPUT_HANDLER, self::NEW_OUTPUT_HANDLER, $source));
 
         return true;
+    }
+
+    #[PatchBeforeBuild]
+    #[PatchDescription('Drop frankenphp\'s CLI emulation in favour of php-src do_php_cli() (php/frankenphp#1757)')]
+    public function patchCliBeforeBuild(TargetPackage $package): bool
+    {
+        return SourcePatcher::patchFile(dirname(__DIR__, 2) . '/config/patches/frankenphp-1757.patch', $package->getSourceDir());
     }
 }
