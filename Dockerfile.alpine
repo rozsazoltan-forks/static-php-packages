@@ -34,15 +34,8 @@ RUN addgroup -g ${GID} builder && \
     adduser -D -u ${UID} -G builder -s /bin/bash builder && \
     echo "builder ALL=(ALL) NOPASSWD: ALL" > /etc/sudoers.d/builder
 
-# GCC 16 toolchain, vanilla source build into /opt/gcc against the system musl.
-# By default a prebuilt blob is fetched from the toolchain release;
-# .github/workflows/build-toolchain.yml publishes the blobs by passing TOOLCHAIN_URL=
-# (empty) to force this source path.
-ARG GCC_VERSION=16.1.0
-# binutils is bundled into /opt/gcc and gcc is pinned to it (--with-as/--with-ld): the
-# distro assembler predates the aarch64 armv9 extensions (bf16, sve2-aes, …) gcc 16 emits
-# for per-target SIMD dispatch (e.g. highway in libjxl), which otherwise fails to assemble.
-# Bump alongside GCC_VERSION as needed.
+
+ARG GCC_VERSION=16.2.0
 ARG BINUTILS_VERSION=2.44
 ARG TOOLCHAIN_URL=https://github.com/static-php/packages/releases/download/toolchain-gcc-${GCC_VERSION}/gcc-${GCC_VERSION}-alpine-%ARCH%.tar.zst
 # --disable-libsanitizer: upstream libsanitizer does not build against musl (Alpine
