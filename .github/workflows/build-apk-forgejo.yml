@@ -135,9 +135,7 @@ jobs:
                 with:
                     workflow: spc-download.yml
                     name: downloads-tarball
-                    branch: master
-                    workflow_conclusion: success
-                    if_no_artifact_found: fail
+                    search_artifacts: true
 
             -   name: Extract with permissions
                 if: steps.cache.outputs.cache-hit != 'true'
@@ -282,9 +280,7 @@ jobs:
                 with:
                     workflow: spc-download.yml
                     name: downloads-tarball
-                    branch: master
-                    workflow_conclusion: success
-                    if_no_artifact_found: fail
+                    search_artifacts: true
 
             -   name: Extract with permissions
                 run: |
