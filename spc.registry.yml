@@ -1,4 +1,7 @@
 name: packages
+artifact:
+    psr-4:
+        staticphp\artifact: src/artifact
 package:
     psr-4:
         staticphp\hook: src/hook

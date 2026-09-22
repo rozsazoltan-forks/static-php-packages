@@ -108,11 +108,12 @@ jobs:
                             # Rank with version_compare, not `sort -V`: byte order puts the uppercase
                             # "RC" tags *before* lowercase "alpha"/"beta", so a freshly tagged RC1
                             # would lose to beta1 and never trigger a rebuild.
+                            # Exclude 8.6.0RC1's upstream packaging issue, matching PhpSource.
                             latest=$(curl -fsSL \
                                 -H "Authorization: Bearer $GITHUB_TOKEN" \
                                 -H "Accept: application/vnd.github+json" \
                                 "https://api.github.com/repos/php/php-src/git/matching-refs/tags/php-${v}." \
-                                | jq -r '.[].ref | sub("^refs/tags/php-"; "")' \
+                                | jq -r '.[].ref | sub("^refs/tags/php-"; "") | select(. != "8.6.0RC1")' \
                                 | grep -E "^${v}\.[0-9]+((alpha|beta|RC)[0-9]+)?$" \
                                 | php -r '$t = array_values(array_filter(array_map("trim", file("php://stdin")))); usort($t, "version_compare"); echo end($t) ?: "";' || true)
                         fi
