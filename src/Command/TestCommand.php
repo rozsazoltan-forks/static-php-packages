@@ -17,6 +17,7 @@ use Symfony\Component\Process\Process;
  *   2. every shared extension craft.yml declared was packaged, or is on the recorded skip list
  *   3. every shared extension we packaged loads under the CLI SAPI (no load warnings)
  *   4. frankenphp serves a phpinfo script and loads the *same* extension set
+ *   5. PHP >= 8.6 uses the tailcall VM under both CLI and frankenphp
  *
  * The check is mapping-free: PHP is told (via conf.d) to load each packaged .so and
  * either loads it or prints "Unable to load dynamic library" to stderr — its absence
@@ -97,6 +98,18 @@ class TestCommand extends BaseCommand
                 return $this->fail($output, "{$bin} -v did not run");
             }
 
+            if (version_compare(SPP_PHP_VERSION, '8.6', '>=')) {
+                $vm = new Process([$bin, '-n', '-r', 'echo defined("ZEND_VM_KIND") ? ZEND_VM_KIND : "unknown";']);
+                $vm->run();
+                if (!$vm->isSuccessful()) {
+                    $output->write($vm->getErrorOutput());
+                    return $this->fail($output, "{$bin} could not report its VM kind");
+                }
+                if (($fail = $this->verifyVmKind(trim($vm->getOutput()), 'CLI', $output)) !== null) {
+                    return $fail;
+                }
+            }
+
             $asked = $this->askedExtensions($confd);   // [shortName => .so basename]
             $output->writeln("Packaged shared extensions (" . count($asked) . "): " . implode(', ', array_keys($asked)));
 
@@ -147,7 +160,7 @@ class TestCommand extends BaseCommand
             $webroot = sys_get_temp_dir() . '/spp-test-web';
             @mkdir($webroot, 0755, true);
             file_put_contents($webroot . '/ping.php', "<?php echo 'PONG';\n");
-            file_put_contents($webroot . '/phpinfo.php', "<?php phpinfo(); echo \"\\nSPP_LOADED=\" . implode(\",\", get_loaded_extensions());\n");
+            file_put_contents($webroot . '/phpinfo.php', '<?php phpinfo(); echo "\nSPP_LOADED=" . implode(",", get_loaded_extensions()); echo "\nSPP_VM=" . (defined("ZEND_VM_KIND") ? ZEND_VM_KIND : "unknown");' . "\n");
 
             // Serve exactly how users run it (default multi-threaded). If this segfaults,
             // the packages are broken for real web use — that must be fixed, not worked around.
@@ -184,6 +197,10 @@ class TestCommand extends BaseCommand
                 return $this->fail($output, "phpinfo output missing from frankenphp response");
             }
             $frLoaded = array_values(array_filter(array_map('trim', explode(',', trim($mm[1])))));
+            preg_match('/SPP_VM=([^\r\n<]*)/', $body, $vm);
+            if (($fail = $this->verifyVmKind(trim($vm[1] ?? 'unknown'), 'frankenphp', $output)) !== null) {
+                return $fail;
+            }
 
             // A genuine load failure under frankenphp makes PHP emit a startup warning to the
             // server log — that is the hard failure. An extension that simply isn't in the
@@ -215,6 +232,18 @@ class TestCommand extends BaseCommand
             }
             $this->uninstall($type, $names, $output);
         }
+    }
+
+    private function verifyVmKind(string $kind, string $sapi, OutputInterface $output): ?int
+    {
+        if (version_compare(SPP_PHP_VERSION, '8.6', '<')) {
+            return null;
+        }
+        if ($kind !== 'ZEND_VM_KIND_TAILCALL') {
+            return $this->fail($output, "{$sapi}: expected ZEND_VM_KIND_TAILCALL, got {$kind}");
+        }
+        $output->writeln("<info>{$sapi}: tailcall VM verified</info>");
+        return null;
     }
 
     /**
