@@ -18,16 +18,16 @@
 {%- set cflags = (using_gcc ? '' : '-flto=thin ') ~ cflags -%}
 {%- set php_optimization_flags = not using_gcc or use_php_lto ? ' -flto' : '' -%}
 {%- set php_lto_tuning = '' -%}
-{# Match henderkes/frankenphp-php86-docker's GCC inlining limits, including during LTO. #}
+{# Medium inlining and omitted frame pointers: benchmarks/php86-frankenphp-flags.md. #}
 {%- if using_gcc and use_php_lto -%}
-    {%- set php_lto_tuning = ' --param=inline-unit-growth=200 --param=ipa-cp-unit-growth=100 --param=large-function-growth=1000 --param=max-inline-insns-auto=500 --param=max-inline-insns-single=1000' -%}
+    {%- set php_lto_tuning = ' --param=inline-unit-growth=100 --param=ipa-cp-unit-growth=100 --param=large-function-growth=500 --param=max-inline-insns-auto=250 --param=max-inline-insns-single=500 -fomit-frame-pointer' -%}
 {%- endif -%}
 {# GCC tailcall dispatch is layout-sensitive on Zen 3; see benchmarks/php86-vm-lto-investigation.md. #}
 {%- if using_gcc and use_tailcall_vm and arch == 'x86_64' -%}
     {%- set php_lto_tuning = php_lto_tuning ~ ' -falign-functions=64' -%}
 {%- endif -%}
 {# libtool drops these options from shared links unless explicitly forwarded to the compiler. #}
-{%- set php_link_optimization_flags = php_optimization_flags ~ php_lto_tuning|replace({' --param=': ' -Wc,--param=', ' -falign-functions=': ' -Wc,-falign-functions='}) -%}
+{%- set php_link_optimization_flags = php_optimization_flags ~ php_lto_tuning|replace({' --param=': ' -Wc,--param=', ' -falign-functions=': ' -Wc,-falign-functions=', ' -fomit-frame-pointer': ' -Wc,-fomit-frame-pointer'}) -%}
 {%- set php_optimization_flags = php_optimization_flags ~ php_lto_tuning -%}
 {%- if arch == 'aarch64' and using_gcc %}{% set cflags = cflags ~ ' -mtls-size=12' -%}{% endif -%}
 {%- set is_rhel = os in ['7', '8', '9', '10'] and type == 'rpm' -%}
