@@ -1,3 +1,7 @@
+{%- set php_version_parts = php_version|split('.') -%}
+{%- set use_php_lto = php_version_parts[0] > 8 or (php_version_parts[0] == 8 and php_version_parts[1] >= 6) -%}
+{%- set use_tailcall_vm = use_php_lto -%}
+{%- set drop_memcache = php_version_parts[0] > 8 or (php_version_parts[0] == 8 and php_version_parts[1] >= 5) -%}
 {# compile flags #}
 {%- set arch_flags = arch == 'x86_64' ? ' -mtls-dialect=gnu2 -m64 -fcf-protection' : '' -%}
 {%- if arch == 'x86_64' and os == '10' %} {% set arch_flags = arch_flags ~ ' -march=x86-64-v3' -%} {%- endif -%}
@@ -12,11 +16,19 @@
   '-fPIC -O3 -pipe -fno-plt -fno-semantic-interposition -fstack-clash-protection -fno-omit-frame-pointer -momit-leaf-frame-pointer -ffunction-sections -fdata-sections' ~ arch_flags
 -%}
 {%- set cflags = (using_gcc ? '' : '-flto=thin ') ~ cflags -%}
-{%- set php_optimization_flags = not using_gcc or use_tailcall_vm ? ' -flto' : '' -%}
+{%- set php_optimization_flags = not using_gcc or use_php_lto ? ' -flto' : '' -%}
+{%- set php_lto_tuning = '' -%}
+{# Match henderkes/frankenphp-php86-docker's GCC inlining limits, including during LTO. #}
+{%- if using_gcc and use_php_lto -%}
+    {%- set php_lto_tuning = ' --param=inline-unit-growth=200 --param=ipa-cp-unit-growth=100 --param=large-function-growth=1000 --param=max-inline-insns-auto=500 --param=max-inline-insns-single=1000' -%}
+{%- endif -%}
 {# GCC tailcall dispatch is layout-sensitive on Zen 3; see benchmarks/php86-vm-lto-investigation.md. #}
 {%- if using_gcc and use_tailcall_vm and arch == 'x86_64' -%}
-    {%- set php_optimization_flags = php_optimization_flags ~ ' -falign-functions=64' -%}
+    {%- set php_lto_tuning = php_lto_tuning ~ ' -falign-functions=64' -%}
 {%- endif -%}
+{# libtool drops these options from shared links unless explicitly forwarded to the compiler. #}
+{%- set php_link_optimization_flags = php_optimization_flags ~ php_lto_tuning|replace({' --param=': ' -Wc,--param=', ' -falign-functions=': ' -Wc,-falign-functions='}) -%}
+{%- set php_optimization_flags = php_optimization_flags ~ php_lto_tuning -%}
 {%- if arch == 'aarch64' and using_gcc %}{% set cflags = cflags ~ ' -mtls-size=12' -%}{% endif -%}
 {%- set is_rhel = os in ['7', '8', '9', '10'] and type == 'rpm' -%}
 {%- if using_gcc and is_rhel -%}
@@ -41,7 +53,7 @@
 
 {%- set base_extensions = base_extensions_str|split(',')|map(v => v|trim) -%}
 {%- set base_shared = base_shared_str|split(',')|map(v => v|trim) -%}
-{%- set base_shared = php_version >= '8.5' ? base_shared|filter(v => v != 'memcache') : base_shared -%}
+{%- set base_shared = drop_memcache ? base_shared|filter(v => v != 'memcache') : base_shared -%}
 {%- set base_sapi = base_sapi_str|split(',')|map(v => v|trim) -%}
 
 {# Apply optional filtering #}
@@ -127,7 +139,8 @@ extra-env:
     SPC_DEFAULT_CXXFLAGS: "{{ cflags }} -fasynchronous-unwind-tables"
     SPC_DEFAULT_LDFLAGS: "-Wl,-z,relro -Wl,--as-needed -Wl,-z,now -Wl,-z,noexecstack -Wl,--gc-sections {{ using_gcc and is_rhel ? specs_ldflags : '' }}{{ not using_gcc ? ' -flto=thin' : '' }}"
     SPC_CMD_VAR_PHP_MAKE_EXTRA_CFLAGS: "{{ cflags }} -g -fno-math-errno -fPIE{{ php_optimization_flags }}"
-    SPC_CMD_VAR_PHP_MAKE_EXTRA_LDFLAGS: "-Wl,--build-id=sha1 -pie -release {{ release_suffix }}{{ php_optimization_flags }}"
+    SPC_CMD_VAR_PHP_MAKE_EXTRA_LDFLAGS: "-Wl,--build-id=sha1 -pie -release {{ release_suffix }}{{ php_link_optimization_flags }}"
+    # SPC appends LIBPHP to EXTRA_LDFLAGS; the optimization flags above already reach libphp.
     SPC_CMD_VAR_PHP_MAKE_EXTRA_LDFLAGS_LIBPHP: "-Wl,-Bsymbolic-functions"
     SPC_CMD_PREFIX_PHP_CONFIGURE: "./configure --prefix= --with-valgrind=no --disable-shared --enable-static --disable-all --disable-cgi --disable-phpdbg --disable-debug --with-pic --enable-rtld-now --enable-re2c-cgoto --disable-rpath{{ use_tailcall_vm ? ' --disable-gcc-global-regs' : '' }}"
     SPC_CMD_VAR_FRANKENPHP_XCADDY_MODULES: "--with github.com/dunglas/frankenphp/caddy --with github.com/dunglas/mercure/caddy --with github.com/dunglas/vulcain/caddy --with github.com/dunglas/caddy-cbrotli --with github.com/baldinof/caddy-supervisor"

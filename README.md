@@ -30,16 +30,22 @@ php bin/spp all
 
 ### PHP 8.6 VM and LTO
 
-GCC builds of PHP 8.6 and later use `-flto` for PHP compilation and linking, while
-dependency libraries keep their non-LTO flags. On x86_64, PHP also uses
+GCC builds of PHP 8.6 and later use `-flto` for PHP compilation and linking,
+independently of VM selection, while dependency libraries keep their non-LTO flags.
+PHP uses increased GCC inlining limits at compile and link time. Libtool's `-Wc,`
+forwarding preserves those limits in shared libphp links. SPC adds
+`SPC_CMD_VAR_PHP_MAKE_EXTRA_LDFLAGS_LIBPHP` to the general PHP linker flags, so
+libphp inherits the optimization flags without duplication. On x86_64, tailcall
+PHP also uses
 `-falign-functions=64` to address the measured tailcall code-layout regression.
 `--disable-gcc-global-regs` selects
 the tailcall VM on supported compilers. `php bin/spp test --phpv=8.6 --type=rpm`
 verifies `ZEND_VM_KIND_TAILCALL` in the installed CLI and in FrankenPHP's HTTP
 response, failing if the compiler fell back to another VM.
 
-See the [LTO tailcall/hybrid benchmark](benchmarks/php86-vm-lto.md) for measurements
-and reproduction instructions.
+See the [GCC VM and inlining comparison](benchmarks/php86-gcc-inlining.md) for
+measurements and reproduction instructions, and the
+[earlier LTO benchmark](benchmarks/php86-vm-lto.md) for the alignment investigation.
 
 ## Links
 
