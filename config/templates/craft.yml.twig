@@ -45,6 +45,11 @@
    LINUX_VERSION_CODE >= 5.3 configure gate, so main/io/php_io_copy_linux.c compiles a
    colliding static shim. Presetting the cache var keeps glibc's declaration. #}
 {%- set php_configure_vars = (is_rhel and os == '8') ? 'php_cv_func_copy_file_range=yes' : '' -%}
+{# On older glibc, libedit satisfies PHP's strlcpy/strlcat link probes but string.h
+   does not declare them. Use PHP's bundled implementations. #}
+{%- if (is_rhel and os in ['8', '9']) or type == 'deb' -%}
+    {%- set php_configure_vars = (php_configure_vars ~ ' ac_cv_func_strlcpy=no ac_cv_func_strlcat=no')|trim -%}
+{%- endif -%}
 {# PHP 8.6's AArch64 probe falsely rejects GCC 16's working preserve_none ABI. #}
 {%- if using_gcc and arch == 'aarch64' and php_version_parts[0] == 8 and php_version_parts[1] == 6 -%}
     {%- set php_configure_vars = php_configure_vars ? php_configure_vars ~ ' php_cv_preserve_none=yes' : 'php_cv_preserve_none=yes' -%}
