@@ -13,7 +13,7 @@ use StaticPHP\Util\SourcePatcher;
 class Php86Performance
 {
     #[BeforeStage('php', [PhpTarget::class, 'buildconfForUnix'], 'php')]
-    #[PatchDescription('Apply php-src performance PRs #23227, #22729, #22728, #22722 and #23604 to PHP 8.6')]
+    #[PatchDescription('Apply php-src performance PRs #22729, #22728, #22722 and #23604 to PHP 8.6')]
     public function patchBeforeBuildconf(TargetPackage $package): bool
     {
         if (!str_starts_with(PhpTarget::getPHPVersion($package->getSourceDir()), '8.6.')) {

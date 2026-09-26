@@ -4,10 +4,9 @@
 
 | PR | Head commit |
 | --- | --- |
-| [#23227](https://github.com/php/php-src/pull/23227) | `05d9972b0c25164337a732e89efd8b670916ed39` |
 | [#22729](https://github.com/php/php-src/pull/22729) | `6abe2e2da4d387104f1f55d57883866c46a312a3` |
 | [#22728](https://github.com/php/php-src/pull/22728) | `f44fe350a88b67c29a677c7d751a28ac47ea8010` |
 | [#22722](https://github.com/php/php-src/pull/22722) | `ab7759262a7dc8f3f3f9f5a86d674e8252ff5454` |
 | [#23604](https://github.com/php/php-src/pull/23604) | `c93fd4c5da840e4ff3d92b587927149619e23ebd` |
 
-The #22729 diff uses RC2's `constant_text` variable in readline completion. Its `Zend/zend.c` hunk was adjusted to apply after #23227 removed `TSRMLS_MAIN_CACHE_DEFINE()` from the surrounding context. The patch is generated with `git diff --text` so the embedded GDB script change remains a text hunk that SPC's `patch` command can apply.
+The #22729 diff uses RC2's `constant_text` variable in readline completion. The patch is generated with `git diff --text`.
