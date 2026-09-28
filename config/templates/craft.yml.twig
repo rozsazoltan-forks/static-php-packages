@@ -153,7 +153,7 @@ extra-env:
     SPC_CMD_VAR_PHP_MAKE_EXTRA_LDFLAGS_LIBPHP: "-Wl,-Bsymbolic-functions"
     SPC_CMD_PREFIX_PHP_CONFIGURE: "./configure --prefix= --with-valgrind=no --disable-shared --enable-static --disable-all --disable-cgi --disable-phpdbg --disable-debug --with-pic --enable-rtld-now --enable-re2c-cgoto --disable-rpath{{ use_tailcall_vm ? ' --disable-gcc-global-regs' : '' }}"
     SPC_CMD_VAR_FRANKENPHP_XCADDY_MODULES: "--with github.com/dunglas/frankenphp/caddy --with github.com/dunglas/mercure/caddy --with github.com/dunglas/vulcain/caddy --with github.com/dunglas/caddy-cbrotli --with github.com/baldinof/caddy-supervisor"
-    PHP_BUILD_PROVIDER: "Static PHP <https://static-php.dev> #StandWithUkraine"
+    PHP_BUILD_PROVIDER: "Marc Henderkes <pkg@henderkes.com> #StandWithUkraine"
     PHP_BUILD_ARCH: '{{ arch }}'
     {% if is_rhel -%}
     PHP_BUILD_SYSTEM: 'Red Hat Enterprise Linux {{ os }}'
