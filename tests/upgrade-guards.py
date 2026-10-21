@@ -1,4 +1,6 @@
+import contextlib
 import gzip
+import io
 import runpy
 import shutil
 import sys
@@ -39,11 +41,13 @@ class UpgradeGuards(unittest.TestCase):
             'get_remote_package_archs': lambda *args, **kwargs: {'amd64'},
             'get_remote_packages': lambda *args: packages,
             'get_package_info': lambda file, kind: (*metadata[file], file.stem),
-        }), patch.object(Path, 'glob', return_value=files), patch.object(Path, 'is_file', return_value=True), patch('builtins.open', mock_open()) as opened, patch.object(requests, 'put', return_value=Mock(status_code=201)) as put, patch.object(requests, 'post', return_value=Mock(status_code=201)):
+        }), patch.object(Path, 'glob', return_value=files), patch.object(Path, 'is_file', return_value=True), patch('builtins.open', mock_open()) as opened, patch.object(requests, 'put', return_value=Mock(status_code=201)) as put, patch.object(requests, 'post', return_value=Mock(status_code=201)), contextlib.redirect_stdout(io.StringIO()) as output:
             self.assertEqual(forgejo['upload_packages']('https://example.com', '86', 'test', 'debian', '*.deb'), 3)
             put.assert_called_once()
             opened.assert_called_once_with(files[0], 'rb')
             self.assertIs(put.call_args[1]['files']['file'], opened.return_value)
+        self.assertIn('::warning::Skipping upload of older.deb:', output.getvalue())
+        self.assertIn('::error::Skipped 2 package files', output.getvalue())
 
     def test_forgejo_read_failure_prevents_upload(self):
         with patch.dict(forgejo_globals, {'get_remote_packages': Mock(side_effect=requests.HTTPError('offline'))}), patch.object(requests, 'put') as put:
@@ -88,8 +92,10 @@ class UpgradeGuards(unittest.TestCase):
                 'local_package': lambda path: metadata[path.name],
                 'published_packages': lambda read: [remote],
                 'subprocess': Mock(run=lambda *args, **kwargs: Mock(returncode=12, stderr='')),
-            }), patch.object(sys, 'argv', ['check-rpm-upgrades', '--host', 'example.com', '--remote-directory', '/rpm', '--php-version', '8.6', '--files-from', str(manifest), str(directory)]):
+            }), patch.object(sys, 'argv', ['check-rpm-upgrades', '--host', 'example.com', '--remote-directory', '/rpm', '--php-version', '8.6', '--files-from', str(manifest), str(directory)]), contextlib.redirect_stdout(io.StringIO()) as output:
                 self.assertEqual(rpm['main'](), 3)
+            self.assertIn('::warning::Skipping upload of older.rpm:', output.getvalue())
+            self.assertIn('::warning::Skipping upload of older-debuginfo.rpm:', output.getvalue())
             self.assertEqual(manifest.read_bytes(), b'safe.rpm\0')
 
     def test_rpm_stream_isolation(self):
