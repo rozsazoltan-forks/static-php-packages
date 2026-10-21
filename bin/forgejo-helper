@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 
 import sys
+import gzip
 import requests
 import re
 import subprocess
@@ -39,21 +40,37 @@ def get_remote_package_archs(host, owner, password, pkg_type, name, version, str
     archs = set()
     if resp.status_code == 200:
         for f in resp.json():
+            if pkg_type == 'alpine':
+                # Forgejo stores APK filenames without their architecture suffix.
+                file_url = f"{host}/{owner}/-/packages/{pkg_type}/{name}/{version}/files/{f['id']}"
+                with requests.get(file_url, auth=(owner, password), timeout=30, stream=True) as download:
+                    download.raise_for_status()
+                    download.raw.decode_content = True
+                    _, _, arch = apk_metadata(download.raw)
+                    archs.add(arch)
+                continue
             fname = f.get('name', '')
             for arch in ['x86_64', 'aarch64', 'amd64', 'arm64']:
                 if arch in fname:
                     archs.add(arch)
     return archs
 
+def apk_metadata(fileobj):
+    with gzip.GzipFile(fileobj=fileobj) as uncompressed, tarfile.open(fileobj=uncompressed, mode='r|', ignore_zeros=True) as archive:
+        for member in archive:
+            if member.name == '.PKGINFO':
+                metadata = archive.extractfile(member).read().decode()
+                fields = dict(re.findall(r'^(pkgname|pkgver|arch)\s*=\s*(\S+)', metadata, re.M))
+                return fields['pkgname'], fields['pkgver'], fields['arch']
+    raise RuntimeError('APK archive has no .PKGINFO metadata')
+
 def package_metadata(pkg_file, pkg_type):
     if pkg_type == 'debian':
         output = subprocess.check_output(['dpkg-deb', '-f', str(pkg_file), 'Package', 'Version', 'Architecture'], universal_newlines=True)
         fields = dict(line.split(': ', 1) for line in output.splitlines())
         return fields['Package'], fields['Version'], fields['Architecture']
-    with tarfile.open(str(pkg_file), 'r:gz') as archive:
-        metadata = archive.extractfile('.PKGINFO').read().decode()
-    fields = dict(re.findall(r'^(pkgname|pkgver|arch)\s*=\s*(\S+)', metadata, re.M))
-    return fields['pkgname'], fields['pkgver'], fields['arch']
+    with open(pkg_file, 'rb') as archive:
+        return apk_metadata(archive)
 
 def version_is_newer(pkg_type, left, right):
     if pkg_type == 'debian':
@@ -74,11 +91,17 @@ def verify_upload_versions(host, owner, password, pkg_type, files, packages):
         key = (re.sub(r'-debuginfo$', '', name), version, arch)
         candidates.append((pkg_file, key))
         for published in packages:
-            if published['name'] != name or not version_is_newer(pkg_type, published['version'], version):
+            if published['name'] != name:
                 continue
-            archs = get_remote_package_archs(host, owner, password, pkg_type, name, published['version'], strict=True)
-            if not archs:
-                raise RuntimeError(f"Cannot determine published architectures for {name} {published['version']}")
+            try:
+                if not version_is_newer(pkg_type, published['version'], version):
+                    continue
+                archs = get_remote_package_archs(host, owner, password, pkg_type, name, published['version'], strict=True)
+                if not archs:
+                    raise RuntimeError(f"Cannot determine published architectures for {name} {published['version']}")
+            except (requests.RequestException, RuntimeError, tarfile.TarError, OSError, ValueError, KeyError) as error:
+                skipped[key] = f"Cannot verify {name} {version} for {arch}: {error}"
+                break
             if arch in archs:
                 skipped[key] = f"{name} {version} sorts below published {published['version']} for {arch}"
                 break
@@ -245,7 +268,7 @@ def upload_packages(host, owner, password, pkg_type, pattern, repo="php-zts", br
                 print(f"Error: {resp.text}")
 
     if skipped:
-        print(f"::error::Skipped {skipped} package files to prevent downgrades; remaining uploads completed.")
+        print(f"::error::Skipped {skipped} package files after upgrade checks; remaining uploads completed.")
         return 3
     return 0
 

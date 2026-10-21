@@ -440,7 +440,7 @@ jobs:
             -   name: Report upload failures
                 if: ${{ !cancelled() && (steps.upload-host-1.outcome == 'failure') }}
                 run: |
-                    echo "::error::Package uploads failed or skipped downgrades; both Forgejo hosts were attempted."
+                    echo "::error::Package uploads failed or were skipped; both Forgejo hosts were attempted."
                     exit 1
 
             -   name: Install tmate
