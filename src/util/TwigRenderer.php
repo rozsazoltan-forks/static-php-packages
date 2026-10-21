@@ -60,7 +60,7 @@ class TwigRenderer
      * @return string The rendered template content
      * @throws RuntimeException If there's an error rendering the template
      */
-    public static function renderCraftTemplate(string $phpVersion = '8.4', ?string $arch = null, ?array $packages = null): string
+    public static function renderCraftTemplate(string $phpVersion = '8.4', ?string $arch = null, ?array $packages = null, ?string $sourceVersion = null): string
     {
         // Detect architecture if not provided
         if ($arch === null) {
@@ -107,6 +107,7 @@ class TwigRenderer
         $sharedLibrarySuffix = getSharedLibrarySuffix();
         $templateVars = [
             'php_version' => $phpVersion,
+            'php_source_version' => $sourceVersion ?? $phpVersion,
             'php_version_nodot' => str_replace('.', '', $phpVersion),
             // Must stay off for <= 8.5. version_compare, not Twig's lexical >=, so it survives 8.10.
             'allow_shared_ext_failure' => version_compare($phpVersion, '8.6', '>='),

@@ -3,6 +3,7 @@
 namespace staticphp\step;
 
 use Exception;
+use RuntimeException;
 use Symfony\Component\Process\Process;
 use staticphp\util\TwigRenderer;
 
@@ -13,7 +14,20 @@ class RunSPC
         $craftYmlDest = BASE_PATH . '/craft.yml';
 
         try {
-            $craftYml = TwigRenderer::renderCraftTemplate($phpVersion, null, $packages);
+            $sourceVersion = $phpVersion;
+            $metadataPath = BASE_PATH . '/downloads/.spc-meta.json';
+            if (preg_match('/^\d+\.\d+$/', $phpVersion) && (is_file($metadataPath) || getenv('CI') || getenv('GITHUB_ACTIONS'))) {
+                if (!is_readable($metadataPath)) {
+                    throw new RuntimeException('Missing PHP release metadata; run spc-download first.');
+                }
+                $metadata = json_decode(file_get_contents($metadataPath), true, flags: JSON_THROW_ON_ERROR);
+                $sourceVersion = $metadata['php_versions'][$phpVersion] ?? null;
+                if (!is_string($sourceVersion) || !preg_match('/^' . preg_quote($phpVersion, '/') . '\.\d+(?:(?:alpha|beta|RC)\d+)?$/', $sourceVersion)) {
+                    throw new RuntimeException("Invalid pinned PHP {$phpVersion} release in {$metadataPath}");
+                }
+            }
+            echo "Selected PHP release: {$sourceVersion}\n";
+            $craftYml = TwigRenderer::renderCraftTemplate($phpVersion, null, $packages, $sourceVersion);
 
             // Write the rendered craft.yml to the destination
             if (!file_put_contents($craftYmlDest, $craftYml)) {
@@ -45,10 +59,19 @@ class RunSPC
             $exitCode = $process->run(function ($type, $buffer) {
                 echo $buffer;
             });
+            if ($exitCode === 0 && !$libsOnly) {
+                $versionProcess = new Process([BASE_PATH . '/buildroot/bin/php', '-n', '-r', 'echo PHP_VERSION;']);
+                $versionProcess->mustRun();
+                $actual = trim($versionProcess->getOutput());
+                $matches = preg_match('/^\d+\.\d+$/', $sourceVersion)
+                    ? str_starts_with($actual, $sourceVersion . '.')
+                    : strcasecmp($actual, $sourceVersion) === 0;
+                if (!$matches) {
+                    throw new RuntimeException("Built PHP {$actual} does not match requested release {$sourceVersion}");
+                }
+            }
         } catch (Exception $e) {
-            // run() only throws for failures to *launch* the process, not for a
-            // non-zero exit, so the message here is short and safe to print.
-            echo "Error launching static-php-cli: " . $e->getMessage() . "\n";
+            echo "Error building PHP: " . $e->getMessage() . "\n";
             return false;
         }
 

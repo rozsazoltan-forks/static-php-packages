@@ -3,6 +3,10 @@ name: Build and upload Debian packages to Forgejo
 on:
     workflow_dispatch:
         inputs:
+            downloads_run_id:
+                description: "Optional: pin the spc-download run providing the source snapshot"
+                required: false
+                default: ""
             iteration:
                 description: "Optional: override package iteration (integer). Leave empty for auto"
                 required: false
@@ -88,6 +92,7 @@ jobs:
         permissions:
             contents: write
             packages: read
+            actions: read
         defaults:
             run:
                 shell: bash
@@ -133,6 +138,7 @@ jobs:
                     workflow: spc-download.yml
                     name: downloads-tarball
                     search_artifacts: true
+                    run_id: ${{ inputs.downloads_run_id }}
 
             -   name: Prepare cache directories
                 if: steps.cache.outputs.cache-hit != 'true'
@@ -248,6 +254,7 @@ jobs:
         permissions:
             contents: read
             packages: read
+            actions: read
         defaults:
             run:
                 shell: bash
@@ -301,6 +308,7 @@ jobs:
                     workflow: spc-download.yml
                     name: downloads-tarball
                     search_artifacts: true
+                    run_id: ${{ inputs.downloads_run_id }}
 
             -   name: Extract with permissions
                 run: |

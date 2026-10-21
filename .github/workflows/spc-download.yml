@@ -2,7 +2,8 @@ name: spc-download
 
 on:
     schedule:
-        -   cron: '0 0 * * *'
+        -   cron: '0 0 * * 0,2-6'
+        -   cron: '0 0 * * 1'
     workflow_dispatch:
         inputs:
             force_full:
@@ -100,7 +101,7 @@ jobs:
                         # php.net answers an unreleased minor with HTTP 200 and {"error":"Unknown
                         # version"}, so `keys[0]` yields the literal string "error". Only accept a
                         # key that actually looks like a version.
-                        latest=$(curl -fsSL "https://www.php.net/releases/index.php?json=&max=1&version=${v}" \
+                        latest=$(curl -fsSL -H "Cache-Control: no-cache" "https://www.php.net/releases/index.php?json=&max=1&version=${v}&build=${GITHUB_RUN_ID}" \
                             | jq -r 'to_entries | map(select(.key | test("^[0-9]+\\.[0-9]+\\.[0-9]+"))) | .[0].key // empty')
                         if [[ -z "$latest" ]]; then
                             # pre-GA minor: php.net has no entry yet, so mirror what spc downloads
@@ -143,7 +144,7 @@ jobs:
             -   name: Diff state and compute triggers
                 id: diff
                 env:
-                    FORCE_FULL: ${{ inputs.force_full }}
+                    FORCE_FULL: ${{ inputs.force_full || github.event.schedule == '0 0 * * 1' }}
                 run: |
                     set -euo pipefail
 
@@ -195,7 +196,7 @@ jobs:
 
                     all_minors=$(jq -nc --arg s "$PHP_MINORS" '$s | split(" ")')
                     if [[ "$FORCE_FULL" == "true" ]]; then
-                        echo "force_full input set -> rebuilding all PHP versions"
+                        echo "Full rebuild requested -> rebuilding all PHP versions"
                         full_versions="$all_minors"
                     fi
 
@@ -282,12 +283,13 @@ jobs:
                     for wf in "${workflows[@]}"; do
                         if [[ -n "$FULL_PHP" ]]; then
                             echo ">> $wf : full rebuild for $FULL_PHP"
-                            gh workflow run "$wf" -f php_versions="$FULL_PHP"
+                            gh workflow run "$wf" -f php_versions="$FULL_PHP" -f downloads_run_id="$GITHUB_RUN_ID"
                         fi
                         if [[ -n "$CHANGED_PACKAGES" && -n "$PARTIAL_PHP" ]]; then
                             echo ">> $wf : partial rebuild for $PARTIAL_PHP, packages=$CHANGED_PACKAGES"
                             gh workflow run "$wf" \
                                 -f php_versions="$PARTIAL_PHP" \
-                                -f packages="$CHANGED_PACKAGES"
+                                -f packages="$CHANGED_PACKAGES" \
+                                -f downloads_run_id="$GITHUB_RUN_ID"
                         fi
                     done

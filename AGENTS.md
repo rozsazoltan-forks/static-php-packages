@@ -127,6 +127,7 @@ The Plan/Explore agents can also read large workflow files, but for these target
 All build-* workflows accept comma-separated overrides via `workflow_dispatch`:
 
 - `php_versions` (e.g., `8.2,8.5`) — empty = all.
+- `downloads_run_id` — pins the `spc-download` source snapshot; automatic dispatches pass their own run ID, and empty preserves the download action's latest-artifact lookup.
 - `alma_versions` (RPM only).
 - `architectures` (`x86_64,arm64` for RPM/APK; `amd64,arm64` for DEB).
 - `packages` — passed through to `bin/spp` as `--packages=…`.
@@ -134,6 +135,10 @@ All build-* workflows accept comma-separated overrides via `workflow_dispatch`:
 - `debug_tmate` — opens tmate on failure (only after build step; tmate binary is downloaded inline because Alma doesn't ship it).
 
 When the user asks to "rerun for X only", they mean these inputs.
+
+`RunSPC` resolves minor versions through the snapshot's `downloads/.spc-meta.json` and verifies the built binary before packaging. CI requires this metadata; explicit full-version requests remain explicit. Keep the PHP stream used for paths, package tags and Forgejo owners separate from the pinned source release.
+
+`spc-download` runs incremental builds Tuesday–Sunday and forces a full rebuild every Monday through the existing `force_full` path. This retries missed or failed publications weekly without polling package repositories. Upload downgrade guards still apply.
 
 ## Operational notes
 

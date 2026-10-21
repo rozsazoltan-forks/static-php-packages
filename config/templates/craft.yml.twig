@@ -84,7 +84,7 @@
 {%-   set shared_ext = shared_ext|filter(v => v != 'excimer') -%}
 {%- endif -%}
 
-php-version: {{ php_version }}
+php-version: {{ php_source_version }}
 extensions: {{ extensions|join(',') }}
 shared-extensions: {{ shared_ext|join(',') }}
 {# craft's libs-only stage only resolves extensions, not sapi targets — list frankenphp's suggests explicitly #}
