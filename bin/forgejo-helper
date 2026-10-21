@@ -185,8 +185,11 @@ def upload_packages(host, owner, password, pkg_type, pattern, repo="php-zts", br
     packages = get_remote_packages(host, owner, password, pkg_type)
     remote_names = {f"{p['name']}-{p['version']}" for p in packages}
     files = [path for path in Path('.').glob(pattern) if path.is_file()]
+    skipped = 0
     if pkg_type in ['debian', 'alpine']:
-        files = verify_upload_versions(host, owner, password, pkg_type, files, packages)
+        allowed = verify_upload_versions(host, owner, password, pkg_type, files, packages)
+        skipped = len(files) - len(allowed)
+        files = allowed
 
     # Cache arch lookups so we only fetch files once per name-version
     arch_cache = {}
@@ -241,6 +244,11 @@ def upload_packages(host, owner, password, pkg_type, pattern, repo="php-zts", br
             if resp.status_code != 201:
                 print(f"Error: {resp.text}")
 
+    if skipped:
+        print(f"::error::Skipped {skipped} package files to prevent downgrades; remaining uploads completed.")
+        return 3
+    return 0
+
 if __name__ == "__main__":
     args = sys.argv[1:]
     host = host1
@@ -267,7 +275,7 @@ if __name__ == "__main__":
 
     if action == "upload":
         pattern = args[4] if len(args) > 4 else "*.apk"
-        upload_packages(host, owner, password, pkg_type, pattern)
+        sys.exit(upload_packages(host, owner, password, pkg_type, pattern))
     elif action == "list":
         pattern = args[4] if len(args) > 4 else None
         list_packages(host, owner, password, pkg_type, pattern)

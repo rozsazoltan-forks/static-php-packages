@@ -7,6 +7,7 @@ import lzma
 import re
 import shlex
 import subprocess
+import sys
 import xml.etree.ElementTree as ET
 from pathlib import Path, PurePosixPath
 
@@ -125,7 +126,8 @@ def main():
             allowed.append(path.name)
     arguments.files_from.write_bytes(b''.join(name.encode() + b'\0' for name in allowed))
     print('Verified upgrade ordering for {} RPM packages; skipped {}.'.format(len(allowed), len(files) - len(allowed)))
+    return 3 if skipped else 0
 
 
 if __name__ == '__main__':
-    main()
+    sys.exit(main())

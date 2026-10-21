@@ -408,6 +408,8 @@ jobs:
                     path: log
 
             -   name: Upload to Forgejo Host 1
+                id: upload-host-1
+                continue-on-error: true
                 env:
                     FORGEJO_PASSWORD: ${{ secrets.FORGEJO_PASSWORD }}
                 run: |
@@ -423,6 +425,7 @@ jobs:
                         '
 
             -   name: Upload to Forgejo Host 2
+                id: upload-host-2
                 continue-on-error: true
                 env:
                     FORGEJO_PASSWORD: ${{ secrets.FORGEJO_PASSWORD }}
@@ -437,6 +440,12 @@ jobs:
                             echo "uploading to host 2"
                             ../../bin/forgejo-helper --host=2 upload alpine "$PHP_VERSION_SHORT" "$FORGEJO_PASSWORD" "*.apk"
                         '
+
+            -   name: Report upload failures
+                if: ${{ !cancelled() && (steps.upload-host-1.outcome == 'failure') }}
+                run: |
+                    echo "::error::Package uploads failed or skipped downgrades; both Forgejo hosts were attempted."
+                    exit 1
 
             -   name: Setup tmate session
                 if: ${{ failure() && inputs.debug_tmate == true }}

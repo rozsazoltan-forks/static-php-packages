@@ -40,7 +40,7 @@ class UpgradeGuards(unittest.TestCase):
             'get_remote_packages': lambda *args: packages,
             'get_package_info': lambda file, kind: (*metadata[file], file.stem),
         }), patch.object(Path, 'glob', return_value=files), patch.object(Path, 'is_file', return_value=True), patch('builtins.open', mock_open()) as opened, patch.object(requests, 'put', return_value=Mock(status_code=201)) as put, patch.object(requests, 'post', return_value=Mock(status_code=201)):
-            forgejo['upload_packages']('https://example.com', '86', 'test', 'debian', '*.deb')
+            self.assertEqual(forgejo['upload_packages']('https://example.com', '86', 'test', 'debian', '*.deb'), 3)
             put.assert_called_once()
             opened.assert_called_once_with(files[0], 'rb')
             self.assertIs(put.call_args[1]['files']['file'], opened.return_value)
@@ -89,7 +89,7 @@ class UpgradeGuards(unittest.TestCase):
                 'published_packages': lambda read: [remote],
                 'subprocess': Mock(run=lambda *args, **kwargs: Mock(returncode=12, stderr='')),
             }), patch.object(sys, 'argv', ['check-rpm-upgrades', '--host', 'example.com', '--remote-directory', '/rpm', '--php-version', '8.6', '--files-from', str(manifest), str(directory)]):
-                rpm['main']()
+                self.assertEqual(rpm['main'](), 3)
             self.assertEqual(manifest.read_bytes(), b'safe.rpm\0')
 
     def test_rpm_stream_isolation(self):

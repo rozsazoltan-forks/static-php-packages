@@ -498,12 +498,28 @@ jobs:
                       rpmsign --addsign "$rpm"
                     done
 
-            -   name: Upload packages
+            -   name: Check package upgrades
+                id: check-upgrades
                 env:
                     MATRIX_PHP_VERSION: ${{ matrix.php-version }}
                 run: |
-                    python3 bin/check-rpm-upgrades --host "github@${{ secrets.DEB_SERVER_IP }}" --remote-directory "/mnt/data/rpm/${RPM_ARCH}/${TARGET_DIR}" --php-version "$MATRIX_PHP_VERSION" --files-from "$RUNNER_TEMP/rpm-upload-files" dist/rpm
+                    status=0
+                    python3 bin/check-rpm-upgrades --host "github@${{ secrets.DEB_SERVER_IP }}" --remote-directory "/mnt/data/rpm/${RPM_ARCH}/${TARGET_DIR}" --php-version "$MATRIX_PHP_VERSION" --files-from "$RUNNER_TEMP/rpm-upload-files" dist/rpm || status=$?
+                    # Exit 3 means the allowlist is valid but downgrades were skipped.
+                    if [[ "$status" != "0" && "$status" != "3" ]]; then
+                        exit "$status"
+                    fi
+                    echo "status=$status" >> "$GITHUB_OUTPUT"
+
+            -   name: Upload packages
+                run: |
                     rsync -av --ignore-existing --from0 --files-from="$RUNNER_TEMP/rpm-upload-files" dist/rpm/ github@${{ secrets.DEB_SERVER_IP }}:/mnt/data/rpm/${RPM_ARCH}/${TARGET_DIR}/
+
+            -   name: Report skipped package uploads
+                if: ${{ steps.check-upgrades.outputs.status == '3' }}
+                run: |
+                    echo "::error::Package downgrades were skipped; remaining packages were uploaded."
+                    exit 1
 
             -   name: Upload logs
                 if: ${{ failure() }}
@@ -530,17 +546,17 @@ jobs:
             matrix: ${{ steps.set-matrix.outputs.matrix }}
             any: ${{ steps.set-matrix.outputs.any }}
         steps:
-            -   name: Compute matrix from successful builds
+            -   name: Compute matrix from successful uploads
                 id: set-matrix
                 env:
                     GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
                 run: |
                     set -euo pipefail
                     succeeded=$(gh api "repos/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID/jobs" --paginate \
-                        --jq '.jobs[] | select(.conclusion == "success" and (.name | test("^Build \\(alma"))) | .name' \
+                        --jq '.jobs[] | select(.name | test("^Build \\(alma")) | select(any(.steps[]?; .name == "Upload packages" and .conclusion == "success")) | .name' \
                         | sed -E 's/^Build \(alma([^ ]+) ([^ ]+) php[^)]+\)$/\1 \2/' \
                         | sort -u)
-                    echo "Successful build combos:"
+                    echo "Successful upload combos:"
                     printf '%s\n' "$succeeded"
 
                     include=$(jq -cRs '

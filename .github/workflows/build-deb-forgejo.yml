@@ -418,7 +418,9 @@ jobs:
                     path: log
 
             -   name: Upload to Forgejo Host 1
+                id: upload-host-1
                 working-directory: dist/deb
+                continue-on-error: true
                 run: |
                     echo "listing from host 1"
                     ../../bin/forgejo-helper list debian "${{ env.PHP_VERSION_SHORT }}" "${{ secrets.FORGEJO_PASSWORD }}" "*.deb"
@@ -426,6 +428,7 @@ jobs:
                     ../../bin/forgejo-helper upload debian "${{ env.PHP_VERSION_SHORT }}" "${{ secrets.FORGEJO_PASSWORD }}" "*.deb"
 
             -   name: Upload to Forgejo Host 2
+                id: upload-host-2
                 working-directory: dist/deb
                 continue-on-error: true
                 run: |
@@ -433,6 +436,12 @@ jobs:
                     ../../bin/forgejo-helper --host=2 list debian "${{ env.PHP_VERSION_SHORT }}" "${{ secrets.FORGEJO_PASSWORD }}" "*.deb"
                     echo "uploading to host 2"
                     ../../bin/forgejo-helper --host=2 upload debian "${{ env.PHP_VERSION_SHORT }}" "${{ secrets.FORGEJO_PASSWORD }}" "*.deb"
+
+            -   name: Report upload failures
+                if: ${{ !cancelled() && (steps.upload-host-1.outcome == 'failure') }}
+                run: |
+                    echo "::error::Package uploads failed or skipped downgrades; both Forgejo hosts were attempted."
+                    exit 1
 
             -   name: Install tmate
                 if: ${{ failure() && inputs.debug_tmate == true }}
