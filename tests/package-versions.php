@@ -45,7 +45,7 @@ $less = static function (string $type, string $older, string $newer) use ($compa
     $checks++;
 };
 
-$expected = ['rpm' => '3.6.0_86.0~rc3+ext~alpha1', 'deb' => '3.6.0+php86.0~rc3+ext~alpha1', 'apk' => '3.6.0p86.0_rc3_p0_alpha1'];
+$expected = ['rpm' => '3.6.0~alpha1_86.0~rc3', 'deb' => '3.6.0~alpha1+php86.0~rc3', 'apk' => '3.6.0_alpha1_p86_p0_rc3'];
 $phpStages = ['8.6.0-dev', '8.6.0alpha0', '8.6.0alpha1', '8.6.0alpha2', '8.6.0beta1', '8.6.0beta2', '8.6.0beta3', '8.6.0RC1', '8.6.0RC2', '8.6.0RC3', '8.6.0'];
 $extensionStages = ['3.6.0dev', '3.6.0dev2', '3.6.0alpha0', '3.6.0alpha1', '3.6.0alpha2', '3.6.0beta1', '3.6.0RC1', '3.6.0RC2', '3.6.0'];
 $legacyXdebug = [
@@ -56,12 +56,25 @@ $legacyXdebug = [
 
 foreach ($types as $type) {
     $revision = match ($type) {'deb' => '-1', 'apk' => '-r0', default => ''};
+    $stableTag = match ($type) {'deb' => '+php82.35', 'apk' => 'p82.35', default => '_82.35'};
+    foreach (['1.13.1', '0.13.0'] as $upstream) {
+        $stable = $version($type, $upstream, '8.2.35');
+        if ($stable !== $upstream . $stableTag) {
+            throw new RuntimeException("Unexpected stable {$type} version: {$stable}");
+        }
+        $published = $stable . ($type === 'apk' ? '_p0' : '+ext');
+        $less($type, $stable . $revision, $published . $revision);
+        $nextUpstream = $upstream === '1.13.1' ? '1.13.2' : '0.13.1';
+        $less($type, $published . $revision, $version($type, $nextUpstream, '8.2.35') . $revision);
+        $less($type, $published . $revision, $version($type, $upstream, '8.2.36') . $revision);
+    }
     $latest = $version($type, '3.6.0alpha1', '8.6.0RC3');
     if ($latest !== $expected[$type]) {
         throw new RuntimeException("Unexpected {$type} version: {$latest}");
     }
+    $release = $version($type, '3.6.0', '8.6.0RC3');
     foreach ($legacyXdebug[$type] as $older) {
-        $less($type, $older, $latest . $revision);
+        $less($type, $older, $release . $revision);
     }
 
     foreach ($phpStages as $php) {
@@ -71,10 +84,10 @@ foreach ($types as $type) {
     }
     foreach (array_slice($phpStages, 1) as $i => $php) {
         foreach ($extensionStages as $extension) {
-            // A later PHP release must win even when the extension's prerelease goes backwards.
-            $less($type, $version($type, '3.6.0', $phpStages[$i]), $version($type, $extension, $php));
+            $less($type, $version($type, $extension, $phpStages[$i]), $version($type, $extension, $php));
         }
     }
+    $less($type, $version($type, '3.6.0alpha1', '8.6.0'), $version($type, '3.6.0alpha2', '8.6.0RC3'));
 
     foreach (['8.2.30', '8.3.30', '8.4.20', '8.5.10'] as $php) {
         $suffix = str_replace('.', '', substr($php, 0, 3));
@@ -84,13 +97,13 @@ foreach ($types as $type) {
         foreach ($legacyXdebug[$type] as $older) {
             $oldSuffix = $type === 'deb' ? 'php86' : ($type === 'apk' ? 'p86' : '_86');
             $newSuffix = $type === 'deb' ? 'php' . $suffix : ($type === 'apk' ? 'p' . $suffix : '_' . $suffix);
-            $less($type, str_replace($oldSuffix, $newSuffix, $older), $version($type, '3.6.0alpha1', $php) . $revision);
+            $less($type, str_replace($oldSuffix, $newSuffix, $older), $version($type, '3.6.0', $php) . $revision);
         }
     }
 
     $phaseVersions = [];
-    foreach (['dev', 'alpha1', 'beta1', 'RC1', ''] as $phpPhase) {
-        foreach (['dev', 'alpha1', 'beta1', 'RC1', ''] as $extensionPhase) {
+    foreach (['dev', 'alpha1', 'beta1', 'RC1', ''] as $extensionPhase) {
+        foreach (['dev', 'alpha1', 'beta1', 'RC1', ''] as $phpPhase) {
             $new = $version($type, '3.6.0' . $extensionPhase, '8.6.0' . $phpPhase);
             $phaseVersions[] = $new;
             $phpMarker = $phpPhase === '' ? '' : '~' . strtolower($phpPhase);
@@ -104,7 +117,7 @@ foreach ($types as $type) {
             if ($type === 'apk') {
                 $old = str_replace(['~dev', '~'], ['_pre', '_'], $old);
             }
-            $less($type, $old . $revision, $latest . $revision);
+            $less($type, $old . $revision, $release . $revision);
             $matrices[$type][] = ['php' => $phpPhase ?: 'release', 'extension' => $extensionPhase ?: 'release', 'before' => $old, 'after' => $new];
         }
     }
@@ -114,13 +127,13 @@ foreach ($types as $type) {
         }
     }
     $less($type, $version($type, '3.6.0alpha1', '8.6.0'), $version($type, '3.6.1dev', '8.6.0'));
-    $less($type, $version($type, '3.6.0', '8.6.0'), $version($type, '3.6.0dev', '9.0.0alpha1'));
-    $less($type, $version($type, '3.6.0', '9.9.0'), $version($type, '3.6.0dev', '10.0.0alpha1'));
-    $less($type, $version($type, '3.6.0', '8.6.0'), $version($type, '3.6.0dev', '8.6.1alpha1'));
-    $less($type, $version($type, '3.6.0', '8.6.9'), $version($type, '3.6.0dev', '8.6.10alpha1'));
+    $less($type, $version($type, '3.6.0dev', '8.6.0'), $version($type, '3.6.0dev', '9.0.0alpha1'));
+    $less($type, $version($type, '3.6.0dev', '9.9.0'), $version($type, '3.6.0dev', '10.0.0alpha1'));
+    $less($type, $version($type, '3.6.0dev', '8.6.0'), $version($type, '3.6.0dev', '8.6.1alpha1'));
+    $less($type, $version($type, '3.6.0dev', '8.6.9'), $version($type, '3.6.0dev', '8.6.10alpha1'));
     foreach (['alpha', 'beta', 'RC'] as $phase) {
         $less($type, $version($type, '3.6.0' . $phase . '9', '8.6.0RC3'), $version($type, '3.6.0' . $phase . '10', '8.6.0RC3'));
-        $less($type, $version($type, '3.6.0', '8.6.0' . $phase . '9'), $version($type, '3.6.0dev', '8.6.0' . $phase . '10'));
+        $less($type, $version($type, '3.6.0dev', '8.6.0' . $phase . '9'), $version($type, '3.6.0dev', '8.6.0' . $phase . '10'));
     }
 }
 

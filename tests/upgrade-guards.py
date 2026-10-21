@@ -104,11 +104,29 @@ class UpgradeGuards(unittest.TestCase):
     def test_debian_native_comparison(self):
         self.assertTrue(forgejo['version_is_newer']('debian', '3.7.0+php86.0+ext-1', '3.6.0+php86.0+ext-1'))
         self.assertFalse(forgejo['version_is_newer']('debian', '3.6.0~dev+php86~beta2-1', '3.6.0+php86.0~rc3+ext~alpha1-1'))
+        published = '1.13.1+php82.35+ext-1'
+        self.assertTrue(forgejo['version_is_newer']('debian', published, '1.13.1+php82.35-2'))
+        self.assertTrue(forgejo['version_is_newer']('debian', '1.13.2+php82.35-1', published))
+        self.assertTrue(forgejo['version_is_newer']('debian', '1.13.1+php82.36-1', published))
 
     @unittest.skipUnless(shutil.which('apk'), 'apk required')
     def test_apk_native_comparison(self):
         self.assertTrue(forgejo['version_is_newer']('alpine', '3.7.0p86.0_p0-r0', '3.6.0p86.0_p0-r0'))
         self.assertFalse(forgejo['version_is_newer']('alpine', '3.6.0_pre_beta2_p86-r0', '3.6.0p86.0_rc3_p0_alpha1-r0'))
+        published = '1.13.1p82.35_p0-r0'
+        self.assertTrue(forgejo['version_is_newer']('alpine', published, '1.13.1p82.35-r1'))
+        self.assertTrue(forgejo['version_is_newer']('alpine', '1.13.2p82.35-r0', published))
+        self.assertTrue(forgejo['version_is_newer']('alpine', '1.13.1p82.36-r0', published))
+
+    @unittest.skipUnless(shutil.which('rpmdev-vercmp'), 'rpmdev-vercmp required')
+    def test_rpm_suffix_removal(self):
+        remote = {'name': 'frankenphp', 'arch': 'aarch64', 'version': '1.13.1_82.35+ext', 'evr': '0:1.13.1_82.35+ext-1.el10'}
+        local = dict(remote, version='1.13.1_82.35', evr='0:1.13.1_82.35-2.el10')
+        with self.assertRaisesRegex(RuntimeError, 'Refusing upload'):
+            rpm['verify_package'](local, [remote], '8.2')
+        for version in ['1.13.2_82.35', '1.13.1_82.36']:
+            with self.subTest(version=version):
+                rpm['verify_package'](dict(remote, version=version, evr=f'0:{version}-1.el10'), [remote], '8.2')
 
     @unittest.skipUnless(shutil.which('rpmdev-vercmp'), 'rpmdev-vercmp required')
     def test_rpm_native_epoch_comparison(self):

@@ -365,9 +365,9 @@ class CreatePackages
      * The tag binding a package to the PHP it was built against, appended to that package's own
      * version: '_86.0' (rpm), '+php86.0' (deb), 'p86.0' (apk).
      *
-     * The PHP prerelease stays attached to the tag;
-     * getTaggedPackageVersion moves the extension prerelease after it and adds a boundary
-     * that keeps both PHP GA and the extension's own GA above their respective prereleases.
+     * The package's own prerelease precedes the PHP tag, so upstream version ordering
+     * takes precedence over the PHP version it was built against.
+     * APK needs separate _p suffixes for the PHP stream and patch after a package prerelease.
      */
     public static function getPhpVersionTag(string $packageType, string $packageVersion): string
     {
@@ -381,7 +381,7 @@ class CreatePackages
 
         return match ($packageType) {
             'deb' => '+php' . $phpVersionSuffix . $preRelease,
-            'apk' => $preRelease . (str_contains($packageVersion . $preRelease, '~') ? '_p' : 'p') . $phpVersionSuffix,
+            'apk' => (str_contains($packageVersion, '~') ? '_p' . str_replace('.', '_p', $phpVersionSuffix) : 'p' . $phpVersionSuffix) . $preRelease,
             default => '_' . $phpVersionSuffix . $preRelease,
         };
     }
@@ -389,13 +389,9 @@ class CreatePackages
     public static function getTaggedPackageVersion(string $packageType, string $packageVersion): string
     {
         $packageVersion = self::normalizeVersion($packageVersion);
-        $markerPosition = strpos($packageVersion, '~');
-        $baseVersion = $markerPosition === false ? $packageVersion : substr($packageVersion, 0, $markerPosition);
-        $marker = $markerPosition === false ? '' : substr($packageVersion, $markerPosition);
-        $tag = self::getPhpVersionTag($packageType === 'apk' ? 'rpm' : $packageType, $packageVersion);
-        // The boundary keeps PHP GA above every PHP prerelease even when the extension is still a prerelease.
-        $tag = $packageType === 'apk' ? 'p' . substr($tag, 1) . '_p0' : $tag . '+ext';
-        $version = $baseVersion . $tag . $marker;
+        // Otherwise RPM compares the PHP tag's digits as the prerelease number.
+        $packageVersion = preg_replace('/(~{1,2}(?:alpha|beta|rc|dev))$/', '${1}0', $packageVersion);
+        $version = $packageVersion . self::getPhpVersionTag($packageType, $packageVersion);
 
         return $packageType === 'apk' ? self::toApkVersion($version) : $version;
     }
