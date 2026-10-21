@@ -1,0 +1,19 @@
+ext-rdkafka:
+  type: php-extension
+  artifact:
+    source:
+      # GitHub's latest-release endpoint still selects 6.0.4.
+      type: pecl
+      name: rdkafka
+      extract: php-src/ext/rdkafka
+    metadata:
+      license-files: [LICENSE]
+      license: MIT
+  depends:
+    - librdkafka
+  lang: cpp
+  php-extension:
+    os:
+      - Linux
+      - Darwin
+    arg-type: custom

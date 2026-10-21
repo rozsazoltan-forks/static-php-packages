@@ -1,9 +1,11 @@
 import gzip
 import runpy
 import shutil
+import sys
 import unittest
 from pathlib import Path
-from unittest.mock import Mock, patch
+from tempfile import TemporaryDirectory
+from unittest.mock import Mock, mock_open, patch
 
 import requests
 
@@ -23,18 +25,25 @@ class UpgradeGuards(unittest.TestCase):
             self.assertEqual(len(result), 2)
             self.assertEqual([call[1]['params']['page'] for call in get.call_args_list], [1, 2, 3])
 
-    def test_forgejo_refuses_batch_before_upload(self):
-        files = [root / 'safe.deb', root / 'older.deb']
-        packages = [{'name': 'php-zts-xdebug', 'version': 'higher'}]
+    def test_forgejo_skips_lower_package(self):
+        files = [root / 'safe.deb', root / 'older.deb', root / 'older-debuginfo.deb']
+        metadata = {
+            files[0]: ('php-zts-safe', 'safe', 'amd64'),
+            files[1]: ('php-zts-xdebug', 'older', 'amd64'),
+            files[2]: ('php-zts-xdebug-debuginfo', 'older', 'amd64'),
+        }
+        packages = [{'name': 'php-zts-xdebug-debuginfo', 'version': 'higher'}]
         with patch.dict(forgejo_globals, {
-            'package_metadata': lambda file, kind: ('php-zts-xdebug', 'safe' if file == files[0] else 'older', 'amd64'),
+            'package_metadata': lambda file, kind: metadata[file],
             'version_is_newer': lambda kind, left, right: right == 'older',
             'get_remote_package_archs': lambda *args, **kwargs: {'amd64'},
             'get_remote_packages': lambda *args: packages,
-        }), patch.object(Path, 'glob', return_value=files), patch.object(Path, 'is_file', return_value=True), patch.object(requests, 'put') as put:
-            with self.assertRaisesRegex(RuntimeError, 'Refusing upload'):
-                forgejo['upload_packages']('https://example.com', '86', 'test', 'debian', '*.deb')
-            put.assert_not_called()
+            'get_package_info': lambda file, kind: (*metadata[file], file.stem),
+        }), patch.object(Path, 'glob', return_value=files), patch.object(Path, 'is_file', return_value=True), patch('builtins.open', mock_open()) as opened, patch.object(requests, 'put', return_value=Mock(status_code=201)) as put, patch.object(requests, 'post', return_value=Mock(status_code=201)):
+            forgejo['upload_packages']('https://example.com', '86', 'test', 'debian', '*.deb')
+            put.assert_called_once()
+            opened.assert_called_once_with(files[0], 'rb')
+            self.assertIs(put.call_args[1]['files']['file'], opened.return_value)
 
     def test_forgejo_read_failure_prevents_upload(self):
         with patch.dict(forgejo_globals, {'get_remote_packages': Mock(side_effect=requests.HTTPError('offline'))}), patch.object(requests, 'put') as put:
@@ -65,9 +74,23 @@ class UpgradeGuards(unittest.TestCase):
     def test_rpm_refuses_lower_version(self):
         local = {'name': 'php-zts-xdebug', 'arch': 'x86_64', 'version': '3.6.0_86.0+ext', 'evr': '0:3.6.0_86.0+ext-1.el10'}
         remote = dict(local, version='3.7.0_86.0+ext', evr='0:3.7.0_86.0+ext-1.el10')
-        with patch.dict(rpm_globals, {'subprocess': Mock(run=lambda *args, **kwargs: Mock(returncode=12, stderr=''))}):
-            with self.assertRaisesRegex(RuntimeError, 'Refusing upload'):
-                rpm['verify_package'](local, [remote], '8.6')
+        with TemporaryDirectory() as directory:
+            directory = Path(directory)
+            metadata = {
+                'safe.rpm': dict(local, name='php-zts-safe'),
+                'older.rpm': local,
+                'older-debuginfo.rpm': dict(local, name='php-zts-xdebug-debuginfo'),
+            }
+            for name in metadata:
+                (directory / name).touch()
+            manifest = directory / 'upload-files'
+            with patch.dict(rpm_globals, {
+                'local_package': lambda path: metadata[path.name],
+                'published_packages': lambda read: [remote],
+                'subprocess': Mock(run=lambda *args, **kwargs: Mock(returncode=12, stderr='')),
+            }), patch.object(sys, 'argv', ['check-rpm-upgrades', '--host', 'example.com', '--remote-directory', '/rpm', '--php-version', '8.6', '--files-from', str(manifest), str(directory)]):
+                rpm['main']()
+            self.assertEqual(manifest.read_bytes(), b'safe.rpm\0')
 
     def test_rpm_stream_isolation(self):
         local = {'name': 'php-zts-xdebug', 'arch': 'x86_64', 'version': '3.6.0_86.0+ext', 'evr': '0:3.6.0_86.0+ext-1.el10'}

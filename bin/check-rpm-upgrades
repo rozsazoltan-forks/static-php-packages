@@ -11,6 +11,10 @@ import xml.etree.ElementTree as ET
 from pathlib import Path, PurePosixPath
 
 
+class PackageDowngradeError(RuntimeError):
+    pass
+
+
 def php_stream(version):
     if '_' in version:
         tag = re.match(r'\d+', version.rsplit('_', 1)[1])
@@ -86,25 +90,41 @@ def verify_package(local, published, stream=None):
             continue
         result = subprocess.run(['rpmdev-vercmp', local['evr'], remote['evr']], stdout=subprocess.PIPE, stderr=subprocess.PIPE, universal_newlines=True)
         if result.returncode == 12:
-            raise RuntimeError('Refusing upload: {} {} sorts below published {}'.format(local['name'], local['evr'], remote['evr']))
+            raise PackageDowngradeError('Refusing upload: {} {} sorts below published {}'.format(local['name'], local['evr'], remote['evr']))
         if result.returncode not in [0, 11]:
             raise RuntimeError('Cannot compare RPM versions: ' + result.stderr)
 
 
 def main():
-    parser = argparse.ArgumentParser(description='Refuse an RPM batch that would lose to an existing candidate in its PHP stream.')
+    parser = argparse.ArgumentParser(description='Select RPM packages that do not downgrade existing candidates in their PHP stream.')
     parser.add_argument('--host', required=True)
     parser.add_argument('--remote-directory', required=True)
     parser.add_argument('--php-version', required=True)
+    parser.add_argument('--files-from', required=True, type=Path)
     parser.add_argument('directory', type=Path)
     arguments = parser.parse_args()
     published = published_packages(lambda location, missing_ok=False: read_remote_file(arguments.host, arguments.remote_directory, location, missing_ok))
     files = list(arguments.directory.glob('*.rpm'))
     if not files:
         raise RuntimeError('No RPM packages to verify')
+    candidates = []
+    skipped = {}
     for path in files:
-        verify_package(local_package(path), published, arguments.php_version)
-    print('Verified upgrade ordering for {} RPM packages.'.format(len(files)))
+        local = local_package(path)
+        key = (re.sub(r'-debuginfo$', '', local['name']), local['arch'], local['evr'])
+        candidates.append((path, key))
+        try:
+            verify_package(local, published, arguments.php_version)
+        except PackageDowngradeError as error:
+            skipped[key] = str(error)
+    allowed = []
+    for path, key in candidates:
+        if key in skipped:
+            print('::warning::Skipping upload of {}: {}'.format(path.name, skipped[key]))
+        else:
+            allowed.append(path.name)
+    arguments.files_from.write_bytes(b''.join(name.encode() + b'\0' for name in allowed))
+    print('Verified upgrade ordering for {} RPM packages; skipped {}.'.format(len(allowed), len(files) - len(allowed)))
 
 
 if __name__ == '__main__':

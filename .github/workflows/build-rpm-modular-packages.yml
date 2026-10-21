@@ -502,8 +502,8 @@ jobs:
                 env:
                     MATRIX_PHP_VERSION: ${{ matrix.php-version }}
                 run: |
-                    python3 bin/check-rpm-upgrades --host "github@${{ secrets.DEB_SERVER_IP }}" --remote-directory "/mnt/data/rpm/${RPM_ARCH}/${TARGET_DIR}" --php-version "$MATRIX_PHP_VERSION" dist/rpm
-                    rsync -av --ignore-existing dist/rpm/*.rpm github@${{ secrets.DEB_SERVER_IP }}:/mnt/data/rpm/${RPM_ARCH}/${TARGET_DIR}/
+                    python3 bin/check-rpm-upgrades --host "github@${{ secrets.DEB_SERVER_IP }}" --remote-directory "/mnt/data/rpm/${RPM_ARCH}/${TARGET_DIR}" --php-version "$MATRIX_PHP_VERSION" --files-from "$RUNNER_TEMP/rpm-upload-files" dist/rpm
+                    rsync -av --ignore-existing --from0 --files-from="$RUNNER_TEMP/rpm-upload-files" dist/rpm/ github@${{ secrets.DEB_SERVER_IP }}:/mnt/data/rpm/${RPM_ARCH}/${TARGET_DIR}/
 
             -   name: Upload logs
                 if: ${{ failure() }}
