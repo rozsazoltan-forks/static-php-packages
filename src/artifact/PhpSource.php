@@ -49,4 +49,14 @@ class PhpSource extends PhpRelease
         }
         return $release;
     }
+
+    protected function fetchPhpReleaseInfo(string $name, array $config, ArtifactDownloader $downloader): ?array
+    {
+        try {
+            return parent::fetchPhpReleaseInfo($name, $config, $downloader);
+        } catch (DownloaderException $exception) {
+            logger()->debug($exception->getMessage());
+            return null;
+        }
+    }
 }

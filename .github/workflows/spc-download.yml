@@ -103,21 +103,21 @@ jobs:
                         # key that actually looks like a version.
                         latest=$(curl -fsSL -H "Cache-Control: no-cache" "https://www.php.net/releases/index.php?json=&max=1&version=${v}&build=${GITHUB_RUN_ID}" \
                             | jq -r 'to_entries | map(select(.key | test("^[0-9]+\\.[0-9]+\\.[0-9]+"))) | .[0].key // empty')
-                        if [[ -z "$latest" ]]; then
-                            # pre-GA minor: php.net has no entry yet, so mirror what spc downloads
-                            # (StaticPHP\Artifact\Downloader\Type\PhpRelease resolves the newest tag).
-                            # Rank with version_compare, not `sort -V`: byte order puts the uppercase
-                            # "RC" tags *before* lowercase "alpha"/"beta", so a freshly tagged RC1
-                            # would lose to beta1 and never trigger a rebuild.
-                            # Exclude 8.6.0RC1's upstream packaging issue, matching PhpSource.
-                            latest=$(curl -fsSL \
-                                -H "Authorization: Bearer $GITHUB_TOKEN" \
-                                -H "Accept: application/vnd.github+json" \
-                                "https://api.github.com/repos/php/php-src/git/matching-refs/tags/php-${v}." \
-                                | jq -r '.[].ref | sub("^refs/tags/php-"; "") | select(. != "8.6.0RC1")' \
-                                | grep -E "^${v}\.[0-9]+((alpha|beta|RC)[0-9]+)?$" \
-                                | php -r '$t = array_values(array_filter(array_map("trim", file("php://stdin")))); usort($t, "version_compare"); echo end($t) ?: "";' || true)
-                        fi
+                        # GitHub tags can precede php.net metadata; released streams stay on GA tags.
+                        github_versions=$(curl -fsSL \
+                            -H "Authorization: Bearer $GITHUB_TOKEN" \
+                            -H "Accept: application/vnd.github+json" \
+                            "https://api.github.com/repos/php/php-src/git/matching-refs/tags/php-${v}." \
+                            | jq -r --arg minor "$v" --arg released "$latest" '
+                                .[].ref | sub("^refs/tags/php-"; "")
+                                | select(startswith($minor + "."))
+                                | select(test("^[0-9]+\\.[0-9]+\\.[0-9]+((alpha|beta|RC)[0-9]+)?$"))
+                                | select($released == "" or test("^[0-9]+\\.[0-9]+\\.[0-9]+$"))
+                                | select(. != "8.6.0RC1")
+                            ')
+                        # version_compare orders RC tags after alpha/beta, unlike sort -V.
+                        latest=$(printf '%s\n' "$latest" "$github_versions" \
+                            | php -r '$t = array_values(array_filter(array_map("trim", file("php://stdin")))); usort($t, "version_compare"); echo end($t) ?: "";')
                         if [[ -z "$latest" ]]; then
                             echo "::error::Failed to fetch latest PHP version for ${v}"
                             exit 1
