@@ -14,7 +14,9 @@ RUN if [ -z "${RPM_ARCH}" ]; then \
         esac; \
     else echo "${RPM_ARCH}" > /tmp/rpm_arch; fi
 
-RUN apt-get update && \
+# Bullseye's security packages have moved to the archive.
+RUN sed -i 's|deb.debian.org/debian-security|archive.debian.org/debian-security|g' /etc/apt/sources.list && \
+    apt-get update && \
     apt-get install -y ruby build-essential jq curl gzip sudo git gnupg tar zstd xz-utils python3 python3-requests \
         bison re2c flex autoconf automake autopoint libtool pkg-config nasm \
         zlib1g-dev && \
