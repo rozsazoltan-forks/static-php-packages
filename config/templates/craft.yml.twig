@@ -72,7 +72,7 @@
 {%-     set sapi_list = ['cli']|merge(sapi_list) -%}
 {%-   endif -%}
 {%-   set extensions = base_extensions -%}
-{%-   set shared_ext = base_shared|filter(v => v in filter_packages) -%}
+{%-   set shared_ext = 'devel' in filter_packages ? base_shared : base_shared|filter(v => v in filter_packages) -%}
 {%- else -%}
 {%-   set extensions = base_extensions -%}
 {%-   set shared_ext = base_shared -%}
